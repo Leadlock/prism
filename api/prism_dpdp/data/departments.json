@@ -1,0 +1,37 @@
+[
+  {
+    "department_id": "Recruitment",
+    "name": "Recruitment",
+    "department_head": "B",
+    "assessment_owner": "BB",
+    "handles_personal_data": "Unsure",
+    "data_subjects": [],
+    "business_function": "",
+    "selected": true,
+    "created_at": "2026-06-26T05:25:29.732432+00:00",
+    "updated_at": "2026-06-26T06:14:35.740384+00:00",
+    "created_by": "",
+    "updated_by": "",
+    "assessment_status": "Not Started",
+    "review_comments": ""
+  },
+  {
+    "department_id": "Sales",
+    "name": "Sales",
+    "department_head": "C",
+    "assessment_owner": "CC",
+    "handles_personal_data": "Unsure",
+    "data_subjects": [
+      "Candidates",
+      "Prospects"
+    ],
+    "business_function": "",
+    "selected": true,
+    "created_at": "2026-06-26T05:25:29.732432+00:00",
+    "updated_at": "2026-06-26T06:14:35.740384+00:00",
+    "created_by": "",
+    "updated_by": "",
+    "assessment_status": "In Progress",
+    "review_comments": ""
+  }
+]

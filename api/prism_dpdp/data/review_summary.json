@@ -1,0 +1,57 @@
+{
+  "dpdpa_answers": {
+    "P1": "Yes",
+    "P2": "Yes",
+    "P3": "No",
+    "P4": "No",
+    "P5": "No",
+    "P6": "Yes",
+    "P7": "No",
+    "R1": "Yes",
+    "R2": "Yes",
+    "R3": "Partially",
+    "R4": "Yes",
+    "I1": "Yes",
+    "I2": "Partially",
+    "I3": "Partially",
+    "I4": "Yes",
+    "S1": "Yes",
+    "S2": "Yes",
+    "S3": "Partially",
+    "S4": "Yes",
+    "M1": "Yes",
+    "M2": "No",
+    "M3": "Yes",
+    "M4": "No"
+  },
+  "it_operations": {
+    "Backup & Recovery": [
+      "Automated daily backups configured",
+      "Backup encryption enabled"
+    ],
+    "Disaster Recovery & Business Continuity": [
+      "Not configured"
+    ],
+    "Web Application Firewall (WAF) & API Security": [
+      "WAF deployed on all public apps",
+      "DDoS protection active"
+    ],
+    "Data Archival & Retention": [
+      "Unsure"
+    ],
+    "Email Archival & eDiscovery": [
+      "Email archival enabled for all users",
+      "Retention policies applied to mailboxes"
+    ],
+    "Patch Management & Vulnerability Remediation": [
+      "Automated patching for OS",
+      "Critical patches applied within 72 hours",
+      "Vulnerability scanning scheduled"
+    ],
+    "Network Segmentation & Zero Trust": [
+      "Network segmentation between departments"
+    ]
+  },
+  "it_assessment_completed": true,
+  "it_assessment_date": "2026-06-26T04:48:55.003743+00:00"
+}

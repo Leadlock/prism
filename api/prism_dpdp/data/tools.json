@@ -1,0 +1,2027 @@
+[
+  {
+    "tool_id": "TOOL-FC8D52",
+    "department_id": "Recruitment",
+    "category": "Recruitment",
+    "tool_name": "LinkedIn Recruiter",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Resume",
+      "Contact details",
+      "Education",
+      "Work experience",
+      "Photograph",
+      "Salary expectations",
+      "References"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T11:24:16.855624+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-083A9B",
+    "department_id": "Recruitment",
+    "category": "Recruitment",
+    "tool_name": "Naukri",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Resume",
+      "Contact details",
+      "Education",
+      "Work experience",
+      "Photograph",
+      "Salary expectations",
+      "References"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T11:24:16.855624+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-E6223C",
+    "department_id": "Recruitment",
+    "category": "Recruitment",
+    "tool_name": "Indeed",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Resume",
+      "Contact details",
+      "Education",
+      "Work experience",
+      "Photograph",
+      "Salary expectations",
+      "References"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T11:24:16.855624+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-D6E8AF",
+    "department_id": "Recruitment",
+    "category": "Recruitment",
+    "tool_name": "Zoho Recruit",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Resume",
+      "Contact details",
+      "Education",
+      "Work experience",
+      "Photograph",
+      "Salary expectations",
+      "References"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T11:24:16.855624+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-C0E488",
+    "department_id": "Recruitment",
+    "category": "Recruitment",
+    "tool_name": "Google Sheets",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Resume",
+      "Contact details",
+      "Education",
+      "Work experience",
+      "Photograph",
+      "Salary expectations",
+      "References"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T11:24:16.855624+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-5AF1F3",
+    "department_id": "Customer_Support",
+    "category": "Customer Support",
+    "tool_name": "Zoho",
+    "is_custom": true,
+    "personal_data_categories": [
+      "Other"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Unknown",
+    "data_access": [],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T11:24:16.855624+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-BCA948",
+    "department_id": "Marketing",
+    "category": "Marketing",
+    "tool_name": "Zoho Campaigns",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Email",
+      "Phone number",
+      "Company",
+      "Job title",
+      "IP address",
+      "Website behaviour",
+      "Consent preference",
+      "Campaign response",
+      "Webinar attendance"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "Managers"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:00:53.355646+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-C84C62",
+    "department_id": "Marketing",
+    "category": "Marketing",
+    "tool_name": "Leadpages",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Email",
+      "Phone number",
+      "Company",
+      "Job title",
+      "IP address",
+      "Website behaviour",
+      "Consent preference",
+      "Campaign response",
+      "Webinar attendance"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "Managers"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:00:53.355646+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-0EAB36",
+    "department_id": "Marketing",
+    "category": "Marketing",
+    "tool_name": "Microsoft Teams Webinars",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Email",
+      "Phone number",
+      "Company",
+      "Job title",
+      "IP address",
+      "Website behaviour",
+      "Consent preference",
+      "Campaign response",
+      "Webinar attendance"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "Managers"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:00:53.355646+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-554BE7",
+    "department_id": "Marketing",
+    "category": "Marketing",
+    "tool_name": "LinkedIn Lead Gen Forms",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Email",
+      "Phone number",
+      "Company",
+      "Job title",
+      "IP address",
+      "Website behaviour",
+      "Consent preference",
+      "Campaign response",
+      "Webinar attendance"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Outside India",
+    "data_access": [
+      "Department users",
+      "Managers"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:00:53.355646+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-886FEB",
+    "department_id": "Marketing",
+    "category": "Marketing",
+    "tool_name": "Google Analytics",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Email",
+      "Phone number",
+      "Company",
+      "Job title",
+      "IP address",
+      "Website behaviour",
+      "Consent preference",
+      "Campaign response",
+      "Webinar attendance"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:00:53.355646+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-6CAE63",
+    "department_id": "IT__Information_Security",
+    "category": "IT__Information_Security",
+    "tool_name": "Microsoft 365",
+    "is_custom": false,
+    "personal_data_categories": [
+      "User identity"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:01:13.713739+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-FD27DA",
+    "department_id": "IT__Information_Security",
+    "category": "IT__Information_Security",
+    "tool_name": "Microsoft Entra ID (Azure AD)",
+    "is_custom": false,
+    "personal_data_categories": [
+      "User identity"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:01:13.713739+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-526943",
+    "department_id": "IT__Information_Security",
+    "category": "IT__Information_Security",
+    "tool_name": "ESET Protect",
+    "is_custom": false,
+    "personal_data_categories": [
+      "User identity"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:01:13.713739+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-8A0630",
+    "department_id": "IT__Information_Security",
+    "category": "IT__Information_Security",
+    "tool_name": "Microsoft Purview DLP",
+    "is_custom": false,
+    "personal_data_categories": [
+      "User identity"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:01:13.713739+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-CC0361",
+    "department_id": "IT__Information_Security",
+    "category": "IT__Information_Security",
+    "tool_name": "Microsoft Purview Information Protection",
+    "is_custom": false,
+    "personal_data_categories": [
+      "User identity"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:01:13.713739+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-DA5F73",
+    "department_id": "IT__Information_Security",
+    "category": "IT__Information_Security",
+    "tool_name": "Fortinet FortiGate",
+    "is_custom": false,
+    "personal_data_categories": [
+      "User identity"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "On-premises",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:01:13.713739+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-68862A",
+    "department_id": "IT__Information_Security",
+    "category": "IT__Information_Security",
+    "tool_name": "Microsoft Sentinel",
+    "is_custom": false,
+    "personal_data_categories": [
+      "User identity"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:01:13.713739+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-8859B7",
+    "department_id": "IT__Information_Security",
+    "category": "IT__Information_Security",
+    "tool_name": "Carbonite (OpenText)",
+    "is_custom": false,
+    "personal_data_categories": [
+      "User identity"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:01:13.713739+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-DB6D1A",
+    "department_id": "IT__Information_Security",
+    "category": "IT__Information_Security",
+    "tool_name": "Microsoft Defender for Office 365",
+    "is_custom": false,
+    "personal_data_categories": [
+      "User identity"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:01:13.713739+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-2387D8",
+    "department_id": "IT__Information_Security",
+    "category": "IT__Information_Security",
+    "tool_name": "Microsoft SharePoint",
+    "is_custom": false,
+    "personal_data_categories": [
+      "User identity"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:01:13.713739+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-10F4A4",
+    "department_id": "IT__Information_Security",
+    "category": "IT__Information_Security",
+    "tool_name": "Microsoft OneDrive",
+    "is_custom": false,
+    "personal_data_categories": [
+      "User identity"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:01:13.713739+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-9E65FD",
+    "department_id": "HR__People_Operations",
+    "category": "HR__People_Operations",
+    "tool_name": "Keka",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Employee name",
+      "Employee ID",
+      "Contact details",
+      "Address",
+      "Date of birth",
+      "Photograph",
+      "Aadhaar / PAN / passport",
+      "Bank details",
+      "Salary details",
+      "Attendance data",
+      "Biometric data",
+      "Health / insurance details",
+      "Emergency contacts",
+      "Performance records",
+      "Other"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:15:15.793925+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-A72EE6",
+    "department_id": "HR__People_Operations",
+    "category": "HR__People_Operations",
+    "tool_name": "GreytHR",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Employee name",
+      "Employee ID",
+      "Contact details",
+      "Address",
+      "Date of birth",
+      "Photograph",
+      "Aadhaar / PAN / passport",
+      "Bank details",
+      "Salary details",
+      "Attendance data",
+      "Biometric data",
+      "Health / insurance details",
+      "Emergency contacts",
+      "Performance records",
+      "Other"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:15:15.793925+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-A2782A",
+    "department_id": "HR__People_Operations",
+    "category": "HR__People_Operations",
+    "tool_name": "GreytHR Payroll",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Employee name",
+      "Employee ID",
+      "Contact details",
+      "Address",
+      "Date of birth",
+      "Photograph",
+      "Aadhaar / PAN / passport",
+      "Bank details",
+      "Salary details",
+      "Attendance data",
+      "Biometric data",
+      "Health / insurance details",
+      "Emergency contacts",
+      "Performance records",
+      "Other"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:15:15.793925+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-2CAF31",
+    "department_id": "HR__People_Operations",
+    "category": "HR__People_Operations",
+    "tool_name": "Keka Payroll",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Employee name",
+      "Employee ID",
+      "Contact details",
+      "Address",
+      "Date of birth",
+      "Photograph",
+      "Aadhaar / PAN / passport",
+      "Bank details",
+      "Salary details",
+      "Attendance data",
+      "Biometric data",
+      "Health / insurance details",
+      "Emergency contacts",
+      "Performance records",
+      "Other"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:15:15.793925+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-0C4F6A",
+    "department_id": "HR__People_Operations",
+    "category": "HR__People_Operations",
+    "tool_name": "GreytHR Attendance",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Employee name",
+      "Employee ID",
+      "Contact details",
+      "Address",
+      "Date of birth",
+      "Photograph",
+      "Aadhaar / PAN / passport",
+      "Bank details",
+      "Salary details",
+      "Attendance data",
+      "Biometric data",
+      "Health / insurance details",
+      "Emergency contacts",
+      "Performance records",
+      "Other"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:15:15.793925+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-0406D6",
+    "department_id": "HR__People_Operations",
+    "category": "HR__People_Operations",
+    "tool_name": "Keka ESS",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Employee name",
+      "Employee ID",
+      "Contact details",
+      "Address",
+      "Date of birth",
+      "Photograph",
+      "Aadhaar / PAN / passport",
+      "Bank details",
+      "Salary details",
+      "Attendance data",
+      "Biometric data",
+      "Health / insurance details",
+      "Emergency contacts",
+      "Performance records",
+      "Other"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:15:15.793925+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-FB7BF7",
+    "department_id": "HR__People_Operations",
+    "category": "HR__People_Operations",
+    "tool_name": "Udemy Business",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Employee name",
+      "Employee ID",
+      "Contact details",
+      "Address",
+      "Date of birth",
+      "Photograph",
+      "Aadhaar / PAN / passport",
+      "Bank details",
+      "Salary details",
+      "Attendance data",
+      "Biometric data",
+      "Health / insurance details",
+      "Emergency contacts",
+      "Performance records",
+      "Other"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:15:15.793925+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-2D451F",
+    "department_id": "HR__People_Operations",
+    "category": "HR__People_Operations",
+    "tool_name": "AuthBridge",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Employee name",
+      "Employee ID",
+      "Contact details",
+      "Address",
+      "Date of birth",
+      "Photograph",
+      "Aadhaar / PAN / passport",
+      "Bank details",
+      "Salary details",
+      "Attendance data",
+      "Biometric data",
+      "Health / insurance details",
+      "Emergency contacts",
+      "Performance records",
+      "Other"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:15:15.793925+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-2AAEE4",
+    "department_id": "HR__People_Operations",
+    "category": "HR__People_Operations",
+    "tool_name": "Microsoft 365",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Employee name",
+      "Employee ID",
+      "Contact details",
+      "Address",
+      "Date of birth",
+      "Photograph",
+      "Aadhaar / PAN / passport",
+      "Bank details",
+      "Salary details",
+      "Attendance data",
+      "Biometric data",
+      "Health / insurance details",
+      "Emergency contacts",
+      "Performance records",
+      "Other"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "HR / Finance / Legal"
+    ],
+    "existing_controls": [
+      "Privacy notice",
+      "Role-based access",
+      "MFA",
+      "Encryption",
+      "Audit logs",
+      "Backup"
+    ],
+    "detection_sources": [
+      "Employee or manager reports it",
+      "Customer complaint",
+      "Vendor notification",
+      "Application audit logs",
+      "Email / collaboration security alert",
+      "Endpoint security / EDR alert",
+      "IAM or suspicious-login alert",
+      "Cloud-security alert"
+    ],
+    "prism_intake_methods": [
+      "Manual incident form"
+    ],
+    "created_at": "2026-06-25T13:15:15.793925+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T04:48:55.003743+00:00",
+    "updated_by": "IT Administrator",
+    "assessment_status": "Submitted"
+  },
+  {
+    "tool_id": "TOOL-83CAEA",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "Salesforce",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  },
+  {
+    "tool_id": "TOOL-CCB116",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "Microsoft Dynamics 365",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  },
+  {
+    "tool_id": "TOOL-E6EA67",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "Zoho CRM",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  },
+  {
+    "tool_id": "TOOL-3277DA",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "Apollo",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Outside India",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  },
+  {
+    "tool_id": "TOOL-468F43",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "LinkedIn Sales Navigator",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Outside India",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  },
+  {
+    "tool_id": "TOOL-10D3E3",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "Lusha",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  },
+  {
+    "tool_id": "TOOL-528E59",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "Dialpad",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  },
+  {
+    "tool_id": "TOOL-B4E195",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "Proposify",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "India",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  },
+  {
+    "tool_id": "TOOL-F4EE5E",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "DocuSign",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  },
+  {
+    "tool_id": "TOOL-9E574F",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "Adobe Sign",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Multiple locations",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  },
+  {
+    "tool_id": "TOOL-E1A591",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "HubSpot Portal",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "Outside India",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  },
+  {
+    "tool_id": "TOOL-D440A4",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "Microsoft Excel",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "On-premises",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  },
+  {
+    "tool_id": "TOOL-6B0AFA",
+    "department_id": "Sales",
+    "category": "Sales",
+    "tool_name": "Google Sheets",
+    "is_custom": false,
+    "personal_data_categories": [
+      "Name",
+      "Business email",
+      "Mobile number",
+      "Job title",
+      "Company information",
+      "Meeting notes",
+      "Purchase history",
+      "Proposal details",
+      "Contract signatory details"
+    ],
+    "collects_personal_data": "Yes",
+    "data_handling": [],
+    "hosting_location": "SaaS / vendor managed",
+    "data_access": [
+      "Department users",
+      "Managers",
+      "HR / Finance / Legal",
+      "IT administrators",
+      "Security team",
+      "Vendor support team",
+      "External consultants"
+    ],
+    "existing_controls": [],
+    "detection_sources": [],
+    "prism_intake_methods": [],
+    "created_at": "2026-06-26T05:26:04.793035+00:00",
+    "created_by": "",
+    "updated_at": "2026-06-26T05:26:04.793035+00:00",
+    "updated_by": "",
+    "assessment_status": "In Progress"
+  }
+]

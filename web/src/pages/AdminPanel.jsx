@@ -1,0 +1,577 @@
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../api/client.js";
+
+const ROLE_OPTIONS = ["ADMIN", "LEAD", "CONTRIBUTOR", "VIEWER"];
+const RECURRENCE_OPTIONS = ["weekly", "fortnightly", "monthly", "quarterly", "semi-annual", "annual", "none"];
+
+const PLAN_FEATURES = {
+  lite:       ["Single framework", "Up to 5 users", "Evidence upload", "Basic dashboard", "10 hrs guided support"],
+  pro:        ["All frameworks", "Unlimited users", "AI-assisted analysis", "Advanced reporting", "Audit workspace", "Priority support"],
+  enterprise: ["Everything in Pro", "Dedicated account manager", "Custom integrations", "SLA guarantees", "On-premise option", "Training & onboarding"],
+};
+const PLAN_LABEL = { lite: "PRISM Lite", pro: "Professional", enterprise: "Enterprise" };
+const PLAN_PRICE = { lite: "₹8,000/mo", pro: "₹15,000/mo", enterprise: "Custom" };
+
+function PlanCard({ planKey, highlighted }) {
+  return (
+    <div style={{
+      flex: "1 1 200px", borderRadius: 10, padding: "16px 18px",
+      border: highlighted ? "2px solid var(--accent)" : "1px solid var(--border)",
+      background: highlighted ? "rgba(99,102,241,0.06)" : "var(--bg3)",
+      position: "relative",
+    }}>
+      {highlighted && (
+        <div style={{ position: "absolute", top: -10, left: 16, fontSize: 10, fontWeight: 700, background: "var(--accent)", color: "#fff", padding: "2px 10px", borderRadius: 20, letterSpacing: "0.06em" }}>
+          RECOMMENDED
+        </div>
+      )}
+      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{PLAN_LABEL[planKey]}</div>
+      <div style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600, marginBottom: 10 }}>{PLAN_PRICE[planKey]}</div>
+      <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+        {PLAN_FEATURES[planKey].map(f => (
+          <li key={f} style={{ fontSize: 12, color: "var(--text2)", padding: "2px 0", display: "flex", gap: 6 }}>
+            <span style={{ color: "var(--green)", fontWeight: 700, flexShrink: 0 }}>✓</span> {f}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function BillingSection({ company, user }) {
+  const [upgradeRequested, setUpgradeRequested] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [requestError, setRequestError] = useState("");
+
+  const plan          = company?.plan          || "lite";
+  const billingStatus = company?.billingStatus || "trial";
+  const trialEndsAt   = company?.trialEndsAt;
+
+  const daysLeft = trialEndsAt
+    ? Math.ceil((new Date(trialEndsAt) - new Date()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  const statusColor = {
+    trial:   { bg: "rgba(245,158,11,0.1)",  color: "var(--amber)", border: "rgba(245,158,11,0.3)" },
+    active:  { bg: "rgba(34,197,94,0.1)",   color: "var(--green)", border: "rgba(34,197,94,0.3)" },
+    expired: { bg: "rgba(239,68,68,0.1)",   color: "var(--red)",   border: "rgba(239,68,68,0.3)" },
+  }[billingStatus] || {};
+
+  const nextPlans = plan === "lite" ? ["pro", "enterprise"] : plan === "pro" ? ["enterprise"] : [];
+
+  const handleUpgradeRequest = async (targetPlan) => {
+    setRequesting(true);
+    setRequestError("");
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name:     company?.name || "Company Admin",
+          email:    user?.email || ("admin@" + (company?.domain || "company.com")),
+          company:  company?.name,
+          message:  `Upgrade request from ${company?.name}.\nCurrent plan: ${PLAN_LABEL[plan]}\nRequested plan: ${PLAN_LABEL[targetPlan] || "upgrade"}\nContact email: ${user?.email || ""}`,
+          _subject: `[Upgrade Request] ${company?.name} — ${PLAN_LABEL[plan]} → ${PLAN_LABEL[targetPlan] || "upgrade"}`,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setRequestError(d.error || "Could not send request. Email ab@neozaar.com directly.");
+      } else {
+        setUpgradeRequested(true);
+      }
+    } catch {
+      setRequestError("Could not send request. Email ab@neozaar.com directly.");
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  return (
+    <section className="admin-section">
+      <h2>Billing &amp; Plan</h2>
+
+      {/* Current plan summary */}
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
+        <div style={{ flex: "1 1 200px", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "18px 20px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text3)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Current plan</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>{PLAN_LABEL[plan]}</div>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600, background: statusColor.bg, color: statusColor.color, border: `1px solid ${statusColor.border}` }}>
+            {billingStatus === "trial" ? "Free Trial" : billingStatus === "active" ? "Active" : "Expired"}
+          </div>
+        </div>
+
+        <div style={{ flex: "1 1 200px", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "18px 20px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text3)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
+            {billingStatus === "trial" ? "Trial ends" : billingStatus === "active" ? "Next renewal" : "Expired on"}
+          </div>
+          {trialEndsAt ? (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 700, color: daysLeft !== null && daysLeft <= 7 ? "var(--red)" : "var(--text)" }}>
+                {new Date(trialEndsAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+              </div>
+              {billingStatus === "trial" && daysLeft !== null && (
+                <div style={{ fontSize: 12, color: daysLeft <= 7 ? "var(--red)" : "var(--text3)", marginTop: 4 }}>
+                  {daysLeft > 0 ? `${daysLeft} day${daysLeft === 1 ? "" : "s"} remaining` : "Trial ended"}
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ fontSize: 16, color: "var(--text3)" }}>—</div>
+          )}
+        </div>
+
+        <div style={{ flex: "1 1 200px", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "18px 20px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text3)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>What's included</div>
+          <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+            {PLAN_FEATURES[plan].map(f => (
+              <li key={f} style={{ fontSize: 12, color: "var(--text2)", padding: "2px 0", display: "flex", gap: 6 }}>
+                <span style={{ color: "var(--green)", fontWeight: 700, flexShrink: 0 }}>✓</span> {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {/* Upgrade section */}
+      {nextPlans.length > 0 && (
+        <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "20px" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>Ready to upgrade?</div>
+          <p style={{ fontSize: 13, color: "var(--text2)", margin: "0 0 16px" }}>
+            Compare what's included in the next plans and request an upgrade — our team will reach out within one business day.
+          </p>
+
+          {/* Next plan cards */}
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+            {nextPlans.map((p, i) => <PlanCard key={p} planKey={p} highlighted={i === 0} />)}
+          </div>
+
+          {upgradeRequested ? (
+            <div style={{ fontSize: 13, color: "var(--green)", fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
+              <span>✓</span> Request sent — we'll be in touch within one business day.
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              {nextPlans.map(p => (
+                <button
+                  key={p}
+                  className="btn btn-primary"
+                  onClick={() => handleUpgradeRequest(p)}
+                  disabled={requesting}
+                  style={{ fontSize: 13, padding: "8px 20px" }}
+                >
+                  {requesting ? "Sending…" : `Request ${PLAN_LABEL[p]}`}
+                </button>
+              ))}
+              {requestError && <span style={{ fontSize: 12, color: "var(--red)" }}>{requestError}</span>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {plan === "enterprise" && (
+        <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>
+          You're on the Enterprise plan. Contact <a href="mailto:ab@neozaar.com" style={{ color: "var(--accent)" }}>ab@neozaar.com</a> for any billing queries.
+        </p>
+      )}
+    </section>
+  );
+}
+
+export default function AdminPanel({ token, company, user, onLogout, theme, onThemeToggle }) {
+  const navigate = useNavigate();
+  const [users, setUsers] = useState([]);
+  const [invitations, setInvitations] = useState([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("CONTRIBUTOR");
+  const [inviteLink, setInviteLink] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // Reminders & Recurrence state
+  const [reminderOffsets, setReminderOffsets] = useState([7, 14, 30]);
+  const [newOffset, setNewOffset] = useState("");
+  const [questions, setQuestions] = useState([]);
+  const [recurrenceEdits, setRecurrenceEdits] = useState({});
+
+  const baseUrl = useMemo(() => window.location.origin, []);
+
+  useEffect(() => {
+    loadData();
+  }, [token]);
+
+  const loadData = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [usersData, invitesData, settingsData, questionsData] = await Promise.all([
+        apiFetch("/api/users", { token }),
+        apiFetch("/api/users/invitations", { token }),
+        apiFetch("/api/reminders/settings", { token }),
+        apiFetch("/api/questions", { token })
+      ]);
+      setUsers(usersData);
+      setInvitations(invitesData);
+      setReminderOffsets(settingsData.defaultReminderOffsets || [7, 14, 30]);
+      setQuestions(questionsData || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInvite = async (e) => {
+    e.preventDefault();
+    setError("");
+    setInviteLink("");
+
+    try {
+      const result = await apiFetch("/api/users/invite", {
+        token,
+        method: "POST",
+        body: JSON.stringify({ email: inviteEmail, role: inviteRole })
+      });
+      setInviteEmail("");
+      setInviteRole("CONTRIBUTOR");
+      setInviteLink(result.inviteLink || "");
+      await loadData();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleRoleChange = async (userId, role) => {
+    try {
+      const updated = await apiFetch(`/api/users/${userId}`, {
+        token,
+        method: "PUT",
+        body: JSON.stringify({ role })
+      });
+      setUsers((prev) => prev.map((user) => (user.id === updated.id ? updated : user)));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    const confirmDelete = window.confirm("Remove this user from the company?");
+    if (!confirmDelete) return;
+
+    try {
+      await apiFetch(`/api/users/${userId}`, { token, method: "DELETE" });
+      setUsers((prev) => prev.filter((user) => user.id !== userId));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleCancelInvite = async (invitationId) => {
+    try {
+      await apiFetch(`/api/users/invitations/${invitationId}`, { token, method: "DELETE" });
+      setInvitations((prev) => prev.filter((invite) => invite.id !== invitationId));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const copyInviteLink = async (link) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setInviteLink(link);
+    } catch (err) {
+      setError("Unable to copy. Please copy the link manually.");
+    }
+  };
+
+  // Reminder offset handlers
+  const handleAddOffset = () => {
+    const days = parseInt(newOffset, 10);
+    if (!days || days < 1) return;
+    if (reminderOffsets.includes(days)) return;
+    const updated = [...reminderOffsets, days].sort((a, b) => a - b);
+    setReminderOffsets(updated);
+    setNewOffset("");
+    saveReminderOffsets(updated);
+  };
+
+  const handleRemoveOffset = (days) => {
+    const updated = reminderOffsets.filter(d => d !== days);
+    setReminderOffsets(updated);
+    saveReminderOffsets(updated);
+  };
+
+  const saveReminderOffsets = async (offsets) => {
+    try {
+      await apiFetch("/api/reminders/settings", {
+        token,
+        method: "PUT",
+        body: JSON.stringify({ defaultReminderOffsets: offsets })
+      });
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // Recurrence handlers
+  const handleRecurrenceChange = (questId, field, value) => {
+    setRecurrenceEdits(prev => ({
+      ...prev,
+      [questId]: { ...(prev[questId] || {}), [field]: value }
+    }));
+  };
+
+  const saveRecurrence = async (questId) => {
+    const edits = recurrenceEdits[questId];
+    if (!edits) return;
+    try {
+      await apiFetch(`/api/questions/${questId}/recurrence`, {
+        token,
+        method: "PUT",
+        body: JSON.stringify({
+          recurrenceInterval: edits.recurrenceInterval,
+          nextDueDate: edits.nextDueDate || null
+        })
+      });
+      setRecurrenceEdits(prev => {
+        const copy = { ...prev };
+        delete copy[questId];
+        return copy;
+      });
+      // Refresh questions to show updated values
+      const questionsData = await apiFetch("/api/questions", { token });
+      setQuestions(questionsData || []);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="admin-container">
+        <div className="admin-card">
+          <p>Loading admin data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="admin-container">
+      <div className="admin-card">
+        <div className="admin-header">
+          <div>
+            <p className="admin-kicker">Admin workspace</p>
+            <h1>{company?.name || "Company"}</h1>
+            {company?.domain && <p className="admin-domain">{company.domain}</p>}
+          </div>
+          <div className="admin-actions">
+            <button className="btn btn-ghost theme-toggle" onClick={onThemeToggle} title="Toggle theme">
+              {theme === "dark" ? "☀" : "☾"}
+            </button>
+            <button className="btn btn-ghost" onClick={() => navigate("/auditors")}>Auditors</button>
+            <button className="btn btn-ghost" onClick={() => navigate("/tracker")}>Back to tracker</button>
+            <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
+          </div>
+        </div>
+
+        {error && <p className="error-text">{error}</p>}
+
+        <section className="admin-section">
+          <h2>Invite a team member</h2>
+          <form className="invite-form" onSubmit={handleInvite}>
+            <div className="form-group">
+              <label htmlFor="inviteEmail">Email</label>
+              <input
+                id="inviteEmail"
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="inviteRole">Role</label>
+              <select
+                id="inviteRole"
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value)}
+              >
+                {ROLE_OPTIONS.map((role) => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className="btn btn-primary">Create invite</button>
+          </form>
+          {inviteLink && (
+            <div className="invite-link">
+              <span>Invite link</span>
+              <div className="invite-link-row">
+                <input type="text" readOnly value={inviteLink} />
+                <button className="btn btn-ghost" onClick={() => copyInviteLink(inviteLink)}>Copy</button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="admin-section">
+          <h2>Team members</h2>
+          <div className="admin-table">
+            <div className="admin-row admin-row-header">
+              <span>Email</span>
+              <span>Role</span>
+              <span>Actions</span>
+            </div>
+            {users.map((u) => {
+              const isSelf = user && u.id === user.userId;
+              return (
+              <div key={u.id} className="admin-row">
+                <span>{u.email}</span>
+                <span>
+                  <select
+                    value={u.role}
+                    onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                    disabled={isSelf}
+                    title={isSelf ? "Cannot change your own role" : ""}
+                  >
+                    {ROLE_OPTIONS.map((role) => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
+                    {u.role === "AUDITOR" && <option value="AUDITOR">AUDITOR</option>}
+                  </select>
+                </span>
+                <span>
+                  <button className="btn btn-ghost" onClick={() => handleDeleteUser(u.id)}>Remove</button>
+                </span>
+              </div>
+            );
+            })}
+            {users.length === 0 && (
+              <div className="admin-row admin-row-empty">
+                <span>No users yet.</span>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="admin-section">
+          <h2>Pending invitations</h2>
+          <div className="admin-table">
+            <div className="admin-row admin-row-header admin-row-four">
+              <span>Email</span>
+              <span>Role</span>
+              <span>Invite link</span>
+              <span>Actions</span>
+            </div>
+            {invitations.map((invite) => {
+              const inviteUrl = `${baseUrl}/accept-invite/${invite.token}`;
+              return (
+                <div key={invite.id} className="admin-row admin-row-four">
+                  <span>{invite.email}</span>
+                  <span>{invite.role}</span>
+                  <span className="invite-url">{inviteUrl}</span>
+                  <span>
+                    <button className="btn btn-ghost" onClick={() => copyInviteLink(inviteUrl)}>Copy</button>
+                    <button className="btn btn-ghost" onClick={() => handleCancelInvite(invite.id)}>Cancel</button>
+                  </span>
+                </div>
+              );
+            })}
+            {invitations.length === 0 && (
+              <div className="admin-row admin-row-empty">
+                <span>No pending invitations.</span>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="admin-section">
+          <h2>Reminder settings</h2>
+          <p style={{ color: "var(--text2)", marginBottom: 12, fontSize: 13 }}>
+            Default reminder offsets (days before due date). These apply automatically when an action is created for Partially Implemented, Planned, or Not Implemented answers.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+            {reminderOffsets.map((days) => (
+              <span key={days} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--bg3)", border: "1px solid var(--border2)", borderRadius: 6, padding: "6px 12px", fontSize: 13 }}>
+                {days} day{days !== 1 ? "s" : ""} before
+                <button onClick={() => handleRemoveOffset(days)} style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>×</button>
+              </span>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="number"
+              min="1"
+              placeholder="Days"
+              value={newOffset}
+              onChange={(e) => setNewOffset(e.target.value)}
+              style={{ width: 80, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13 }}
+            />
+            <button className="btn btn-primary" onClick={handleAddOffset} style={{ padding: "8px 16px" }}>Add offset</button>
+          </div>
+        </section>
+
+        <section className="admin-section">
+          <h2>Quest recurrence</h2>
+          <p style={{ color: "var(--text2)", marginBottom: 12, fontSize: 13 }}>
+            Set how often each question should be reassessed. Owners will be notified when a quest is due.
+          </p>
+          <div className="admin-table">
+            <div className="admin-row admin-row-header admin-row-four">
+              <span>Question</span>
+              <span>Recurrence</span>
+              <span>Next due</span>
+              <span>Actions</span>
+            </div>
+            {questions.map((q) => {
+              const edits = recurrenceEdits[q.questId] || {};
+              const interval = edits.recurrenceInterval !== undefined ? edits.recurrenceInterval : (q.recurrenceInterval || "monthly");
+              const nextDue = edits.nextDueDate !== undefined ? edits.nextDueDate : (q.nextDueDate ? q.nextDueDate.slice(0, 10) : "");
+              const hasChanges = edits.recurrenceInterval !== undefined || edits.nextDueDate !== undefined;
+
+              return (
+                <div key={q.questId} className="admin-row admin-row-four">
+                  <span style={{ fontSize: 12 }} title={q.baselineQuestion}>{q.questId} - {q.controlArea}</span>
+                  <span>
+                    <select
+                      value={interval}
+                      onChange={(e) => handleRecurrenceChange(q.questId, "recurrenceInterval", e.target.value)}
+                      style={{ fontSize: 12, padding: "4px 6px", background: "var(--bg3)", border: "1px solid var(--border2)", color: "var(--text)", borderRadius: 4 }}
+                    >
+                      {RECURRENCE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </span>
+                  <span>
+                    <input
+                      type="date"
+                      value={nextDue}
+                      onChange={(e) => handleRecurrenceChange(q.questId, "nextDueDate", e.target.value)}
+                      style={{ fontSize: 12, padding: "4px 6px", background: "var(--bg3)", border: "1px solid var(--border2)", color: "var(--text)", borderRadius: 4 }}
+                    />
+                  </span>
+                  <span>
+                    {hasChanges && (
+                      <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => saveRecurrence(q.questId)}>Save</button>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+            {questions.length === 0 && (
+              <div className="admin-row admin-row-empty">
+                <span>No questions loaded.</span>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <BillingSection company={company} user={user} />
+
+      </div>
+    </div>
+  );
+}

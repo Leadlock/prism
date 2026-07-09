@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(docker exec app-aws-web-1 grep -n \"scannerCtaText\\\\|Sign up\" /app/src/pages/Homepage.jsx)",
+      "PowerShell(head -5)",
+      "PowerShell(docker exec app-aws-web-1 grep -c \"categoryScores\" /app/src/pages/Homepage.jsx)",
+      "PowerShell(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\aum\\\\Music\\\\App-AWS\\\\api\\\\src\\\\scanner\")",
+      "PowerShell(Copy-Item \"C:\\\\Users\\\\aum\\\\Music\\\\App-AWS\\\\dpdpa-scanner\\\\src\\\\rules.js\" \"C:\\\\Users\\\\aum\\\\Music\\\\App-AWS\\\\api\\\\src\\\\scanner\\\\rules.js\")",
+      "PowerShell(Copy-Item \"C:\\\\Users\\\\aum\\\\Music\\\\App-AWS\\\\dpdpa-scanner\\\\src\\\\scorer.js\" \"C:\\\\Users\\\\aum\\\\Music\\\\App-AWS\\\\api\\\\src\\\\scanner\\\\scorer.js\")",
+      "PowerShell(Copy-Item \"C:\\\\Users\\\\aum\\\\Music\\\\App-AWS\\\\dpdpa-scanner\\\\src\\\\report.js\" \"C:\\\\Users\\\\aum\\\\Music\\\\App-AWS\\\\api\\\\src\\\\scanner\\\\report.js\")",
+      "PowerShell(Copy-Item \"C:\\\\Users\\\\aum\\\\Music\\\\App-AWS\\\\dpdpa-scanner\\\\src\\\\mobile.js\" \"C:\\\\Users\\\\aum\\\\Music\\\\App-AWS\\\\api\\\\src\\\\scanner\\\\mobile.js\")",
+      "PowerShell(Copy-Item \"C:\\\\Users\\\\aum\\\\Music\\\\App-AWS\\\\dpdpa-scanner\\\\src\\\\scanner.js\" \"C:\\\\Users\\\\aum\\\\Music\\\\App-AWS\\\\api\\\\src\\\\scanner\\\\scanner.js\")",
+      "Bash(node --input-type=module)",
+      "Bash(npx --yes acorn --ecma2020 --module src/pages/Dashboard.jsx)",
+      "Bash(npx vite *)",
+      "Read(//Users/aum/.nvm/versions/**)",
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(docker exec App-VPS-db-1 psql -U compliance -d compliance -c ' *)",
+      "Bash(docker exec app-vps-db-1 psql -U compliance -d compliance -c ' *)",
+      "Skill(code-review)",
+      "Skill(code-review:*)",
+      "Bash(node -e \"const dns = require\\('dns'\\); console.log\\(typeof dns.resolve4, typeof dns.default\\);\")",
+      "Bash(grep -rn 'navigate\\\\\\(\"\\\\/\"\\\\\\)\\\\|navigate\\(`\\\\/`\\)\\\\|push\\\\\\(\"\\\\/\"\\\\\\)' /Users/aum/Desktop/App-VPS/web/src/)",
+      "Bash(node_modules/.bin/vite build *)",
+      "Bash(docker compose *)",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget",
+      "Bash(brew install *)",
+      "Read(//Users/aum/Library/Application Support/Claude/local-agent-mode-sessions/skills-plugin/3497bd0a-d4ea-4683-9b9d-d0eee0de7724/1902363d-fba3-4313-842f-d917e80657b2/skills/xlsx/**)",
+      "Bash(extract-text \"/Users/aum/Desktop/GenAI AWS.xlsx\")",
+      "Bash(python3 -c ' *)",
+      "Bash(extract-text \"/Users/aum/Desktop/AWS_AI_Competency_2026_PRISM_Mapped.xlsx\")",
+      "Bash(python3)",
+      "Bash(pip3 install *)",
+      "Bash(curl -s -X POST http://localhost:4000/api/contact -H 'Content-Type: application/json' -d '{\"name\":\"Test\",\"email\":\"test@test.com\",\"message\":\"hello\",\"_subject\":\"Test\"}')",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/)",
+      "Bash(curl -s http://localhost:8080/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/test)",
+      "Bash(curl -s http://localhost:5173/test)"
+    ]
+  }
+}
