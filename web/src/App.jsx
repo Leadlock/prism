@@ -16,7 +16,7 @@ import DPDPAssess from "./pages/DPDPAssess.jsx";
 import ISO27001Assess from "./pages/ISO27001Assess.jsx";
 import GDPRAssess from "./pages/GDPRAssess.jsx";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_URL = import.meta.env.VITE_API_URL || "";
 
 const getStoredAuth = () => {
   const token   = localStorage.getItem("token");

@@ -24,9 +24,12 @@ router.get("/companies", authenticate, requireSuperAdmin, asyncHandler(async (re
   const result = await query(
     `SELECT c.id, c.name, c.domain, c.admin_email, c.industry, c.company_size, c.status, c.created_at,
             c.plan, c.billing_status, c.trial_ends_at,
-            COALESCE(cs.ai_enabled, true) AS ai_enabled
+            COALESCE(cs.ai_enabled, true) AS ai_enabled,
+            c.template_id,
+            mt.name AS template_name
      FROM companies c
      LEFT JOIN company_settings cs ON cs.company_id = c.id
+     LEFT JOIN module_templates mt ON mt.id = c.template_id
      ORDER BY c.created_at DESC`
   );
   res.json(result.rows);
@@ -363,6 +366,9 @@ router.post("/templates/:templateId/assign", authenticate, requireSuperAdmin, as
   } finally {
     client.release();
   }
+
+  // Track which template was assigned to this company
+  await query("UPDATE companies SET template_id = $1, updated_at = NOW() WHERE id = $2", [templateId, companyId]);
 
   res.json({ assigned: true, moduleCount, questionCount });
 }));

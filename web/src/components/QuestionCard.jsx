@@ -382,16 +382,26 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                           </div>
                         </div>
                         {file.aiContributorComments && (
-                          <div style={{ padding: 10, background: '#f0f9ff', borderRadius: 4, fontSize: 13 }}>
-                            <div style={{ fontWeight: 600, color: '#0369a1', marginBottom: 4 }}>📝 AI Feedback</div>
-                            <div style={{ whiteSpace: 'pre-wrap' }}>{file.aiContributorComments}</div>
+                          <div className="ai-feedback-card">
+                            <div className="ai-feedback-header">
+                              <span className="ai-feedback-icon">✨</span>
+                              <span className="ai-feedback-title">AI Analysis</span>
+                            </div>
+                            <div className="ai-feedback-body">{file.aiContributorComments}</div>
                             {file.aiGaps && (() => {
                               try {
                                 const gaps = Array.isArray(file.aiGaps) ? file.aiGaps : JSON.parse(file.aiGaps);
                                 return gaps.length > 0 ? (
-                                  <div style={{ marginTop: 6 }}>
-                                    <span style={{ fontWeight: 600, color: '#dc2626' }}>⚠️ Gaps:</span>
-                                    <span style={{ marginLeft: 6 }}>{gaps.join(', ')}</span>
+                                  <div className="ai-feedback-gaps">
+                                    <div className="ai-feedback-gaps-header">
+                                      <span className="ai-feedback-gaps-icon">⚠️</span>
+                                      <span>Gaps Identified</span>
+                                    </div>
+                                    <ul className="ai-feedback-gaps-list">
+                                      {gaps.map((gap, gi) => (
+                                        <li key={gi}>{gap}</li>
+                                      ))}
+                                    </ul>
                                   </div>
                                 ) : null;
                               } catch { return null; }

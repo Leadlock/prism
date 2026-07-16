@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
+import PrismBg from "../components/PrismBg";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -140,6 +141,23 @@ export default function Homepage() {
 
       {/* SECTION 1 — Hero */}
       <section className="hp-section hp-hero" id="hero">
+        <PrismBg
+          animationType="hover"
+          height={4.0}
+          baseWidth={5.0}
+          glow={1.0}
+          bloom={1.0}
+          noise={0.2}
+          scale={2.8}
+          hueShift={0}
+          colorFrequency={1.3}
+          hoverStrength={1.8}
+          inertia={0.04}
+          timeScale={0.4}
+          offset={{ x: 0, y: -80 }}
+          transparent={true}
+          suspendWhenOffscreen={true}
+        />
         <div className="hp-hero-content">
           <h1 className="hp-hero-title">Know your score. Fix your gaps.<br />Prove your readiness.</h1>
           <p className="hp-hero-sub">PRISM is your compliance readiness workspace — structured, measurable, and always audit-ready.</p>

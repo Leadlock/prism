@@ -543,6 +543,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
               <th style={thStyle}>Domain</th>
               <th style={thStyle}>Admin Email</th>
               <th style={thStyle}>Status</th>
+              <th style={thStyle}>Template</th>
               <th style={thStyle}>AI</th>
               <th style={thStyle}>Actions</th>
               <th style={thStyle}>Created</th>
@@ -560,6 +561,26 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
                     <span style={{ ...styles.statusBadge, background: sc.bg, color: sc.color, border: `1px solid ${sc.border}` }}>
                       {c.status}
                     </span>
+                  </td>
+                  <td style={tdStyle}>
+                    {c.template_name ? (
+                      <span style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        fontSize: "11px",
+                        fontWeight: 500,
+                        padding: "3px 10px",
+                        borderRadius: "12px",
+                        background: "rgba(99, 102, 241, 0.1)",
+                        color: "var(--accent)",
+                        border: "1px solid rgba(99, 102, 241, 0.2)",
+                      }}>
+                        {c.template_name}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: "11px", color: "var(--text3)", fontStyle: "italic" }}>None</span>
+                    )}
                   </td>
                   <td style={tdStyle}>
                     <button

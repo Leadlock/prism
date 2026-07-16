@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS companies (
   plan TEXT NOT NULL DEFAULT 'lite',
   billing_status TEXT NOT NULL DEFAULT 'trial',
   trial_ends_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days'),
+  template_id INT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

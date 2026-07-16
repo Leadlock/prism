@@ -164,18 +164,20 @@ export default function Sidebar({
                   {moduleQuests.map((quest, idx) => {
                     const questIndex = questions.indexOf(quest);
                     const hasReminder = reminders && reminders.some(r => (r.questId === quest.questId || r.quest_id === quest.questId));
+                    const dotClass = getQuestionDot(quest.questId);
+                    const statusClass = dotClass.replace('dot-', 'status-');
                     return (
                       <button
                         key={quest.questId}
-                        className={`quest-nav-item ${questIndex === currentIndex ? "active" : ""}`}
+                        className={`quest-nav-item ${statusClass} ${questIndex === currentIndex ? "active" : ""}`}
                         onClick={() => onJumpTo(questIndex)}
                       >
-                        <div className={`quest-status-dot ${getQuestionDot(quest.questId)}`}></div>
-                        <span style={{ fontSize: 11 }}>
-                          {quest.questId && <span style={{ fontWeight: 600, marginRight: 4, opacity: 0.7 }}>{quest.questId}</span>}
+                        <div className={`quest-status-dot ${dotClass}`}></div>
+                        <span className="quest-nav-text">
+                          {quest.questId && <span className="quest-nav-id">{quest.questId}</span>}
                           {quest.baselineQuestion
-                            ? quest.baselineQuestion.length > 50
-                              ? quest.baselineQuestion.slice(0, 50) + "…"
+                            ? quest.baselineQuestion.length > 40
+                              ? quest.baselineQuestion.slice(0, 40) + "…"
                               : quest.baselineQuestion
                             : quest.controlArea}
                         </span>
