@@ -294,4 +294,21 @@ ALTER TABLE assessments ADD COLUMN IF NOT EXISTS audited_at TIMESTAMPTZ;
 ALTER TABLE assessments ADD COLUMN IF NOT EXISTS reviewer_notes TEXT;
 ALTER TABLE assessments ADD COLUMN IF NOT EXISTS auditor_notes TEXT;
 
+-- ===== Consent Logs (GDPR cookie consent audit trail) =====
+CREATE TABLE IF NOT EXISTS consent_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  ip_address VARCHAR(45) NOT NULL,
+  language VARCHAR(10) DEFAULT 'en',
+  consent_version VARCHAR(20) NOT NULL,
+  choices JSONB NOT NULL DEFAULT '{}',
+  action VARCHAR(20) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_consent_logs_ip_anon
+  ON consent_logs (ip_address, created_at DESC)
+  WHERE user_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_consent_logs_user
+  ON consent_logs (user_id, created_at DESC);
+
 COMMIT;

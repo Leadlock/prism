@@ -14,6 +14,7 @@ import settingsRoutes from "./settings.js";
 import reminderRoutes from "./reminders.js";
 import dpdpaRoutes from "./dpdpa.js";
 import contactRoutes from "./contact.js";
+import consentRoutes from "./consent.js";
 
 const router = Router();
 
@@ -32,5 +33,6 @@ router.use("/settings", settingsRoutes);
 router.use("/reminders", reminderRoutes);
 router.use("/dpdpa", dpdpaRoutes);
 router.use("/contact", contactRoutes);
+router.use("/consent", consentRoutes);
 
 export { router };

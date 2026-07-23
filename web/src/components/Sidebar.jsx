@@ -1,3 +1,5 @@
+import Logo from "./Logo";
+
 export default function Sidebar({
   modules,
   questions,
@@ -91,8 +93,8 @@ export default function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <div style={{ width: "100%", maxWidth: 200, height: 56, overflow: "hidden", display: "flex", alignItems: "center" }}>
-          <img src="/prism-logo.png" alt="PRISM" style={{ width: "100%", display: "block", transform: "scale(0.62)", transformOrigin: "center center" }} />
+        <div style={{ width: "100%", maxWidth: 160, height: 36, display: "flex", alignItems: "center" }}>
+          <Logo style={{ height: 36, display: "block" }} />
         </div>
       </div>
 
@@ -213,6 +215,21 @@ export default function Sidebar({
             </div>
           </div>
         </div>
+        <button
+          onClick={() => window.dispatchEvent(new Event("open-cookie-banner"))}
+          style={{
+            marginTop: 12,
+            background: "none",
+            border: "none",
+            color: "var(--text3)",
+            fontSize: 11,
+            cursor: "pointer",
+            padding: 0,
+            textDecoration: "underline",
+          }}
+        >
+          Cookie Settings
+        </button>
       </div>
     </aside>
   );

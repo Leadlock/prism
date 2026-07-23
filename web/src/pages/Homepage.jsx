@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import PrismBg from "../components/PrismBg";
+import Logo from "../components/Logo";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -125,7 +126,7 @@ export default function Homepage() {
       <header className="hp-header">
         <div className="hp-header-inner">
           <div className="hp-logo-wrap">
-            <img src="/prism-logo.png" alt="PRISM" className="hp-logo-img" />
+            <Logo className="hp-logo-img" />
           </div>
           <nav className="hp-nav">
             <a href="#why" className="hp-nav-link">Why PRISM</a>
@@ -175,17 +176,17 @@ export default function Homepage() {
           <p className="hp-section-sub">Maintain policies, documents, screenshots, approvals and implementation records in one structured place.</p>
           <div className="hp-cards-row">
             <div className="hp-card">
-              <div className="hp-card-icon">⬡</div>
+              <div className="hp-card-icon"><img src="/icons/organize.svg" alt="Organize" /></div>
               <h3>Organize</h3>
               <p>Centralize all compliance artifacts — policies, evidence, screenshots, and approvals — in a single workspace.</p>
             </div>
             <div className="hp-card">
-              <div className="hp-card-icon">◈</div>
+              <div className="hp-card-icon"><img src="/icons/report.svg" alt="Report" /></div>
               <h3>Report</h3>
               <p>Generate a clear view of readiness for management, customers, auditors and internal governance teams.</p>
             </div>
             <div className="hp-card">
-              <div className="hp-card-icon">◎</div>
+              <div className="hp-card-icon"><img src="/icons/track.svg" alt="Track" /></div>
               <h3>Track</h3>
               <p>Monitor progress continuously with maturity scoring, gap identification, and action tracking.</p>
             </div>
@@ -202,7 +203,7 @@ export default function Homepage() {
             {/* DPDP */}
             <div className="hp-fw-card hp-fw-dpdp">
               <div className="hp-fw-card-header">
-                <span className="hp-fw-icon">◆</span>
+                <img src="/icons/dpdpact.png" alt="DPDP" className="hp-fw-icon-img" />
                 <div>
                   <h3>DPDP Act 2023</h3>
                   <p className="hp-fw-tagline">India's Digital Personal Data Protection</p>
@@ -223,7 +224,7 @@ export default function Homepage() {
             {/* ISO 27001 */}
             <div className="hp-fw-card hp-fw-iso">
               <div className="hp-fw-card-header">
-                <span className="hp-fw-icon">⬢</span>
+                <img src="/icons/iso27001.png" alt="ISO 27001" className="hp-fw-icon-img" />
                 <div>
                   <h3>ISO 27001</h3>
                   <p className="hp-fw-tagline">International Information Security Standard</p>
@@ -244,7 +245,7 @@ export default function Homepage() {
             {/* GDPR */}
             <div className="hp-fw-card hp-fw-gdpr">
               <div className="hp-fw-card-header">
-                <span className="hp-fw-icon">△</span>
+                <img src="/icons/gdpr.svg" alt="GDPR" className="hp-fw-icon-img" />
                 <div>
                   <h3>GDPR</h3>
                   <p className="hp-fw-tagline">EU General Data Protection Regulation</p>
@@ -373,7 +374,7 @@ export default function Homepage() {
           <div className="hp-why-compare">
             <div className="hp-why-col hp-why-col-bad">
               <div className="hp-why-col-header">
-                <span className="hp-why-col-icon">✗</span>
+                <img src="/icons/cross-circle.svg" alt="" className="hp-why-col-icon-img" />
                 <h3>The old way</h3>
               </div>
               <ul className="hp-why-list">
@@ -387,7 +388,7 @@ export default function Homepage() {
             </div>
             <div className="hp-why-col hp-why-col-good">
               <div className="hp-why-col-header">
-                <span className="hp-why-col-icon">✓</span>
+                <img src="/icons/check-circle.svg" alt="" className="hp-why-col-icon-img" />
                 <h3>The PRISM way</h3>
               </div>
               <ul className="hp-why-list">
@@ -491,7 +492,7 @@ export default function Homepage() {
           <div className="hp-footer-grid">
             <div className="hp-footer-brand">
               <div style={{ height: 56, overflow: "hidden", display: "flex", alignItems: "center", marginBottom: 12 }}>
-                <img src="/prism-logo.png" alt="PRISM" style={{ height: 80, display: "block", transform: "scale(0.85)", transformOrigin: "center center" }} />
+                <Logo style={{ height: 80, display: "block", transform: "scale(0.85)", transformOrigin: "center center" }} />
               </div>
               <p>Your compliance readiness workspace.</p>
               <p className="hp-footer-tagline">Make compliance measurable, manageable and continuous.</p>
@@ -519,6 +520,7 @@ export default function Homepage() {
               <a href="#">Privacy Policy</a>
               <a href="#">Terms of Service</a>
               <a href="#">Cookie Policy</a>
+              <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new Event("open-cookie-banner")); }}>Cookie Settings</a>
             </div>
           </div>
           <div className="hp-footer-bottom">

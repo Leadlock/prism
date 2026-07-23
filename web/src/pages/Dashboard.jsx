@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { apiFetch, apiDownload } from "../api/client.js";
 import { BarChart, DonutChart, StackedBarChart } from "../components/Charts.jsx";
 import ExportMenu from "../components/ExportMenu.jsx";
+import Logo from "../components/Logo";
 
 export default function Dashboard({ token, user, company, onLogout, theme, onThemeToggle }) {
   const navigate = useNavigate();
@@ -141,7 +142,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
       <div className="dash-header no-print">
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div style={{ height: 48, overflow: "hidden", display: "flex", alignItems: "center" }}>
-            <img src="/prism-logo.png" alt="PRISM" style={{ height: 68, display: "block", transform: "scale(0.85)", transformOrigin: "center center" }} />
+            <Logo style={{ height: 68, display: "block", transform: "scale(0.85)", transformOrigin: "center center" }} />
           </div>
           {company?.name && <div className="dash-sub" style={{ fontSize: 14, color: "var(--text2)" }}>{company.name}</div>}
         </div>

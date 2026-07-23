@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-
-const MATURITY = [
+import Logo from "../components/Logo";const MATURITY = [
   { value: 0, label: "Not started", color: "var(--red)" },
   { value: 1, label: "Planned",     color: "#ea580c" },
   { value: 2, label: "Partial",     color: "var(--amber)" },
@@ -117,7 +116,7 @@ export default function ISO27001Assess() {
       <header className="assess-header">
         <Link to="/" style={{ textDecoration: "none" }}>
           <div className="hp-logo-wrap" style={{ height: 44 }}>
-            <img src="/prism-logo.png" alt="PRISM" className="hp-logo-img" style={{ height: 64 }} />
+            <Logo className="hp-logo-img" style={{ height: 64 }} />
           </div>
         </Link>
         <div className="assess-header-links">

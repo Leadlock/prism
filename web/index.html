@@ -3,7 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ISO 27001 Compliance Tracker</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com;
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+        img-src 'self' data: https://www.google-analytics.com;
+        connect-src 'self' ws://localhost:* http://localhost:* https://www.google-analytics.com https://analytics.google.com;
+        font-src 'self' https://fonts.gstatic.com;
+      "
+    />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <title>PRISM</title>
     <script>
       (function() {
         var theme = localStorage.getItem("theme");

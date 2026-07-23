@@ -69,6 +69,21 @@ export default function AppSidebar({ user, currentPath, branding }) {
             )}
           </div>
         )}
+        <button
+          onClick={() => window.dispatchEvent(new Event("open-cookie-banner"))}
+          style={{
+            marginTop: 10,
+            background: "none",
+            border: "none",
+            color: "var(--text3)",
+            fontSize: 11,
+            cursor: "pointer",
+            padding: 0,
+            textDecoration: "underline",
+          }}
+        >
+          Cookie Settings
+        </button>
       </div>
     </aside>
   );

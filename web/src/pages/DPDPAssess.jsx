@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import Logo from "../components/Logo";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 
@@ -111,7 +112,7 @@ export default function DPDPAssess() {
       <header className="assess-header">
         <Link to="/" style={{ textDecoration: "none" }}>
           <div className="hp-logo-wrap" style={{ height: 44 }}>
-            <img src="/prism-logo.png" alt="PRISM" className="hp-logo-img" style={{ height: 64 }} />
+            <Logo className="hp-logo-img" style={{ height: 64 }} />
           </div>
         </Link>
         <div className="assess-header-links">

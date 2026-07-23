@@ -1,6 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./api/client.js";
+import { useAnalytics } from "./hooks/useAnalytics";
+import CookieConsentBanner from "./components/CookieConsentBanner";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import AcceptInvite from "./pages/AcceptInvite.jsx";
@@ -17,6 +19,11 @@ import ISO27001Assess from "./pages/ISO27001Assess.jsx";
 import GDPRAssess from "./pages/GDPRAssess.jsx";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
+
+function AnalyticsAndConsent() {
+  useAnalytics();
+  return <CookieConsentBanner />;
+}
 
 const getStoredAuth = () => {
   const token   = localStorage.getItem("token");
@@ -180,6 +187,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <AnalyticsAndConsent />
       {blockedMessage && <BlockedScreen message={blockedMessage} onDismiss={handleLogout} />}
       <Routes>
         {/* Public homepage — redirects authenticated users to their home */}
