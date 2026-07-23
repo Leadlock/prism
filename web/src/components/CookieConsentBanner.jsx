@@ -25,8 +25,8 @@ export default function CookieConsentBanner() {
   }
 
   return (
-    <div className="cookie-banner-overlay" role="dialog" aria-modal="true" aria-label="Cookie Consent">
-      <div className="cookie-banner-box">
+    <div className="prism-cp-overlay" role="dialog" aria-modal="true" aria-label="Privacy Preferences">
+      <div className="prism-cp-box">
         <h2>We use cookies</h2>
         <p>
           We use cookies and similar technologies to improve your experience,
@@ -36,14 +36,14 @@ export default function CookieConsentBanner() {
         <a href="/privacy-policy" target="_blank" rel="noopener noreferrer">
           Privacy Policy
         </a>
-        <div className="cookie-banner-actions">
-          <button className="cookie-btn cookie-btn-secondary" onClick={() => setShowPrefs(true)}>
+        <div className="prism-cp-actions">
+          <button className="prism-cp-btn prism-cp-btn-secondary" onClick={() => setShowPrefs(true)}>
             Manage Preferences
           </button>
-          <button className="cookie-btn cookie-btn-secondary" onClick={rejectAll}>
+          <button className="prism-cp-btn prism-cp-btn-secondary" onClick={rejectAll}>
             Reject All
           </button>
-          <button className="cookie-btn cookie-btn-primary" onClick={acceptAll}>
+          <button className="prism-cp-btn prism-cp-btn-primary" onClick={acceptAll}>
             Accept All
           </button>
         </div>
@@ -63,18 +63,18 @@ function PreferenceCenter({ onSave, onBack, initialChoices }) {
     setChoices((prev) => ({ ...prev, [key]: !prev[key] }));
 
   return (
-    <div className="cookie-banner-overlay" role="dialog" aria-modal="true" aria-label="Cookie Preferences">
-      <div className="cookie-banner-box">
+    <div className="prism-cp-overlay" role="dialog" aria-modal="true" aria-label="Privacy Preferences">
+      <div className="prism-cp-box">
         <h2>Cookie Preferences</h2>
 
-        <div className="cookie-category">
+        <div className="prism-cp-category">
           <label>
             <input type="checkbox" checked disabled />
             Strictly Necessary (always on)
           </label>
         </div>
 
-        <div className="cookie-category">
+        <div className="prism-cp-category">
           <label>
             <input
               type="checkbox"
@@ -85,7 +85,7 @@ function PreferenceCenter({ onSave, onBack, initialChoices }) {
           </label>
         </div>
 
-        <div className="cookie-category">
+        <div className="prism-cp-category">
           <label>
             <input
               type="checkbox"
@@ -96,7 +96,7 @@ function PreferenceCenter({ onSave, onBack, initialChoices }) {
           </label>
         </div>
 
-        <div className="cookie-category">
+        <div className="prism-cp-category">
           <label>
             <input
               type="checkbox"
@@ -107,11 +107,11 @@ function PreferenceCenter({ onSave, onBack, initialChoices }) {
           </label>
         </div>
 
-        <div className="cookie-banner-actions">
-          <button className="cookie-btn cookie-btn-secondary" onClick={onBack}>
+        <div className="prism-cp-actions">
+          <button className="prism-cp-btn prism-cp-btn-secondary" onClick={onBack}>
             Back
           </button>
-          <button className="cookie-btn cookie-btn-primary" onClick={() => onSave(choices)}>
+          <button className="prism-cp-btn prism-cp-btn-primary" onClick={() => onSave(choices)}>
             Save Preferences
           </button>
         </div>
