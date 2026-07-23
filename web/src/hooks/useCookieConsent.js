@@ -36,10 +36,41 @@ export function useCookieConsent() {
   }, []);
 
   // Fetch current consent policy version from backend
+  // Use /api/prefs/version as primary URL to avoid Brave Shields / EasyPrivacy blocking
+  // URLs that contain "consent" or "cookie". Falls back with a 2s timeout.
   useEffect(() => {
-    apiFetch('/api/consent/version')
-      .then((res) => setServerVersion(res.version))
-      .catch(() => setServerVersion('1.0'));
+    let settled = false;
+    const fallbackTimer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        setServerVersion('1.0');
+      }
+    }, 2000);
+
+    apiFetch('/api/prefs/version')
+      .then((res) => {
+        if (!settled) {
+          settled = true;
+          setServerVersion(res.version || '1.0');
+        }
+      })
+      .catch(() => {
+        // Try the original endpoint as fallback
+        return apiFetch('/api/consent/version')
+          .then((res) => {
+            if (!settled) {
+              settled = true;
+              setServerVersion(res.version || '1.0');
+            }
+          })
+          .catch(() => {
+            if (!settled) {
+              settled = true;
+              setServerVersion('1.0');
+            }
+          });
+      })
+      .finally(() => clearTimeout(fallbackTimer));
   }, []);
 
   // Non-blocking backend log

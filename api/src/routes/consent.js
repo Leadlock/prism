@@ -11,6 +11,11 @@ router.get("/version", (req, res) => {
   res.json({ version: CONSENT_VERSION });
 });
 
+// Alias that won't be caught by ad-blocker filter lists (EasyPrivacy, Brave Shields)
+router.get("/pv", (req, res) => {
+  res.json({ version: CONSENT_VERSION });
+});
+
 // POST /api/consent — log cookie consent decision (no auth required)
 router.post("/", async (req, res) => {
   const { action, language, consent_version, choices } = req.body;

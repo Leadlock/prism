@@ -35,4 +35,10 @@ router.use("/dpdpa", dpdpaRoutes);
 router.use("/contact", contactRoutes);
 router.use("/consent", consentRoutes);
 
+// Alias /api/prefs/version for the consent version endpoint — avoids ad-blocker filter lists
+// that block URLs matching "consent" or "cookie"
+router.get("/prefs/version", (req, res) => {
+  res.json({ version: "1.0" });
+});
+
 export { router };
