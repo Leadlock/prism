@@ -95,7 +95,7 @@ async function pollRunUntilComplete(threadId, runId, maxWaitMs = 60000) {
 
 // ─── Evidence Analysis ────────────────────────────────────────────────────────
 
-export async function analyzeEvidence({ evidenceName, evidenceType, questId, moduleId, requiredEvidence, filePath }) {
+export async function analyzeEvidence({ evidenceName, evidenceType, questId, moduleId, requiredEvidence, filePath, recurrenceInterval, today }) {
   console.log(`[AI] Analyzing evidence: ${evidenceName}`);
   console.log(`[AI] File path: ${filePath}`);
   console.log(`[AI] Evidence type: ${evidenceType}`);
@@ -144,6 +144,15 @@ export async function analyzeEvidence({ evidenceName, evidenceType, questId, mod
 
   console.log(`[AI] Evidence content preview: ${evidenceContent.substring(0, 200)}...`);
 
+  const intervalLabel = recurrenceInterval ? recurrenceInterval.toLowerCase() : null;
+  const dateContext = intervalLabel && intervalLabel !== "none"
+    ? `- Today's Date: ${today || new Date().toISOString().slice(0, 10)}\n- Control Recurrence: ${intervalLabel}`
+    : `- Today's Date: ${today || new Date().toISOString().slice(0, 10)}`;
+
+  const dateInstruction = intervalLabel && intervalLabel !== "none"
+    ? `4. DATE VALIDATION: Scan the document for any dates. Compare the most recent date found against today. Given the control recurrence is "${intervalLabel}", set "dateWarning" to a concise warning string if the evidence appears stale, or null if current.`
+    : `4. DATE VALIDATION: Scan the document for any dates. Set "dateWarning" to a warning string if dates suggest the document is significantly out of date, or null if current.`;
+
   const userPrompt = `Analyze this compliance evidence submission:
 
 **Evidence Details:**
@@ -152,13 +161,15 @@ export async function analyzeEvidence({ evidenceName, evidenceType, questId, mod
 - Question ID: ${questId || "N/A"}
 - Module ID: ${moduleId || "N/A"}
 - Required Evidence per ISO 27001: ${requiredEvidence || "Not specified"}
+${dateContext}
 
 **File Content Preview:**
 ${evidenceContent}
 
 **Task:**
 Evaluate if this evidence adequately addresses the ISO 27001 compliance requirements.
-Provide your analysis as JSON with: contributorComments, reviewerComments, gaps array, suggestions array.`;
+${dateInstruction}
+Provide your analysis as JSON with: contributorComments, reviewerComments, gaps array, suggestions array, dateWarning (string or null).`;
 
   console.log(`[AI] Sending request to Azure AI Agent (threads/runs pattern)...`);
   console.log(`[AI] Using agent: ${agentId}`);
@@ -225,7 +236,8 @@ Provide your analysis as JSON with: contributorComments, reviewerComments, gaps 
         contributorComments: parsed.contributorComments || "No contributor feedback generated",
         reviewerComments: parsed.reviewerComments || "No reviewer feedback generated",
         gaps: Array.isArray(parsed.gaps) ? parsed.gaps : [],
-        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : []
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+        dateWarning: parsed.dateWarning || null
       };
     } catch (parseError) {
       console.error(`[AI] JSON parse error:`, parseError.message);
@@ -233,11 +245,114 @@ Provide your analysis as JSON with: contributorComments, reviewerComments, gaps 
         contributorComments: resultText,
         reviewerComments: "AI provided unstructured feedback. See contributor comments.",
         gaps: [],
-        suggestions: []
+        suggestions: [],
+        dateWarning: null
       };
     }
   } catch (error) {
     console.error(`[AI] Azure AI Agent Error:`, error.message);
     throw new Error(`AI analysis failed: ${error.message}`);
+  }
+}
+
+export async function chatWithDocuments({ systemPrompt, history, message }) {
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const agentId = process.env.AZURE_AGENT_ID;
+  if (!endpoint || !agentId) throw new Error("Azure AI provider not configured");
+
+  // Build the full conversation as a single user message since the agent pattern
+  // doesn't natively support multi-turn history injection
+  const historyText = history.length > 0
+    ? history.map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n") + "\n\n"
+    : "";
+
+  const fullPrompt = `${systemPrompt}\n\n---\n\n${historyText}User: ${message}`;
+
+  try {
+    const thread = await agentRequest("/threads", "POST", {});
+    await agentRequest(`/threads/${thread.id}/messages`, "POST", { role: "user", content: fullPrompt });
+    const run = await agentRequest(`/threads/${thread.id}/runs`, "POST", { assistant_id: agentId });
+    await pollRunUntilComplete(thread.id, run.id);
+
+    const messagesResult = await agentRequest(`/threads/${thread.id}/messages`);
+    const latest = (messagesResult.data || []).find(m => m.role === "assistant");
+    let responseText = "I couldn't generate a response. Please try again.";
+    if (latest) {
+      const part = Array.isArray(latest.content) ? latest.content.find(c => c.type === "text") : null;
+      responseText = part?.text?.value || part?.text || String(latest.content) || responseText;
+    }
+
+    try { await agentRequest(`/threads/${thread.id}`, "DELETE"); } catch { /* non-fatal */ }
+
+    return responseText;
+  } catch (error) {
+    console.error(`[AI] Azure chatWithDocuments error:`, error.message);
+    throw new Error(`Chat failed: ${error.message}`);
+  }
+}
+
+export async function suggestEvidence({ questionContext, vaultItems }) {
+  if (!vaultItems.length) return [];
+
+  const { questId, moduleName, controlArea, baselineQuestion, requiredEvidence, tags } = questionContext;
+
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const agentId = process.env.AZURE_AGENT_ID;
+  if (!endpoint || !agentId) throw new Error("Azure AI provider not configured");
+
+  const itemsList = vaultItems
+    .map(v => `ID:${v.id} | "${v.title}"${v.description ? ` — ${v.description.substring(0, 120)}` : ""}`)
+    .join("\n");
+
+  const userPrompt = `You are a compliance evidence matcher. Score each vault item's relevance to this control question.
+
+**Compliance Control:**
+- ID: ${questId}
+- Module: ${moduleName || "N/A"}
+- Control Area: ${controlArea || "N/A"}
+- Question: ${baselineQuestion || "N/A"}
+- Required Evidence: ${requiredEvidence || "N/A"}
+- Tags: ${tags || "N/A"}
+
+**Evidence Vault Items:**
+${itemsList}
+
+Score each item 0–100. Return only items scoring 40+, up to 5.
+Respond with ONLY a JSON array, no markdown:
+[{"vaultId":<number>,"relevanceScore":<number>,"reason":"<one sentence>"}]
+If nothing scores 40+, return: []`;
+
+  try {
+    const thread = await agentRequest("/threads", "POST", {});
+    await agentRequest(`/threads/${thread.id}/messages`, "POST", { role: "user", content: userPrompt });
+    const run = await agentRequest(`/threads/${thread.id}/runs`, "POST", { assistant_id: agentId });
+    await pollRunUntilComplete(thread.id, run.id);
+
+    const messagesResult = await agentRequest(`/threads/${thread.id}/messages`);
+    const latest = (messagesResult.data || []).find(m => m.role === "assistant");
+    let raw = "";
+    if (latest) {
+      const part = Array.isArray(latest.content) ? latest.content.find(c => c.type === "text") : null;
+      raw = part?.text?.value || part?.text || String(latest.content);
+    }
+
+    try { await agentRequest(`/threads/${thread.id}`, "DELETE"); } catch { /* non-fatal */ }
+
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return [];
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map(p => ({
+        vaultId: parseInt(p.vaultId),
+        relevanceScore: Math.min(100, Math.max(0, parseInt(p.relevanceScore) || 0)),
+        reason: p.reason || "Relevant to this control",
+      }))
+      .filter(p => !isNaN(p.vaultId) && p.relevanceScore >= 40);
+  } catch (error) {
+    console.error(`[AI] Azure suggestEvidence error:`, error.message);
+    throw new Error(`AI suggestion failed: ${error.message}`);
   }
 }

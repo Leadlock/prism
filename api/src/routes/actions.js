@@ -4,6 +4,7 @@ import { authenticate } from "../middleware/auth.js";
 import { requireRole, requireReadOnly } from "../middleware/roles.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { writeAuditLog } from "../utils/auditLog.js";
+import { sanitiseFields } from "../utils/sanitise.js";
 
 const router = Router();
 
@@ -40,22 +41,14 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
 
 router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), asyncHandler(async (req, res) => {
   const {
-    actionId,
-    month,
-    moduleId,
-    questId,
-    defeatedQuest,
-    currentLevel,
-    targetLevel,
-    immediateActionRequired,
-    owner,
-    dueDate,
-    status,
-    closureEvidenceLink,
-    reviewer,
-    closureDate,
-    notes
-  } = req.body;
+    actionId, month, moduleId, questId,
+    defeatedQuest, currentLevel, targetLevel,
+    immediateActionRequired, owner, dueDate, status,
+    closureEvidenceLink, reviewer, closureDate, notes
+  } = sanitiseFields(req.body, {
+    defeatedQuest: "text", owner: "text", reviewer: "text",
+    notes: "text", closureEvidenceLink: "url",
+  });
 
   const result = await query(
     "INSERT INTO actions (action_id, month, module_id, quest_id, company_id, defeated_quest, current_level, target_level, immediate_action_required, owner, due_date, status, closure_evidence_link, reviewer, closure_date, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *",
@@ -83,22 +76,26 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), as
 }));
 
 router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), asyncHandler(async (req, res) => {
+  const sanitised = sanitiseFields(req.body, {
+    defeatedQuest: "text", owner: "text", reviewer: "text",
+    notes: "text", closureEvidenceLink: "url",
+  });
   const data = {
-    action_id: req.body.actionId,
-    month: req.body.month,
-    module_id: req.body.moduleId,
-    quest_id: req.body.questId,
-    defeated_quest: req.body.defeatedQuest,
-    current_level: req.body.currentLevel,
-    target_level: req.body.targetLevel,
-    immediate_action_required: req.body.immediateActionRequired,
-    owner: req.body.owner,
-    due_date: req.body.dueDate,
-    status: req.body.status,
-    closure_evidence_link: req.body.closureEvidenceLink,
-    reviewer: req.body.reviewer,
-    closure_date: req.body.closureDate,
-    notes: req.body.notes,
+    action_id: sanitised.actionId,
+    month: sanitised.month,
+    module_id: sanitised.moduleId,
+    quest_id: sanitised.questId,
+    defeated_quest: sanitised.defeatedQuest,
+    current_level: sanitised.currentLevel,
+    target_level: sanitised.targetLevel,
+    immediate_action_required: sanitised.immediateActionRequired,
+    owner: sanitised.owner,
+    due_date: sanitised.dueDate,
+    status: sanitised.status,
+    closure_evidence_link: sanitised.closureEvidenceLink,
+    reviewer: sanitised.reviewer,
+    closure_date: sanitised.closureDate,
+    notes: sanitised.notes,
     updated_at: new Date()
   };
 

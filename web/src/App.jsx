@@ -5,6 +5,7 @@ import { useAnalytics } from "./hooks/useAnalytics";
 import CookieConsentBanner from "./components/CookieConsentBanner";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
 import AcceptInvite from "./pages/AcceptInvite.jsx";
 import AdminPanel from "./pages/AdminPanel.jsx";
 import AuditorPanel from "./pages/AuditorPanel.jsx";
@@ -12,11 +13,20 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Review from "./pages/Review.jsx";
 import Tracker from "./pages/Tracker.jsx";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard.jsx";
+import QuestionDetail from "./pages/QuestionDetail.jsx";
+import EvidenceVault from "./pages/EvidenceVault.jsx";
+import EvidenceRequests from "./pages/EvidenceRequests.jsx";
 import Homepage from "./pages/Homepage.jsx";
 import PrismTest from "./pages/PrismTest.jsx";
 import DPDPAssess from "./pages/DPDPAssess.jsx";
 import ISO27001Assess from "./pages/ISO27001Assess.jsx";
 import GDPRAssess from "./pages/GDPRAssess.jsx";
+import PrivacyPolicy from "./pages/Legal.jsx";
+import TermsOfService from "./pages/LegalTerms.jsx";
+import Support from "./pages/Support.jsx";
+import PolicyOnboarding from "./pages/PolicyOnboarding.jsx";
+import VaultChat from "./components/VaultChat.jsx";
+import ScrollToTop from "./components/ScrollToTop";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 
@@ -130,6 +140,12 @@ export default function App() {
     setAuth({ token: session.token, user: session.user, company: session.company });
   };
 
+  const handleOnboardingComplete = () => {
+    const updatedUser = { ...auth.user, onboardingCompleted: true };
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+    setAuth(prev => ({ ...prev, user: updatedUser }));
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -176,6 +192,7 @@ export default function App() {
   const isLeadOrAdmin    = role === "ADMIN" || role === "LEAD";
   const isViewer         = role === "VIEWER";
   const isAuditor        = role === "AUDITOR";
+  const showOnboarding   = isAuthenticated && isAdmin && !auth.user?.onboardingCompleted;
 
   // Where to send an authenticated user who hits "/"
   const defaultRoute = () => {
@@ -187,8 +204,19 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <AnalyticsAndConsent />
       {blockedMessage && <BlockedScreen message={blockedMessage} onDismiss={handleLogout} />}
+      {showOnboarding && (
+        <PolicyOnboarding
+          token={auth.token}
+          user={auth.user}
+          onComplete={handleOnboardingComplete}
+        />
+      )}
+      {isAuthenticated && !isSuperAdmin && !isAuditor && (
+        <VaultChat token={auth.token} />
+      )}
       <Routes>
         {/* Public homepage — redirects authenticated users to their home */}
         <Route
@@ -199,6 +227,11 @@ export default function App() {
           path="/home"
           element={isAuthenticated ? <Navigate to={defaultRoute()} replace /> : <Homepage />}
         />
+
+        {/* Public legal pages */}
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/terms-of-service" element={<TermsOfService />} />
+        <Route path="/support" element={<Support />} />
 
         {/* PRISM DPDP module — public */}
         <Route path="/test" element={<PrismTest />} />
@@ -211,6 +244,10 @@ export default function App() {
         <Route
           path="/login"
           element={isAuthenticated ? <Navigate to={defaultRoute()} replace /> : <Login onLogin={handleLogin} />}
+        />
+        <Route
+          path="/forgot-password"
+          element={isAuthenticated ? <Navigate to={defaultRoute()} replace /> : <ForgotPassword />}
         />
         <Route
           path="/register"
@@ -260,6 +297,28 @@ export default function App() {
             isAuthenticated
               ? (isViewer || isAuditor || isSuperAdmin ? <Navigate to={defaultRoute()} replace /> : <Tracker {...authProps} />)
               : <Navigate to="/" replace />
+          }
+        />
+
+        {/* Question detail — all authenticated company users */}
+        <Route
+          path="/questions/:questId"
+          element={isAuthenticated && !isSuperAdmin ? <QuestionDetail {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
+        />
+
+        {/* Evidence Vault — all authenticated company users */}
+        <Route
+          path="/vault"
+          element={isAuthenticated && !isSuperAdmin ? <EvidenceVault {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
+        />
+
+        {/* Evidence Requests — ADMIN, LEAD, CONTRIBUTOR */}
+        <Route
+          path="/requests"
+          element={
+            isAuthenticated && !isSuperAdmin && !isViewer && !isAuditor
+              ? <EvidenceRequests {...authProps} />
+              : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />
           }
         />
 

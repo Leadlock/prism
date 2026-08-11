@@ -1,12 +1,24 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { getClient, mapRow, query } from "../db/index.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { DEFAULT_LIST_ITEMS } from "../utils/defaultLists.js";
 import { writeAuditLog } from "../utils/auditLog.js";
+import { sendEmail } from "../utils/email.js";
+import { authenticate } from "../middleware/auth.js";
 
 const router = Router();
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts. Please try again in 15 minutes." },
+});
 
 router.post("/register", asyncHandler(async (req, res) => {
   const { companyName, domain, industry, companySize, fullName, adminEmail, department, jobTitle, password } = req.body;
@@ -107,7 +119,7 @@ router.post("/register", asyncHandler(async (req, res) => {
   });
 }));
 
-router.post("/login", asyncHandler(async (req, res) => {
+router.post("/login", loginLimiter, asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   
@@ -143,7 +155,7 @@ router.post("/login", asyncHandler(async (req, res) => {
 
   // Regular user login
   const result = await query(
-    `SELECT u.id, u.email, u.role, u.password_hash, u.company_id,
+    `SELECT u.id, u.email, u.role, u.password_hash, u.company_id, u.onboarding_completed,
             c.name AS company_name, c.domain AS company_domain, c.status AS company_status,
             c.plan AS company_plan, c.billing_status, c.trial_ends_at
      FROM users u JOIN companies c ON c.id = u.company_id WHERE u.email = $1`,
@@ -193,7 +205,7 @@ router.post("/login", asyncHandler(async (req, res) => {
   
   res.json({
     token,
-    user: { id: user.id, email: user.email, role: user.role, companyId: user.companyId },
+    user: { id: user.id, email: user.email, role: user.role, companyId: user.companyId, onboardingCompleted: user.onboardingCompleted },
     company: {
       id:            user.companyId,
       name:          user.companyName,
@@ -259,6 +271,167 @@ router.post("/accept-invitation", asyncHandler(async (req, res) => {
     user: { id: user.id, email: user.email, role: user.role, companyId: user.companyId },
     company: { id: company.id, name: company.name, domain: company.domain }
   });
+}));
+
+// ═══════════════════════════════════════════════════════════════════
+// FORGOT PASSWORD — OTP FLOW
+// ═══════════════════════════════════════════════════════════════════
+
+// Step 1: Request OTP — sends a 6-digit code to the user's email
+router.post("/forgot-password", asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+
+  if (!normalizedEmail) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  // Find user (regular users only, not super admins)
+  const result = await query("SELECT id, email FROM users WHERE email = $1", [normalizedEmail]);
+  const user = mapRow(result);
+
+  // Always return success to prevent email enumeration
+  if (!user) {
+    return res.json({ message: "If an account with that email exists, an OTP has been sent." });
+  }
+
+  // Generate 6-digit OTP
+  const otp = crypto.randomInt(100000, 999999).toString();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  // Store OTP (hashed for security)
+  const otpHash = await bcrypt.hash(otp, 6);
+  await query(
+    "UPDATE users SET reset_otp = $1, reset_otp_expires = $2, reset_otp_attempts = 0, updated_at = NOW() WHERE id = $3",
+    [otpHash, expiresAt, user.id]
+  );
+
+  // Send OTP via email (fire and forget — don't block the response)
+  sendEmail({
+    to: user.email,
+    subject: "PRISM — Password Reset Code",
+    text: [
+      `Your password reset code is: ${otp}`,
+      "",
+      "This code expires in 10 minutes.",
+      "",
+      "If you did not request this, please ignore this email.",
+      "",
+      "— PRISM Compliance Platform"
+    ].join("\n")
+  }).catch(err => {
+    console.error("Failed to send OTP email:", err.message);
+  });
+
+  res.json({ message: "If an account with that email exists, an OTP has been sent." });
+}));
+
+// Step 2: Verify OTP — confirms the code is valid
+router.post("/verify-otp", asyncHandler(async (req, res) => {
+  const { email, otp } = req.body;
+  const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+
+  if (!normalizedEmail || !otp) {
+    return res.status(400).json({ error: "Email and OTP are required" });
+  }
+
+  const result = await query(
+    "SELECT id, reset_otp, reset_otp_expires, reset_otp_attempts FROM users WHERE email = $1",
+    [normalizedEmail]
+  );
+  const user = mapRow(result);
+
+  if (!user || !user.resetOtp) {
+    return res.status(400).json({ error: "No password reset was requested for this email" });
+  }
+
+  // Check expiry first — an expired OTP should never consume an attempt slot
+  if (new Date() > new Date(user.resetOtpExpires)) {
+    await query("UPDATE users SET reset_otp = NULL, reset_otp_expires = NULL, reset_otp_attempts = 0, updated_at = NOW() WHERE id = $1", [user.id]);
+    return res.status(400).json({ error: "OTP has expired. Please request a new code." });
+  }
+
+  // Check max attempts (5 attempts allowed)
+  if (user.resetOtpAttempts >= 5) {
+    await query("UPDATE users SET reset_otp = NULL, reset_otp_expires = NULL, reset_otp_attempts = 0, updated_at = NOW() WHERE id = $1", [user.id]);
+    return res.status(429).json({ error: "Too many incorrect attempts. Please request a new code." });
+  }
+
+  // Verify OTP
+  const valid = await bcrypt.compare(otp.trim(), user.resetOtp);
+  if (!valid) {
+    await query("UPDATE users SET reset_otp_attempts = reset_otp_attempts + 1, updated_at = NOW() WHERE id = $1", [user.id]);
+    const remaining = 5 - (user.resetOtpAttempts + 1);
+    return res.status(400).json({ error: `Invalid OTP. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining.` });
+  }
+
+  // OTP is valid — generate a short-lived reset token (5 minutes)
+  const resetToken = jwt.sign(
+    { userId: user.id, email: normalizedEmail, purpose: "password-reset" },
+    process.env.JWT_SECRET,
+    { expiresIn: "5m" }
+  );
+
+  // Clear OTP from database
+  await query("UPDATE users SET reset_otp = NULL, reset_otp_expires = NULL, reset_otp_attempts = 0, updated_at = NOW() WHERE id = $1", [user.id]);
+
+  res.json({ resetToken, message: "OTP verified. You can now set a new password." });
+}));
+
+// Step 3: Reset password — uses the reset token from step 2
+router.post("/reset-password", asyncHandler(async (req, res) => {
+  const { resetToken, newPassword } = req.body;
+
+  if (!resetToken || !newPassword) {
+    return res.status(400).json({ error: "Reset token and new password are required" });
+  }
+
+  // Password strength validation
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: "Password must be at least 8 characters long" });
+  }
+  if (!/[A-Z]/.test(newPassword)) {
+    return res.status(400).json({ error: "Password must contain at least one uppercase letter" });
+  }
+  if (!/[a-z]/.test(newPassword)) {
+    return res.status(400).json({ error: "Password must contain at least one lowercase letter" });
+  }
+  if (!/[0-9]/.test(newPassword)) {
+    return res.status(400).json({ error: "Password must contain at least one number" });
+  }
+  if (!/[^A-Za-z0-9]/.test(newPassword)) {
+    return res.status(400).json({ error: "Password must contain at least one special character" });
+  }
+
+  // Verify reset token
+  let payload;
+  try {
+    payload = jwt.verify(resetToken, process.env.JWT_SECRET);
+  } catch (err) {
+    return res.status(400).json({ error: "Reset token is invalid or has expired. Please start over." });
+  }
+
+  if (payload.purpose !== "password-reset") {
+    return res.status(400).json({ error: "Invalid token" });
+  }
+
+  // Hash new password and update
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await query(
+    "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
+    [passwordHash, payload.userId]
+  );
+
+  res.json({ message: "Password has been reset successfully. You can now log in." });
+}));
+
+// POST /api/auth/complete-onboarding — marks the user's onboarding as done
+router.post("/complete-onboarding", authenticate, asyncHandler(async (req, res) => {
+  await query(
+    "UPDATE users SET onboarding_completed = TRUE, updated_at = NOW() WHERE id = $1",
+    [req.user.userId]
+  );
+  res.json({ onboardingCompleted: true });
 }));
 
 export default router;

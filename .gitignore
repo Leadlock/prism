@@ -7,3 +7,8 @@ api/uploads/*
 !api/uploads/.gitkeep
 api/prisma/migrations/
 *.tar.gz
+defectdojo/.env
+.scan-reports/
+__pycache__/
+*.pyc
+.claude/settings.local.json

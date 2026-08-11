@@ -1,5 +1,18 @@
 import { apiUpload, apiFetch } from "../api/client.js";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function formatDueDate(dateStr) {
+  if (!dateStr) return null;
+  const s = dateStr.slice(0, 10);
+  const [y, m, d] = s.split("-").map(Number);
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${d} ${months[m - 1]} ${y}`;
+}
 
 const ANSWER_OPTIONS = [
   { value: "IMPLEMENTED", label: "Implemented", className: "selected-implemented" },
@@ -17,9 +30,35 @@ const MATURITY = [
   { n: 5, label: "Optimised", desc: "Continuous improvement cycle is active. Process is benchmarked and proactively refined." }
 ];
 
-export default function QuestionCard({ question, assessment, response, onSetResponse, token, month, reminders, onEvidenceChange, onSaveActionDetails }) {
+export default function QuestionCard({ question, assessment, response, onSetResponse, token, month, reminders, onEvidenceChange, onSaveActionDetails, user }) {
   const inputId = `fileInput-${question.questId}`;
   const [isEditing, setIsEditing] = useState(false);
+
+  // Request evidence state
+  const [showReqEvidence, setShowReqEvidence] = useState(false);
+  const [reqEmail, setReqEmail]               = useState("");
+  const [reqLoading, setReqLoading]           = useState(false);
+  const [reqError, setReqError]               = useState("");
+  const [reqSuccess, setReqSuccess]           = useState(false);
+  const [orgUsers, setOrgUsers]               = useState(null);
+
+  // Vault-link state
+  const [vaultItems, setVaultItems]               = useState([]);
+  const [showVaultPicker, setShowVaultPicker]     = useState(false);
+  const [pickerItems, setPickerItems]             = useState([]);
+  const [pickerSearch, setPickerSearch]           = useState("");
+  const [pickerLoading, setPickerLoading]         = useState(false);
+  const [linkingVaultId, setLinkingVaultId]       = useState(null);
+  const [vaultItemsLoaded, setVaultItemsLoaded]   = useState(false);
+
+  // Suggested evidence state
+  const [suggestions, setSuggestions]             = useState(null);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [ignoredSuggestions, setIgnoredSuggestions] = useState(new Set());
+  const [attachingSuggestion, setAttachingSuggestion] = useState(null);
+
+  const orgDomain = user?.email ? user.email.split("@")[1] : null;
+  const isOrgEmail = (email) => orgDomain && email.toLowerCase().endsWith("@" + orgDomain.toLowerCase());
 
   const handleFileUpload = async (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -76,7 +115,7 @@ export default function QuestionCard({ question, assessment, response, onSetResp
     : [
         { label: "Answer = Implemented", pass: response.answer === "IMPLEMENTED" },
         { label: "Maturity >= level 3", pass: response.maturity >= 3 },
-        { label: "Evidence provided", pass: !!response.link || (response.files && response.files.length > 0) },
+        { label: "Evidence provided", pass: !!response.link || (response.files && response.files.length > 0) || vaultItems.length > 0 },
         { label: reviewerPassed ? "Review completed" : "Reviewer WIP", pass: reviewerPassed }
       ];
 
@@ -84,10 +123,119 @@ export default function QuestionCard({ question, assessment, response, onSetResp
     ? MATURITY[response.maturity - 1].desc
     : "Select a maturity level above to see the description.";
 
+  // Load org users once when "Implemented" section is visible
+  useEffect(() => {
+    if (needsEvidence && orgUsers === null && token) {
+      apiFetch("/api/requests/users", { token })
+        .then(data => setOrgUsers(data || []))
+        .catch(() => setOrgUsers([]));
+    }
+  }, [needsEvidence, token]);
+
+  // Load vault items and suggestions when evidence section opens
+  useEffect(() => {
+    if (!needsEvidence || !token || vaultItemsLoaded) return;
+    setVaultItemsLoaded(true);
+    apiFetch(`/api/vault?questId=${encodeURIComponent(question.questId)}`, { token })
+      .then(data => setVaultItems(data || []))
+      .catch(() => {});
+    setSuggestionsLoading(true);
+    apiFetch(`/api/vault/suggestions?questId=${encodeURIComponent(question.questId)}`, { token })
+      .then(data => setSuggestions(data || []))
+      .catch(() => setSuggestions([]))
+      .finally(() => setSuggestionsLoading(false));
+  }, [needsEvidence, token, question.questId, vaultItemsLoaded]);
+
+  const loadPicker = async (search = "") => {
+    setPickerLoading(true);
+    try {
+      const url = search.trim() ? `/api/vault?search=${encodeURIComponent(search.trim())}` : "/api/vault";
+      const data = await apiFetch(url, { token });
+      setPickerItems(data || []);
+    } catch { /* silent */ }
+    setPickerLoading(false);
+  };
+
+  const handleVaultLink = async (vaultId) => {
+    setLinkingVaultId(vaultId);
+    try {
+      await apiFetch(`/api/vault/${vaultId}/link`, {
+        token, method: "POST",
+        body: JSON.stringify({ questId: question.questId })
+      });
+      const data = await apiFetch(`/api/vault?questId=${encodeURIComponent(question.questId)}`, { token });
+      setVaultItems(data || []);
+      setShowVaultPicker(false);
+    } catch { /* silent */ }
+    setLinkingVaultId(null);
+  };
+
+  const handleVaultDetach = async (vaultId) => {
+    try {
+      await apiFetch(`/api/vault/${vaultId}/link/${encodeURIComponent(question.questId)}`, { token, method: "DELETE" });
+      setVaultItems(prev => prev.filter(v => v.id !== vaultId));
+    } catch (err) {
+      alert(err.message || "Could not detach evidence.");
+    }
+  };
+
+  const handleSuggestionAttach = async (vaultId) => {
+    setAttachingSuggestion(vaultId);
+    try {
+      await apiFetch(`/api/vault/${vaultId}/link`, {
+        token, method: "POST",
+        body: JSON.stringify({ questId: question.questId })
+      });
+      const data = await apiFetch(`/api/vault?questId=${encodeURIComponent(question.questId)}`, { token });
+      setVaultItems(data || []);
+      setIgnoredSuggestions(prev => new Set([...prev, vaultId]));
+    } catch { /* silent */ }
+    setAttachingSuggestion(null);
+  };
+
+  function addIntervalQC(date, interval) {
+    const d = new Date(date);
+    const s = (interval || "monthly").toLowerCase();
+    if (s === "none") return null;
+    if (s === "weekly") d.setDate(d.getDate() + 7);
+    else if (s === "fortnightly") d.setDate(d.getDate() + 14);
+    else if (s.includes("annual") || s.includes("year")) d.setFullYear(d.getFullYear() + 1);
+    else if (s.includes("quarter")) d.setMonth(d.getMonth() + 3);
+    else if (s.includes("semi") || s.includes("bi")) d.setMonth(d.getMonth() + 6);
+    else d.setMonth(d.getMonth() + 1);
+    return d;
+  }
+
   const handleAnswer = (answer) => {
     onSetResponse("answer", answer);
-    if (["NOT_IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "PLANNED"].includes(answer) && !response.actionOwner) {
-      onSetResponse("actionOwner", question.defaultOwner || "");
+  };
+
+  const handleRequestEvidence = async () => {
+    const email = reqEmail.trim();
+    if (!email) { setReqError("Email is required"); return; }
+    if (orgDomain && !isOrgEmail(email)) { setReqError(`Must be a @${orgDomain} address`); return; }
+    const assignee = orgUsers?.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (!assignee) { setReqError("User not found in your organisation. They may need to sign up first."); return; }
+    setReqLoading(true);
+    setReqError("");
+    try {
+      await apiFetch("/api/requests", {
+        token, method: "POST",
+        body: JSON.stringify({
+          title: `Evidence needed for ${question.questId}`,
+          description: question.requiredEvidence || `Please provide evidence for: ${question.controlArea}`,
+          priority: "Medium",
+          questionId: question.questId,
+          assigneeId: assignee.id,
+        })
+      });
+      setReqSuccess(true);
+      setReqEmail("");
+      setShowReqEvidence(false);
+    } catch (e) {
+      setReqError(e.message);
+    } finally {
+      setReqLoading(false);
     }
   };
 
@@ -117,6 +265,9 @@ export default function QuestionCard({ question, assessment, response, onSetResp
         <span className="pill pill-module">{question.moduleId} - {question.moduleName}</span>
         <span className="pill pill-iso">{question.isoReference}</span>
         <span className="pill pill-owner">{question.defaultOwner}</span>
+        {question.priority && (
+          <span className={`priority-badge priority-${(question.priority || '').toLowerCase()}`}>{question.priority}</span>
+        )}
         {question.recurrenceInterval && question.recurrenceInterval !== "none" && (
           <span className="pill pill-recurrence">⟳ {question.recurrenceInterval}</span>
         )}
@@ -126,6 +277,29 @@ export default function QuestionCard({ question, assessment, response, onSetResp
         {(question.isOverdue || question.status === 'OVERDUE' || (question.nextDueDate && new Date(question.nextDueDate) < new Date())) && (
           <span className="badge-overdue">OVERDUE</span>
         )}
+        {question.tags && (
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {question.tags.split(',').filter(t => t.trim()).map(tag => (
+              <span key={tag.trim()} className="tag-badge">{tag.trim()}</span>
+            ))}
+          </div>
+        )}
+        {question.dueDate && (() => {
+          const dateOnly = question.dueDate.slice(0, 10);
+          const today = localToday();
+          const sevenDays = new Date(Date.now() + 7*24*60*60*1000).toISOString().slice(0,10);
+          const overdue = dateOnly < today && !["IMPLEMENTED","NOT_APPLICABLE"].includes(question.latestAnswer);
+          const warning = !overdue && dateOnly >= today && dateOnly <= sevenDays;
+          return (
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <span className={`pill ${overdue ? "pill-due-overdue" : warning ? "pill-due-warning" : "pill-due"}`}>
+                Due: {formatDueDate(dateOnly)}
+              </span>
+              {overdue && <span className="badge-overdue">OVERDUE</span>}
+              {warning && <span className="badge-due-warning">Due soon</span>}
+            </div>
+          );
+        })()}
       </div>
 
       <h1 className="quest-title">{question.controlArea}</h1>
@@ -163,7 +337,7 @@ export default function QuestionCard({ question, assessment, response, onSetResp
           )}
           {assessment.comments && (
             <div className="assessment-info-row">
-              <div className="assessment-info-label">Comments:</div>
+              <div className="assessment-info-label">Internal Notes:</div>
               <div className="assessment-info-value">{assessment.comments}</div>
             </div>
           )}
@@ -188,7 +362,7 @@ export default function QuestionCard({ question, assessment, response, onSetResp
           )}
           {(assessment.reviewerNotes || assessment.reviewer_notes) && (
             <div className="assessment-info-row">
-              <div className="assessment-info-label">Reviewer notes:</div>
+              <div className="assessment-info-label">Reviewer Notes:</div>
               <div className="assessment-info-value" style={{ color: "var(--amber)", fontStyle: "italic" }}>
                 {assessment.reviewerNotes || assessment.reviewer_notes}
               </div>
@@ -243,12 +417,18 @@ export default function QuestionCard({ question, assessment, response, onSetResp
               <div className="section-label">Action details</div>
               <div className="action-fields">
                 <label>
-                  Owner
+                  Responsible person (email)
                   <input
-                    type="text"
+                    type="email"
                     value={response.actionOwner || ""}
                     onChange={(e) => onSetResponse("actionOwner", e.target.value)}
+                    placeholder={orgDomain ? `name@${orgDomain}` : "email@company.com"}
                   />
+                  {response.actionOwner && orgDomain && !isOrgEmail(response.actionOwner) && (
+                    <span style={{ fontSize: 11, color: "var(--red)", marginTop: 2, display: "block" }}>
+                      Must be a @{orgDomain} address
+                    </span>
+                  )}
                 </label>
                 <label>
                   Due date
@@ -322,14 +502,14 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                 <div className="upload-icon">Upload</div>
                 <p>
                   <strong>Click to upload evidence file</strong>
-                  PDF, DOCX, PNG, XLSX - max 25 MB
+                  PDF, DOCX, XLSX, PNG, ZIP and more — max 10 MB
                 </p>
               </div>
               <input
                 type="file"
                 id={inputId}
                 style={{ display: "none" }}
-                accept=".pdf,.docx,.png,.xlsx"
+                accept=".pdf,.docx,.png,.xlsx,.zip,.csv,.pptx,.txt,.jpg,.jpeg"
                 onChange={handleFileUpload}
               />
               {response.files && response.files.length > 0 && (
@@ -381,13 +561,21 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                             </button>
                           </div>
                         </div>
-                        {file.aiContributorComments && (
+                        {(file.aiContributorComments || file.aiDateWarning) && (
                           <div className="ai-feedback-card">
                             <div className="ai-feedback-header">
                               <span className="ai-feedback-icon">✨</span>
                               <span className="ai-feedback-title">AI Analysis</span>
                             </div>
-                            <div className="ai-feedback-body">{file.aiContributorComments}</div>
+                            {file.aiDateWarning && (
+                              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, margin: "6px 0 8px", padding: "8px 10px", background: "rgba(var(--amber-rgb,220,150,40),0.12)", border: "1px solid var(--amber,#dc9628)", borderRadius: 6 }}>
+                                <span style={{ fontSize: 14, flexShrink: 0 }}>📅</span>
+                                <span style={{ fontSize: 12, color: "var(--amber,#dc9628)", fontWeight: 500, lineHeight: 1.4 }}>{file.aiDateWarning}</span>
+                              </div>
+                            )}
+                            {file.aiContributorComments && (
+                              <div className="ai-feedback-body">{file.aiContributorComments}</div>
+                            )}
                             {file.aiGaps && (() => {
                               try {
                                 const gaps = Array.isArray(file.aiGaps) ? file.aiGaps : JSON.parse(file.aiGaps);
@@ -437,16 +625,158 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                   }
                 }}>Add link</button>
               </div>
+
+              {/* ── Link from Vault ── */}
+              <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  className="btn btn-ghost"
+                  style={{ fontSize: 12, padding: "6px 14px" }}
+                  onClick={() => { setShowVaultPicker(true); loadPicker(pickerSearch); }}
+                >
+                  🗄 Link from Vault
+                </button>
+              </div>
+
+              {/* Linked vault items */}
+              {vaultItems.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  {vaultItems.map(item => {
+                    const due = item.uploadedAt ? addIntervalQC(item.uploadedAt, question.recurrenceInterval) : null;
+                    const daysLeft = due ? Math.round((due - new Date()) / 86400000) : null;
+                    const overdue = daysLeft !== null && daysLeft < 0;
+                    const soon = daysLeft !== null && !overdue && daysLeft <= 14;
+                    const validColor = overdue ? "var(--red)" : soon ? "var(--amber)" : "var(--green)";
+                    return (
+                      <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "var(--bg3)", borderRadius: 6, marginBottom: 5, fontSize: 12 }}>
+                        <span style={{ fontSize: 16, flexShrink: 0 }}>
+                          {item.fileType?.includes("pdf") ? "📋" : item.fileType?.startsWith("image/") ? "🖼" : "📄"}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
+                          {due && (
+                            <div style={{ fontSize: 10, color: validColor, marginTop: 1 }}>
+                              {overdue
+                                ? `⚠ Review overdue — ${due.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+                                : soon
+                                  ? `⏳ Due in ${daysLeft}d — ${due.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+                                  : `✓ Valid until ${due.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`}
+                            </div>
+                          )}
+                        </div>
+                        <span style={{ fontSize: 10, color: "var(--text3)", flexShrink: 0 }}>Vault</span>
+                        <button
+                          title="Detach from this question"
+                          onClick={() => handleVaultDetach(item.id)}
+                          style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
+                        >×</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Suggested Evidence */}
+              {(suggestionsLoading || (suggestions !== null && suggestions.filter(s => !ignoredSuggestions.has(s.id) && !vaultItems.some(v => v.id === s.id)).length > 0)) && (
+                <div style={{ marginTop: 12, padding: "10px 12px", background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)" }}>Suggested Evidence</span>
+                    <span style={{ fontSize: 9, color: "var(--text3)", background: "var(--bg)", border: "1px solid var(--border2)", borderRadius: 8, padding: "1px 6px" }}>AI</span>
+                  </div>
+                  {suggestionsLoading ? (
+                    <div style={{ fontSize: 11, color: "var(--text3)" }}>Scanning vault…</div>
+                  ) : (
+                    suggestions
+                      .filter(s => !ignoredSuggestions.has(s.id) && !vaultItems.some(v => v.id === s.id))
+                      .map(s => {
+                        const scoreColor = s.relevanceScore >= 70 ? "var(--green)" : s.relevanceScore >= 50 ? "var(--amber)" : "var(--text3)";
+                        return (
+                          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 11 }}>
+                            <div style={{ flexShrink: 0, width: 32, height: 32, borderRadius: "50%", border: `2px solid ${scoreColor}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: scoreColor }}>
+                              {s.relevanceScore}%
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
+                              {s.reason && <div style={{ fontSize: 10, color: "var(--text3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontStyle: "italic" }}>{s.reason}</div>}
+                            </div>
+                            <button className="btn btn-primary" style={{ fontSize: 10, padding: "3px 10px", flexShrink: 0 }} disabled={attachingSuggestion === s.id} onClick={() => handleSuggestionAttach(s.id)}>
+                              {attachingSuggestion === s.id ? "…" : "Attach"}
+                            </button>
+                            <button style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 14, flexShrink: 0 }} onClick={() => setIgnoredSuggestions(prev => new Set([...prev, s.id]))}>×</button>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              )}
+
+              {/* ── Request Evidence from someone ── */}
+              <div style={{ marginTop: 14 }}>
+                {reqSuccess ? (
+                  <div style={{ fontSize: 13, color: "var(--green)", padding: "8px 12px", background: "rgba(34,197,94,0.1)", borderRadius: 6, display: "flex", alignItems: "center", gap: 10 }}>
+                    ✓ Evidence request sent.
+                    <button onClick={() => setReqSuccess(false)} style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 11 }}>Dismiss</button>
+                  </div>
+                ) : showReqEvidence ? (
+                  <div style={{ padding: 14, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Request Evidence from Someone</div>
+                    <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 10 }}>
+                      Enter the email of a person in your organisation who can provide this evidence.
+                    </div>
+                    <input
+                      type="email"
+                      value={reqEmail}
+                      onChange={e => { setReqEmail(e.target.value); setReqError(""); }}
+                      placeholder={orgDomain ? `name@${orgDomain}` : "email@company.com"}
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: `1px solid ${reqError ? "var(--red)" : "var(--border2)"}`, background: "var(--bg)", color: "var(--text)", fontSize: 13, boxSizing: "border-box", marginBottom: 6 }}
+                    />
+                    {reqError && <div style={{ fontSize: 12, color: "var(--red)", marginBottom: 8 }}>✗ {reqError}</div>}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        className="btn btn-primary"
+                        style={{ fontSize: 12, padding: "6px 14px" }}
+                        onClick={handleRequestEvidence}
+                        disabled={reqLoading || !reqEmail.trim()}
+                      >
+                        {reqLoading ? "Sending…" : "Send Request"}
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ fontSize: 12, padding: "6px 14px" }}
+                        onClick={() => { setShowReqEvidence(false); setReqEmail(""); setReqError(""); }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: 12, padding: "6px 14px" }}
+                    onClick={() => { setShowReqEvidence(true); setReqError(""); }}
+                  >
+                    📋 Request Evidence from Someone
+                  </button>
+                )}
+              </div>
             </>
           )}
 
-          <div className="section-label">Comments</div>
+          <div className="section-label">Internal Notes</div>
           <textarea
             className="comments-textarea"
             placeholder="Optional notes for the reviewer - context, exceptions, or remediation plan..."
             value={response.comment || ""}
             onChange={(e) => onSetResponse("comment", e.target.value)}
           ></textarea>
+
+          {(assessment?.reviewerNotes || assessment?.reviewer_notes) && (
+            <>
+              <div className="section-label" style={{ marginTop: 12 }}>Reviewer Notes</div>
+              <div style={{ padding: "10px 14px", background: "var(--bg3)", border: "1px solid var(--border2)", borderRadius: 8, fontSize: 13, color: "var(--amber)", fontStyle: "italic", whiteSpace: "pre-wrap" }}>
+                {assessment.reviewerNotes || assessment.reviewer_notes}
+              </div>
+            </>
+          )}
 
           <div className="scoring-gates">
             <div className="section-label">Scoring gates</div>
@@ -459,6 +789,63 @@ export default function QuestionCard({ question, assessment, response, onSetResp
             </div>
           </div>
         </>
+      )}
+
+      {/* Vault picker modal */}
+      {showVaultPicker && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setShowVaultPicker(false)}
+        >
+          <div
+            style={{ background: "var(--bg2)", borderRadius: 12, padding: 20, width: 480, maxWidth: "90vw", maxHeight: "70vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Link Evidence from Vault</div>
+              <button onClick={() => setShowVaultPicker(false)} style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 20 }}>×</button>
+            </div>
+            <input
+              type="text"
+              placeholder="Search vault…"
+              value={pickerSearch}
+              onChange={e => { setPickerSearch(e.target.value); loadPicker(e.target.value); }}
+              style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, marginBottom: 12, boxSizing: "border-box", width: "100%" }}
+            />
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              {pickerLoading ? (
+                <div style={{ textAlign: "center", padding: 20, color: "var(--text3)", fontSize: 13 }}>Loading…</div>
+              ) : pickerItems.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 20, color: "var(--text3)", fontSize: 13 }}>No vault items found.</div>
+              ) : pickerItems.map(item => {
+                const alreadyLinked = vaultItems.some(v => v.id === item.id);
+                return (
+                  <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--bg3)", borderRadius: 8, marginBottom: 6 }}>
+                    <span style={{ fontSize: 18, flexShrink: 0 }}>
+                      {item.fileType?.includes("pdf") ? "📋" : item.fileType?.startsWith("image/") ? "🖼" : "📄"}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
+                      {item.description && <div style={{ fontSize: 11, color: "var(--text3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</div>}
+                    </div>
+                    {alreadyLinked ? (
+                      <span style={{ fontSize: 11, color: "var(--text3)", flexShrink: 0 }}>Linked</span>
+                    ) : (
+                      <button
+                        className="btn btn-primary"
+                        style={{ fontSize: 11, padding: "5px 14px", flexShrink: 0 }}
+                        disabled={linkingVaultId === item.id}
+                        onClick={() => handleVaultLink(item.id)}
+                      >
+                        {linkingVaultId === item.id ? "…" : "Attach"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

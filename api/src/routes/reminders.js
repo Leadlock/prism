@@ -31,6 +31,9 @@ router.put("/settings", authenticate, asyncHandler(async (req, res) => {
   if (!companyId) {
     return res.status(400).json({ error: "No company context" });
   }
+  if (req.user.role !== "ADMIN") {
+    return res.status(403).json({ error: "Admin only" });
+  }
 
   const { defaultReminderOffsets } = req.body;
 
@@ -94,6 +97,9 @@ router.post("/", authenticate, asyncHandler(async (req, res) => {
   if (!companyId) {
     return res.status(400).json({ error: "No company context" });
   }
+  if (!["ADMIN", "LEAD"].includes(req.user.role)) {
+    return res.status(403).json({ error: "Admin or Lead only" });
+  }
 
   const { message, remindAt, questId, moduleId, actionId, recipientEmail, reminderType } = req.body;
   if (!remindAt) {
@@ -111,6 +117,9 @@ router.post("/", authenticate, asyncHandler(async (req, res) => {
 
 // DELETE /api/reminders/:id — delete a reminder
 router.delete("/:id", authenticate, asyncHandler(async (req, res) => {
+  if (!["ADMIN", "LEAD"].includes(req.user.role)) {
+    return res.status(403).json({ error: "Admin or Lead only" });
+  }
   const companyId = req.user?.companyId;
   const { id } = req.params;
 

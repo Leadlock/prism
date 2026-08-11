@@ -513,13 +513,12 @@ export default function Homepage() {
               <h4>Resources</h4>
               <a href="#">Documentation</a>
               <a href="#">Blog</a>
-              <a href="#">Support</a>
+              <Link to="/support">Support</Link>
             </div>
             <div className="hp-footer-col">
               <h4>Legal</h4>
-              <a href="#">Privacy Policy</a>
-              <a href="#">Terms of Service</a>
-              <a href="#">Cookie Policy</a>
+              <Link to="/privacy-policy">Privacy Policy</Link>
+              <Link to="/terms-of-service">Terms of Service</Link>
               <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new Event("open-cookie-banner")); }}>Cookie Settings</a>
             </div>
           </div>

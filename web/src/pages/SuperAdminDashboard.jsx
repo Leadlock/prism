@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { apiFetch, apiUpload } from "../api/client.js";
+import DependencySelect from "../components/DependencySelect.jsx";
 
 const TAB_STORAGE_KEY = "superadmin_active_tab";
 
@@ -46,6 +47,8 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
   const [importResult, setImportResult] = useState(null);
   const [importError, setImportError] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [importPreview, setImportPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // --- Modules tab state ---
   const [assignCompanyId, setAssignCompanyId] = useState({});
@@ -59,6 +62,8 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
   const [companyImporting, setCompanyImporting] = useState(false);
   const [companyImportResult, setCompanyImportResult] = useState(null);
   const [companyDragOver, setCompanyDragOver] = useState(false);
+  const [companyImportPreview, setCompanyImportPreview] = useState(null);
+  const [companyPreviewLoading, setCompanyPreviewLoading] = useState(false);
   const [deleteModulesConfirm, setDeleteModulesConfirm] = useState(false);
 
   // --- Add Module form state ---
@@ -76,12 +81,24 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
   const [newQuestModuleId, setNewQuestModuleId] = useState("");
   const [newQuestControlArea, setNewQuestControlArea] = useState("");
   const [newQuestText, setNewQuestText] = useState("");
+  const [newQuestPriority, setNewQuestPriority] = useState("Medium");
+  const [newQuestDeps, setNewQuestDeps] = useState([]);
   const [addingQuestion, setAddingQuestion] = useState(false);
   const [questionError, setQuestionError] = useState(null);
 
   // --- Delete single question state ---
   const [deleteQuestionConfirm, setDeleteQuestionConfirm] = useState(null);
   const [companyQuestions, setCompanyQuestions] = useState([]);
+
+  // --- Branding tab state ---
+  const [brandCompanyId, setBrandCompanyId] = useState("");
+  const [brandColor, setBrandColor] = useState("");
+  const [brandLogoFile, setBrandLogoFile] = useState(null);
+  const [brandLogoPreview, setBrandLogoPreview] = useState(null);
+  const [brandSaving, setBrandSaving] = useState(false);
+  const [brandMsg, setBrandMsg] = useState("");
+  const [brandLoading, setBrandLoading] = useState(false);
+  const brandLogoRef = useRef(null);
 
   // --- Persist tab ---
   useEffect(() => {
@@ -121,6 +138,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     if (activeTab === "companies") fetchCompanies();
     if (activeTab === "modules") { fetchTemplates(); fetchCompanies(); }
     if (activeTab === "import") fetchCompanies();
+    if (activeTab === "branding") fetchCompanies();
   }, [activeTab, fetchCompanies, fetchTemplates]);
 
   // --- Company status change (optimistic) ---
@@ -173,6 +191,15 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
   };
 
   // --- AI toggle (optimistic) ---
+  const handleResetOnboarding = async (companyId, companyName) => {
+    try {
+      const result = await apiFetch(`/api/superadmin/companies/${companyId}/reset-onboarding`, { token, method: "PATCH" });
+      showToast(`Policy onboarding reset for ${companyName} (${result.usersUpdated} admin${result.usersUpdated !== 1 ? "s" : ""})`, "success");
+    } catch (err) {
+      showToast(err.message || "Failed to reset onboarding", "error");
+    }
+  };
+
   const handleAIToggle = async (companyId, currentVal) => {
     const newVal = !currentVal;
     const prev = [...companies];
@@ -228,6 +255,19 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     return null;
   };
 
+  const fetchPreview = async (file, setPreview, setLoading) => {
+    setLoading(true);
+    setPreview(null);
+    try {
+      const result = await apiUpload("/api/superadmin/preview-import", file, {}, token);
+      setPreview(result);
+    } catch (err) {
+      setPreview({ error: err.message || "Preview failed" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleFileSelect = (file) => {
     const err = validateFile(file);
     if (err) {
@@ -237,6 +277,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     setImportFile(file);
     setImportResult(null);
     setImportError(null);
+    fetchPreview(file, setImportPreview, setPreviewLoading);
   };
 
   // --- Template assign ---
@@ -370,6 +411,29 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     }
   };
 
+  // --- Reorder module (up/down) ---
+  const handleMoveModule = async (index, direction) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= companyModules.length) return;
+    const reordered = [...companyModules];
+    [reordered[index], reordered[newIndex]] = [reordered[newIndex], reordered[index]];
+    setCompanyModules(reordered);
+    try {
+      await Promise.all([
+        apiFetch(`/api/superadmin/companies/${selectedCompany.id}/modules/${encodeURIComponent(reordered[index].module_id)}/order`, {
+          token, method: "PATCH", body: { sortOrder: index * 10 },
+        }),
+        apiFetch(`/api/superadmin/companies/${selectedCompany.id}/modules/${encodeURIComponent(reordered[newIndex].module_id)}/order`, {
+          token, method: "PATCH", body: { sortOrder: newIndex * 10 },
+        }),
+      ]);
+    } catch (err) {
+      showToast(err.message || "Reorder failed", "error");
+      const data = await apiFetch(`/api/superadmin/companies/${selectedCompany.id}/modules`, { token });
+      setCompanyModules(data || []);
+    }
+  };
+
   // --- Delete single module ---
   const handleDeleteSingleModule = async (moduleId) => {
     try {
@@ -395,21 +459,36 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     setAddingQuestion(true);
     setQuestionError(null);
     try {
+      const createdQuestId = newQuestId.trim();
       await apiFetch(`/api/superadmin/companies/${selectedCompany.id}/questions`, {
         token,
         method: "POST",
         body: JSON.stringify({
-          questId: newQuestId.trim(),
+          questId: createdQuestId,
           moduleId: newQuestModuleId.trim(),
           controlArea: newQuestControlArea.trim() || undefined,
           baselineQuestion: newQuestText.trim() || undefined,
+          priority: newQuestPriority,
         }),
       });
+      if (newQuestDeps.length > 0) {
+        try {
+          await apiFetch(`/api/superadmin/companies/${selectedCompany.id}/questions/${encodeURIComponent(createdQuestId)}/dependencies`, {
+            token,
+            method: "PUT",
+            body: JSON.stringify({ dependsOn: newQuestDeps }),
+          });
+        } catch (depErr) {
+          showToast(`Question added but deps failed: ${depErr.message}`, "error");
+        }
+      }
       showToast("Question added successfully", "success");
       setNewQuestId("");
       setNewQuestModuleId("");
       setNewQuestControlArea("");
       setNewQuestText("");
+      setNewQuestPriority("Medium");
+      setNewQuestDeps([]);
       // Refresh questions
       try {
         const data = await apiFetch(`/api/superadmin/companies/${selectedCompany.id}/questions`, { token });
@@ -440,6 +519,132 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
       showToast(err.message || "Delete failed", "error");
     }
   };
+
+  // --- Branding tab render ---
+  const renderBrandingTab = () => (
+    <section style={{ maxWidth: 560 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Company Branding</h2>
+      <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 20 }}>
+        Set a logo and accent colour for any company. Changes take effect on the company's next login.
+      </p>
+
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ fontSize: 12, color: "var(--text3)", display: "block", marginBottom: 6 }}>Select Company</label>
+        <select
+          value={brandCompanyId}
+          onChange={async (e) => {
+            const id = e.target.value;
+            setBrandCompanyId(id);
+            setBrandColor("");
+            setBrandLogoPreview(null);
+            setBrandLogoFile(null);
+            setBrandMsg("");
+            if (!id) return;
+            setBrandLoading(true);
+            try {
+              const s = await apiFetch(`/api/superadmin/companies/${id}/settings`, { token });
+              setBrandColor(s.primaryColor || "");
+              setBrandLogoPreview(s.logoUrl || null);
+            } catch { /* ignore */ }
+            finally { setBrandLoading(false); }
+          }}
+          style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, width: "100%" }}
+        >
+          <option value="">— choose a company —</option>
+          {companies.map(c => <option key={c.id} value={c.id}>{c.name} ({c.domain})</option>)}
+        </select>
+      </div>
+
+      {brandCompanyId && (
+        brandLoading ? (
+          <p style={{ fontSize: 13, color: "var(--text3)" }}>Loading…</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div>
+              <label style={{ fontSize: 12, color: "var(--text3)", display: "block", marginBottom: 6 }}>Company Logo</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                {brandLogoPreview && (
+                  <img src={brandLogoPreview} alt="Logo preview" style={{ height: 48, objectFit: "contain", borderRadius: 6, background: "var(--bg3)", padding: 4 }} />
+                )}
+                <button className="btn btn-ghost" style={{ fontSize: 13 }} onClick={() => brandLogoRef.current?.click()}>
+                  {brandLogoPreview ? "Change Logo" : "Upload Logo"}
+                </button>
+                <input
+                  ref={brandLogoRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    setBrandLogoFile(f);
+                    setBrandLogoPreview(URL.createObjectURL(f));
+                  }}
+                />
+              </div>
+              <p style={{ fontSize: 11, color: "var(--text3)", marginTop: 6 }}>PNG, JPG or SVG — max 2 MB</p>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: "var(--text3)", display: "block", marginBottom: 6 }}>Accent Colour</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <input
+                  type="color"
+                  value={brandColor || "#6366f1"}
+                  onChange={e => setBrandColor(e.target.value)}
+                  style={{ width: 44, height: 36, border: "none", borderRadius: 6, cursor: "pointer", background: "none", padding: 0 }}
+                />
+                <input
+                  type="text"
+                  value={brandColor}
+                  onChange={e => setBrandColor(e.target.value)}
+                  placeholder="#6366f1"
+                  style={{ width: 110, padding: "7px 10px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, fontFamily: "var(--mono)" }}
+                />
+              </div>
+            </div>
+
+            {brandMsg && <p style={{ fontSize: 13, color: brandMsg.startsWith("✗") ? "var(--red)" : "var(--green)", margin: 0 }}>{brandMsg}</p>}
+
+            <button
+              className="btn btn-primary"
+              style={{ alignSelf: "flex-start" }}
+              disabled={brandSaving}
+              onClick={async () => {
+                setBrandSaving(true);
+                setBrandMsg("");
+                try {
+                  if (brandLogoFile) {
+                    const fd = new FormData();
+                    fd.append("logo", brandLogoFile);
+                    const r = await fetch(`${import.meta.env.VITE_API_URL || ""}/api/superadmin/companies/${brandCompanyId}/logo`, {
+                      method: "POST",
+                      headers: { Authorization: `Bearer ${token}` },
+                      body: fd,
+                    });
+                    if (!r.ok) throw new Error("Logo upload failed");
+                  }
+                  await apiFetch(`/api/superadmin/companies/${brandCompanyId}/settings`, {
+                    token,
+                    method: "PUT",
+                    body: JSON.stringify({ primaryColor: brandColor || null }),
+                  });
+                  setBrandMsg("✓ Saved");
+                  setBrandLogoFile(null);
+                } catch (e) {
+                  setBrandMsg("✗ " + e.message);
+                } finally {
+                  setBrandSaving(false);
+                }
+              }}
+            >
+              {brandSaving ? "Saving…" : "Save Branding"}
+            </button>
+          </div>
+        )
+      )}
+    </section>
+  );
 
   // --- Styles ---
   const styles = {
@@ -521,6 +726,119 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
       case "suspended": return { bg: "rgba(245,158,11,0.1)", color: "var(--amber)", border: "rgba(245,158,11,0.3)" };
       default: return { bg: "rgba(99,102,241,0.1)", color: "var(--accent2)", border: "rgba(99,102,241,0.3)" };
     }
+  };
+
+  // --- Render Excel Import Preview ---
+  const renderImportPreview = (preview, loading) => {
+    if (loading) return (
+      <div style={{ padding: "16px", textAlign: "center", color: "var(--text3)", fontSize: "13px" }}>
+        <div className="loading-spinner" style={{ margin: "0 auto 8px", width: "20px", height: "20px" }} />
+        Parsing file…
+      </div>
+    );
+    if (!preview) return null;
+    if (preview.error) return (
+      <div style={{ padding: "12px 14px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "7px", fontSize: "12px", color: "var(--red)", marginTop: "12px" }}>
+        Preview failed: {preview.error}
+      </div>
+    );
+
+    const cellStyle = { padding: "5px 10px", borderBottom: "1px solid var(--border)", fontSize: "12px", color: "var(--text2)", maxWidth: "220px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+    const headStyle = { padding: "5px 10px", fontSize: "11px", fontWeight: 600, color: "var(--text3)", textAlign: "left", background: "var(--bg4)", borderBottom: "1px solid var(--border2)", whiteSpace: "nowrap" };
+
+    return (
+      <div style={{ marginTop: "14px", border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden", background: "var(--bg3)" }}>
+        {/* Summary bar */}
+        <div style={{ display: "flex", gap: "20px", padding: "10px 14px", background: "var(--bg4)", borderBottom: "1px solid var(--border)", alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text)" }}>Preview</span>
+          <span style={{ fontSize: "12px", color: "var(--accent2)" }}>{preview.totalModules} module{preview.totalModules !== 1 ? "s" : ""}</span>
+          <span style={{ fontSize: "12px", color: "var(--text2)" }}>{preview.totalQuestions} question{preview.totalQuestions !== 1 ? "s" : ""}</span>
+          {preview.errors?.length > 0 && (
+            <span style={{ fontSize: "12px", color: "var(--amber)" }}>⚠ {preview.errors.length} row error{preview.errors.length !== 1 ? "s" : ""}</span>
+          )}
+        </div>
+
+        {/* Modules */}
+        {preview.modules?.length > 0 && (
+          <div style={{ overflowX: "auto" }}>
+            <div style={{ padding: "8px 14px 4px", fontSize: "11px", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Modules</div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={headStyle}>Module ID</th>
+                  <th style={headStyle}>Name</th>
+                  <th style={headStyle}>Questions</th>
+                  <th style={headStyle}>Owner</th>
+                  <th style={headStyle}>Frequency</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.modules.map((m, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
+                    <td style={{ ...cellStyle, fontFamily: "var(--mono)", color: "var(--accent2)" }}>{m.module_id}</td>
+                    <td style={cellStyle}>{m.name || m.module_id}</td>
+                    <td style={{ ...cellStyle, textAlign: "center" }}>{m.total_quests ?? 0}</td>
+                    <td style={cellStyle}>{m.primary_owner || <span style={{ color: "var(--border2)" }}>—</span>}</td>
+                    <td style={cellStyle}>{m.frequency || <span style={{ color: "var(--border2)" }}>—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Sample Questions */}
+        {preview.questions?.length > 0 && (
+          <div style={{ overflowX: "auto", borderTop: "1px solid var(--border)" }}>
+            <div style={{ padding: "8px 14px 4px", fontSize: "11px", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Questions (showing first {Math.min(10, preview.questions.length)} of {preview.questions.length})
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={headStyle}>Quest ID</th>
+                  <th style={headStyle}>Module ID</th>
+                  <th style={{ ...headStyle, minWidth: "260px" }}>Question Text</th>
+                  <th style={headStyle}>Control Area</th>
+                  <th style={headStyle}>Priority</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.questions.slice(0, 10).map((q, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
+                    <td style={{ ...cellStyle, fontFamily: "var(--mono)", color: "var(--accent2)" }}>{q.quest_id}</td>
+                    <td style={{ ...cellStyle, fontFamily: "var(--mono)" }}>{q.module_id}</td>
+                    <td style={{ ...cellStyle, whiteSpace: "normal", maxWidth: "260px" }}>{q.baseline_question || <span style={{ color: "var(--border2)" }}>—</span>}</td>
+                    <td style={cellStyle}>{q.control_area || <span style={{ color: "var(--border2)" }}>—</span>}</td>
+                    <td style={cellStyle}>{q.priority || "Medium"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Parse errors */}
+        {preview.errors?.length > 0 && (
+          <div style={{ borderTop: "1px solid var(--border)", padding: "10px 14px" }}>
+            <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--amber)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Row Errors / Skipped</div>
+            <ul style={{ margin: 0, paddingLeft: "18px" }}>
+              {preview.errors.slice(0, 10).map((e, i) => (
+                <li key={i} style={{ fontSize: "11px", color: "var(--text3)", marginBottom: "2px" }}>{e}</li>
+              ))}
+              {preview.errors.length > 10 && (
+                <li style={{ fontSize: "11px", color: "var(--text3)", fontStyle: "italic" }}>…and {preview.errors.length - 10} more</li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {preview.totalModules === 0 && preview.totalQuestions === 0 && !preview.errors?.length && (
+          <div style={{ padding: "16px 14px", fontSize: "12px", color: "var(--text3)" }}>No data found in this file.</div>
+        )}
+      </div>
+    );
   };
 
   // --- Render Companies Tab ---
@@ -691,6 +1009,21 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
           </div>
         </div>
 
+        {/* Account Tools */}
+        <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px 20px", marginBottom: "20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)", marginBottom: "2px" }}>Policy Onboarding</div>
+            <div style={{ fontSize: "11px", color: "var(--text3)" }}>Re-shows the policy document upload wizard on the admin's next login</div>
+          </div>
+          <button
+            className="btn"
+            style={{ padding: "6px 14px", fontSize: "12px", background: "var(--bg4)", color: "var(--text2)", border: "1px solid var(--border)", whiteSpace: "nowrap" }}
+            onClick={() => handleResetOnboarding(c.id, c.name)}
+          >
+            ↺ Reset Onboarding
+          </button>
+        </div>
+
         {/* Modules list */}
         <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px", marginBottom: "20px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
@@ -723,6 +1056,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                 <thead>
                   <tr>
+                    <th style={{ ...thStyle, fontSize: "10px", padding: "6px 4px", width: "28px" }}></th>
                     <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Module ID</th>
                     <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Name</th>
                     <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Questions</th>
@@ -731,8 +1065,24 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
                   </tr>
                 </thead>
                 <tbody>
-                  {companyModules.map((m) => (
+                  {companyModules.map((m, idx) => (
                     <tr key={m.id || m.module_id} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>
+                        <span style={{ display: "inline-flex", flexDirection: "column", gap: "1px" }}>
+                          <button
+                            title="Move up"
+                            disabled={idx === 0}
+                            style={{ padding: "0 4px", fontSize: "10px", lineHeight: "14px", background: "none", border: "none", cursor: idx === 0 ? "default" : "pointer", opacity: idx === 0 ? 0.3 : 1, color: "var(--text2)" }}
+                            onClick={() => handleMoveModule(idx, -1)}
+                          >▲</button>
+                          <button
+                            title="Move down"
+                            disabled={idx === companyModules.length - 1}
+                            style={{ padding: "0 4px", fontSize: "10px", lineHeight: "14px", background: "none", border: "none", cursor: idx === companyModules.length - 1 ? "default" : "pointer", opacity: idx === companyModules.length - 1 ? 0.3 : 1, color: "var(--text2)" }}
+                            onClick={() => handleMoveModule(idx, 1)}
+                          >▼</button>
+                        </span>
+                      </td>
                       <td style={{ padding: "6px 8px", fontFamily: "var(--mono)", fontSize: "11px" }}>{m.module_id}</td>
                       <td style={{ padding: "6px 8px" }}>{m.name}</td>
                       <td style={{ padding: "6px 8px" }}>{m.total_quests || 0}</td>
@@ -867,7 +1217,31 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
                 style={{ width: "100%", padding: "7px 10px", background: "var(--bg4)", border: "1px solid var(--border2)", borderRadius: "5px", color: "var(--text)", fontSize: "12px" }}
               />
             </div>
+            <div>
+              <label style={{ fontSize: "11px", color: "var(--text3)", display: "block", marginBottom: "4px" }}>Priority</label>
+              <select
+                value={newQuestPriority}
+                onChange={(e) => setNewQuestPriority(e.target.value)}
+                style={{ width: "100%", padding: "7px 10px", background: "var(--bg4)", border: "1px solid var(--border2)", borderRadius: "5px", color: "var(--text)", fontSize: "12px" }}
+              >
+                <option value="Critical">Critical</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
           </div>
+          {companyQuestions.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <label style={{ fontSize: "11px", color: "var(--text3)", display: "block", marginBottom: "4px" }}>Dependencies (optional)</label>
+              <DependencySelect
+                allQuestions={companyQuestions}
+                value={newQuestDeps}
+                onChange={setNewQuestDeps}
+                selfQuestId={newQuestId.trim()}
+              />
+            </div>
+          )}
           {questionError && (
             <p style={{ fontSize: "12px", color: "var(--red)", margin: "8px 0 0" }}>✗ {questionError}</p>
           )}
@@ -894,6 +1268,8 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
                     <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Quest ID</th>
                     <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Module</th>
                     <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Control Area</th>
+                    <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Priority</th>
+                    <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Deps</th>
                     <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Actions</th>
                   </tr>
                 </thead>
@@ -903,6 +1279,14 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
                       <td style={{ padding: "6px 8px", fontFamily: "var(--mono)", fontSize: "11px" }}>{q.quest_id || q.questId}</td>
                       <td style={{ padding: "6px 8px", fontSize: "11px" }}>{q.module_id || q.moduleId}</td>
                       <td style={{ padding: "6px 8px", fontSize: "11px", color: "var(--text3)" }}>{q.control_area || q.controlArea}</td>
+                      <td style={{ padding: "6px 8px" }}>
+                        {q.priority && (
+                          <span className={`priority-badge priority-${q.priority.toLowerCase()}`} style={{ fontSize: "10px", padding: "2px 8px" }}>{q.priority}</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "6px 8px", fontSize: "11px", color: "var(--text3)" }}>
+                        {(q.dependency_count || 0) > 0 ? `${q.dependency_count} dep${q.dependency_count !== 1 ? "s" : ""}` : "None"}
+                      </td>
                       <td style={{ padding: "6px 8px" }}>
                         {deleteQuestionConfirm === (q.quest_id || q.questId) ? (
                           <span style={{ display: "flex", gap: "4px", alignItems: "center" }}>
@@ -939,7 +1323,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
             style={{ ...styles.dropZone, padding: "24px 16px", ...(companyDragOver ? styles.dropZoneActive : {}) }}
             onDragOver={(e) => { e.preventDefault(); setCompanyDragOver(true); }}
             onDragLeave={() => setCompanyDragOver(false)}
-            onDrop={(e) => { e.preventDefault(); setCompanyDragOver(false); const f = e.dataTransfer.files[0]; if (f) { const err = validateFile(f); if (err) { showToast(err, "error"); } else { setCompanyImportFile(f); setCompanyImportResult(null); } } }}
+            onDrop={(e) => { e.preventDefault(); setCompanyDragOver(false); const f = e.dataTransfer.files[0]; if (f) { const err = validateFile(f); if (err) { showToast(err, "error"); } else { setCompanyImportFile(f); setCompanyImportResult(null); fetchPreview(f, setCompanyImportPreview, setCompanyPreviewLoading); } } }}
             onClick={() => document.getElementById("company-file-input").click()}
           >
             <p style={{ color: "var(--text2)", fontSize: "13px", margin: 0 }}>
@@ -953,8 +1337,10 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
             type="file"
             accept=".xlsx,.xls"
             style={{ display: "none" }}
-            onChange={(e) => { if (e.target.files[0]) { const f = e.target.files[0]; const err = validateFile(f); if (err) { showToast(err, "error"); } else { setCompanyImportFile(f); setCompanyImportResult(null); } } e.target.value = ""; }}
+            onChange={(e) => { if (e.target.files[0]) { const f = e.target.files[0]; const err = validateFile(f); if (err) { showToast(err, "error"); } else { setCompanyImportFile(f); setCompanyImportResult(null); fetchPreview(f, setCompanyImportPreview, setCompanyPreviewLoading); } } e.target.value = ""; }}
           />
+
+          {renderImportPreview(companyImportPreview, companyPreviewLoading)}
 
           <button
             className="btn btn-primary"
@@ -1012,6 +1398,8 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
           style={{ display: "none" }}
           onChange={(e) => { if (e.target.files[0]) handleFileSelect(e.target.files[0]); e.target.value = ""; }}
         />
+
+        {renderImportPreview(importPreview, previewLoading)}
 
         {/* Company Selector */}
         <div className="form-group" style={{ marginTop: "16px" }}>
@@ -1181,13 +1569,13 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
 
       {/* Tabs */}
       <div style={styles.tabs}>
-        {["companies", "modules", "import"].map((tab) => (
+        {["companies", "modules", "import", "branding"].map((tab) => (
           <button
             key={tab}
             style={{ ...styles.tab, ...(activeTab === tab ? styles.tabActive : {}) }}
             onClick={() => setActiveTab(tab)}
           >
-            {tab === "companies" ? "Companies" : tab === "modules" ? "Modules" : "Import"}
+            {tab === "companies" ? "Companies" : tab === "modules" ? "Modules" : tab === "import" ? "Import" : "Branding"}
           </button>
         ))}
       </div>
@@ -1197,6 +1585,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
         {activeTab === "companies" && renderCompaniesTab()}
         {activeTab === "modules" && renderModulesTab()}
         {activeTab === "import" && renderImportTab()}
+        {activeTab === "branding" && renderBrandingTab()}
       </main>
 
       {/* Toast */}

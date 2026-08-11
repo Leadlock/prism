@@ -1,25 +1,28 @@
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 /**
  * Parse an Excel workbook and extract modules + questions.
- * 
+ *
  * Supports two formats:
- * 1. Combined format (single sheet): columns like "Module Grouping", "Module ID", 
+ * 1. Combined format (single sheet): columns like "Module Grouping", "Module ID",
  *    "Question ID", "Question Text", etc. Modules are derived from unique Module IDs.
  * 2. Separate sheets: "Modules" sheet + "Questions" sheet with dedicated columns.
- * 
- * @param {string} filePath - Path to the uploaded .xlsx/.xls file
- * @returns {{ modules: object[], questions: object[], errors: string[] }}
+ *
+ * @param {string} filePath - Path to the uploaded .xlsx file
+ * @returns {Promise<{ modules: object[], questions: object[], errors: string[] }>}
  */
-export function parseExcelImport(filePath) {
-  const workbook = XLSX.readFile(filePath);
+export async function parseExcelImport(filePath) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
   const errors = [];
 
+  const sheetNames = workbook.worksheets.map(ws => ws.name);
+
   // Check for separate "Modules" and "Questions" sheets
-  const moduleSheetName = workbook.SheetNames.find(
+  const moduleSheetName = sheetNames.find(
     (name) => name.toLowerCase() === 'modules'
   );
-  const questionSheetName = workbook.SheetNames.find(
+  const questionSheetName = sheetNames.find(
     (name) => name.toLowerCase() === 'questions'
   );
 
@@ -35,7 +38,7 @@ export function parseExcelImport(filePath) {
 /**
  * Parse a combined single-sheet format where each row is a question
  * and modules are derived from unique "Module ID" values.
- * 
+ *
  * Expected columns (flexible matching):
  * - Module Grouping / module_grouping
  * - Module ID / module_id
@@ -54,13 +57,13 @@ function parseCombinedSheet(workbook, errors) {
   const questions = [];
   const seenModules = new Map(); // module_id -> module object
 
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  if (!sheet) {
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
     errors.push('No sheets found in workbook');
     return { modules, questions, errors };
   }
 
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  const rows = sheetToJson(worksheet);
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -108,6 +111,12 @@ function parseCombinedSheet(workbook, errors) {
     const requiredEvidence = getField(cleanRow, [
       'Required Evidence', 'required_evidence', 'RequiredEvidence', 'Required_Evidence'
     ]);
+    const priority = getField(cleanRow, [
+      'Priority', 'priority', 'Risk Level', 'risk_level', 'RiskLevel'
+    ]);
+    const tags = getField(cleanRow, [
+      'Tags', 'tags', 'Labels', 'labels', 'Categories', 'categories'
+    ]);
 
     if (!questId) {
       errors.push(`Row ${i + 2}: missing Question ID`);
@@ -146,6 +155,8 @@ function parseCombinedSheet(workbook, errors) {
       required_evidence: String(requiredEvidence || '').trim(),
       default_owner: String(owner || '').trim(),
       frequency: String(frequency || '').trim(),
+      priority: String(priority || '').trim(),
+      tags: String(tags || '').trim(),
     });
   }
 
@@ -164,14 +175,14 @@ function parseSeparateSheets(workbook, moduleSheetName, questionSheetName, error
   const modules = [];
   const questions = [];
 
-  const moduleSheet = moduleSheetName ? workbook.Sheets[moduleSheetName] : null;
+  const moduleSheet = moduleSheetName ? workbook.getWorksheet(moduleSheetName) : null;
   const questionSheet = questionSheetName
-    ? workbook.Sheets[questionSheetName]
-    : (!moduleSheetName ? workbook.Sheets[workbook.SheetNames[0]] : null);
+    ? workbook.getWorksheet(questionSheetName)
+    : (!moduleSheetName ? workbook.worksheets[0] : null);
 
   // Parse modules sheet
   if (moduleSheet) {
-    const rows = XLSX.utils.sheet_to_json(moduleSheet, { defval: '' });
+    const rows = sheetToJson(moduleSheet);
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       if (isEmptyRow(row)) continue;
@@ -195,7 +206,7 @@ function parseSeparateSheets(workbook, moduleSheetName, questionSheetName, error
 
   // Parse questions sheet
   if (questionSheet) {
-    const rows = XLSX.utils.sheet_to_json(questionSheet, { defval: '' });
+    const rows = sheetToJson(questionSheet);
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       if (isEmptyRow(row)) continue;
@@ -223,11 +234,63 @@ function parseSeparateSheets(workbook, moduleSheetName, questionSheetName, error
         required_evidence: String(getField(row, ['required_evidence', 'RequiredEvidence', 'Required Evidence']) || '').trim(),
         default_owner: String(getField(row, ['default_owner', 'DefaultOwner', 'Owner']) || '').trim(),
         frequency: String(getField(row, ['frequency', 'Frequency']) || '').trim(),
+        priority: String(getField(row, ['priority', 'Priority', 'Risk Level', 'risk_level']) || '').trim(),
+        tags: String(getField(row, ['tags', 'Tags', 'Labels', 'labels', 'Categories']) || '').trim(),
       });
     }
   }
 
   return { modules, questions, errors };
+}
+
+/**
+ * Convert an ExcelJS worksheet to an array of row objects, replicating
+ * XLSX.utils.sheet_to_json(sheet, { defval: '' }): row 1 = headers,
+ * subsequent rows = objects keyed by header, missing cells default to ''.
+ */
+function sheetToJson(worksheet) {
+  const headers = [];
+  const rows = [];
+
+  worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+    if (rowNumber === 1) {
+      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        headers[colNumber] = getCellValue(cell);
+      });
+      return;
+    }
+    const obj = {};
+    // Pre-fill all header keys with defval ''
+    for (let c = 1; c < headers.length; c++) {
+      const h = headers[c];
+      if (h !== undefined && h !== '') obj[String(h)] = '';
+    }
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      const h = headers[colNumber];
+      if (h !== undefined && h !== '') {
+        obj[String(h)] = getCellValue(cell);
+      }
+    });
+    rows.push(obj);
+  });
+
+  return rows;
+}
+
+/**
+ * Normalise an ExcelJS cell value to a plain JS primitive.
+ * Formula cells return their cached result; null/undefined return ''.
+ */
+function getCellValue(cell) {
+  const v = cell.value;
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') {
+    if (v instanceof Date) return v;
+    if ('result' in v) return v.result ?? '';
+    if ('richText' in v) return v.richText.map(t => t.text).join('');
+    return String(v);
+  }
+  return v;
 }
 
 /**

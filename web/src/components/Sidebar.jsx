@@ -17,6 +17,15 @@ export default function Sidebar({
   onOwnerFilterChange,
   statusFilter,
   onStatusFilterChange,
+  priorityFilter,
+  onPriorityFilterChange,
+  tagFilter,
+  onTagFilterChange,
+  allTags,
+  dueDateFilter,
+  onDueDateFilterChange,
+  searchTerm,
+  onSearchTermChange,
   reminders
 }) {
   const currentModuleId = questions[currentIndex]?.moduleId;
@@ -99,11 +108,22 @@ export default function Sidebar({
       </div>
 
       <div className="sidebar-month">
+        <label>Search</label>
+        <input
+          type="text"
+          value={searchTerm || ""}
+          onChange={(e) => onSearchTermChange(e.target.value)}
+          placeholder="Question, area, notes…"
+          style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, boxSizing: "border-box" }}
+        />
+      </div>
+
+      <div className="sidebar-month">
         <label>Assessment month</label>
         <select value={month} onChange={(e) => onMonthChange(e.target.value)}>
           {(() => {
             const options = [];
-            for (let year = 2026; year >= 2023; year--) {
+            for (let year = new Date().getFullYear() + 1; year >= 2023; year--) {
               for (let m = 12; m >= 1; m--) {
                 const value = `${year}-${String(m).padStart(2, '0')}`;
                 const date = new Date(value + '-01');
@@ -140,21 +160,59 @@ export default function Sidebar({
         </select>
       </div>
 
+      <div className="sidebar-month">
+        <label>Filter by priority</label>
+        <select value={priorityFilter} onChange={(e) => onPriorityFilterChange(e.target.value)}>
+          <option value="">All priorities</option>
+          <option value="Critical">Critical</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+        </select>
+      </div>
+
+      <div className="sidebar-month">
+        <label>Filter by tag</label>
+        <select value={tagFilter} onChange={(e) => onTagFilterChange(e.target.value)}>
+          <option value="">All tags</option>
+          {(allTags || []).map(tag => (
+            <option key={tag} value={tag}>{tag}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="sidebar-month">
+        <label>Filter by due date</label>
+        <select value={dueDateFilter || ""} onChange={(e) => onDueDateFilterChange(e.target.value)}>
+          <option value="">All due dates</option>
+          <option value="DUE_OVERDUE">Overdue</option>
+          <option value="DUE_TODAY">Due Today</option>
+          <option value="DUE_THIS_WEEK">Due This Week</option>
+          <option value="NO_DUE_DATE">No Due Date</option>
+        </select>
+      </div>
+
       <nav className="module-nav">
         {modules.map((module) => {
           const moduleStats = getModuleStats(module.moduleId);
           const isActive = currentModuleId === module.moduleId;
           const moduleQuests = questions.filter(q => q.moduleId === module.moduleId);
+          const isModuleLocked = !!module.blockedByDeps;
 
           return (
             <div key={module.moduleId} className="module-group">
               <button
                 className={`module-btn ${isActive ? "active" : ""}`}
                 onClick={() => onJumpToModule(module.moduleId)}
+                title={isModuleLocked ? "Module locked — complete prerequisite modules first" : undefined}
+                style={isModuleLocked ? { opacity: 0.55 } : undefined}
               >
                 <div className="module-dot"></div>
                 <div className="module-btn-text">
-                  <div className="module-id">{module.moduleId}</div>
+                  <div className="module-id" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    {isModuleLocked && <span style={{ fontSize: 10 }}>🔒</span>}
+                    {module.moduleId}
+                  </div>
                   <div className="module-name">{module.name}</div>
                 </div>
                 <div className="module-progress">
@@ -168,11 +226,14 @@ export default function Sidebar({
                     const hasReminder = reminders && reminders.some(r => (r.questId === quest.questId || r.quest_id === quest.questId));
                     const dotClass = getQuestionDot(quest.questId);
                     const statusClass = dotClass.replace('dot-', 'status-');
+                    const isBlocked = !!quest.blockedByDeps;
                     return (
                       <button
                         key={quest.questId}
                         className={`quest-nav-item ${statusClass} ${questIndex === currentIndex ? "active" : ""}`}
                         onClick={() => onJumpTo(questIndex)}
+                        title={isBlocked ? "Blocked — complete prerequisite questions first" : undefined}
+                        style={isBlocked ? { opacity: 0.5 } : undefined}
                       >
                         <div className={`quest-status-dot ${dotClass}`}></div>
                         <span className="quest-nav-text">
@@ -183,6 +244,7 @@ export default function Sidebar({
                               : quest.baselineQuestion
                             : quest.controlArea}
                         </span>
+                        {isBlocked && <span style={{ fontSize: 11, flexShrink: 0, marginLeft: 2 }}>🔒</span>}
                         {hasReminder && <span className="reminder-badge" title="Upcoming reminder">⏰</span>}
                       </button>
                     );

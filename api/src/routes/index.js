@@ -15,6 +15,10 @@ import reminderRoutes from "./reminders.js";
 import dpdpaRoutes from "./dpdpa.js";
 import contactRoutes from "./contact.js";
 import consentRoutes from "./consent.js";
+import vaultRoutes from "./vault.js";
+import requestRoutes from "./requests.js";
+import notificationRoutes from "./notifications.js";
+import marketplaceRoutes from "./marketplace.js";
 
 const router = Router();
 
@@ -34,6 +38,10 @@ router.use("/reminders", reminderRoutes);
 router.use("/dpdpa", dpdpaRoutes);
 router.use("/contact", contactRoutes);
 router.use("/consent", consentRoutes);
+router.use("/vault", vaultRoutes);
+router.use("/requests", requestRoutes);
+router.use("/notifications", notificationRoutes);
+router.use("/marketplace", marketplaceRoutes);
 
 // Alias /api/prefs/version for the consent version endpoint — avoids ad-blocker filter lists
 // that block URLs matching "consent" or "cookie"

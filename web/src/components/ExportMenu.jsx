@@ -16,13 +16,13 @@ function downloadCSV(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-export default function ExportMenu({ stats }) {
+export default function ExportMenu({ stats, company }) {
   const [open, setOpen] = useState(false);
 
   const exportCSV = () => {
     const { overall, moduleCompletion, evidenceCoverage, actionStatus, answerDistribution } = stats;
     const rows = [
-      ["ISO 27001 Compliance Report", new Date().toLocaleDateString()],
+      [`${company?.name || "Compliance"} Report`, new Date().toLocaleDateString()],
       [],
       ["COMPLETION METRICS"],
       ["Total Questions", "Assessed", "Finished"],

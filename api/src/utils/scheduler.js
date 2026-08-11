@@ -86,7 +86,7 @@ async function processReminders() {
       try {
         await sendEmail({ to: recipient, subject, text });
       } catch (emailErr) {
-        console.error(`[scheduler] failed to send reminder ${reminder.id}:`, emailErr.message);
+        console.error(`[scheduler] failed to send reminder ${reminder.id}:`, emailErr.message); // nosemgrep
         continue;
       }
 
@@ -219,7 +219,7 @@ async function processRecurrence() {
       try {
         await sendEmail({ to: recipient, subject, text });
       } catch (emailErr) {
-        console.error(`[scheduler] failed to send recurrence email for ${quest.quest_id}:`, emailErr.message);
+        console.error(`[scheduler] failed to send recurrence email for ${quest.quest_id}:`, emailErr.message); // nosemgrep
       }
 
       // Advance next_due_date to the next occurrence

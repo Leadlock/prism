@@ -4,6 +4,7 @@ import { mapRow, mapRows, query } from "../db/index.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/roles.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { sanitiseText } from "../utils/sanitise.js";
 
 const router = Router();
 
@@ -51,8 +52,34 @@ router.post("/invite", authenticate, requireRole(["ADMIN"]), asyncHandler(async 
 
   res.status(201).json({
     invitation,
-    inviteLink: `${process.env.WEB_URL || "http://localhost:5173"}/accept-invite/${token}`
+    inviteLink: `${process.env.WEB_URL || req.headers.origin || "http://localhost:5173"}/accept-invite/${token}`
   });
+}));
+
+// PUT /api/users/me — update own profile fields
+router.put("/me", authenticate, asyncHandler(async (req, res) => {
+  const { fullName, department, jobTitle } = req.body;
+  const cleanName  = sanitiseText(fullName, 200);
+  const cleanDept  = sanitiseText(department, 200);
+  const cleanTitle = sanitiseText(jobTitle, 200);
+  const updates = [];
+  const values = [];
+
+  if (fullName   !== undefined) { values.push(cleanName);  updates.push(`full_name = $${values.length}`); }
+  if (department !== undefined) { values.push(cleanDept);  updates.push(`department = $${values.length}`); }
+  if (jobTitle   !== undefined) { values.push(cleanTitle); updates.push(`job_title = $${values.length}`); }
+
+  if (updates.length === 0) return res.status(400).json({ error: "No fields to update" });
+
+  values.push(new Date()); updates.push(`updated_at = $${values.length}`);
+  values.push(req.user.userId);
+
+  const result = await query(
+    `UPDATE users SET ${updates.join(", ")} WHERE id = $${values.length} RETURNING id, email, role, full_name, department, job_title`,
+    values
+  );
+
+  res.json(mapRow(result));
 }));
 
 router.put("/:id", authenticate, requireRole(["ADMIN"]), asyncHandler(async (req, res) => {

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
+import DependencySelect from "../components/DependencySelect.jsx";
+import { TECH_CATEGORIES } from "../utils/techCategories.js";
 
 const ROLE_OPTIONS = ["ADMIN", "LEAD", "CONTRIBUTOR", "VIEWER"];
 const RECURRENCE_OPTIONS = ["weekly", "fortnightly", "monthly", "quarterly", "semi-annual", "annual", "none"];
+const PRIORITY_OPTIONS = ["Critical", "High", "Medium", "Low"];
 
 const PLAN_FEATURES = {
   lite:       ["Single framework", "Up to 5 users", "Evidence upload", "Basic dashboard", "10 hrs guided support"],
@@ -193,8 +196,31 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
   const [reminderOffsets, setReminderOffsets] = useState([7, 14, 30]);
   const [newOffset, setNewOffset] = useState("");
   const [questions, setQuestions] = useState([]);
+  const [modules, setModules] = useState([]);
   const [recurrenceEdits, setRecurrenceEdits] = useState({});
 
+  // Question dependencies management state
+  const [depsManaging, setDepsManaging] = useState(null);
+  const [depsCurrent, setDepsCurrent] = useState([]);
+  const [depsEdited, setDepsEdited] = useState(null);
+  const [depsLoading, setDepsLoading] = useState(false);
+  const [depsError, setDepsError] = useState("");
+  const [depsSaving, setDepsSaving] = useState(false);
+
+  // Module dependencies management state
+  const [modDepsManaging, setModDepsManaging] = useState(null);
+  const [modDepsCurrent, setModDepsCurrent] = useState([]);
+  const [modDepsEdited, setModDepsEdited] = useState(null);
+  const [modDepsLoading, setModDepsLoading] = useState(false);
+  const [modDepsError, setModDepsError] = useState("");
+  const [modDepsSaving, setModDepsSaving] = useState(false);
+
+  // Tech stack state
+  const [techStack, setTechStack] = useState({});
+  const [techStackSaving, setTechStackSaving] = useState(false);
+  const [techStackMsg, setTechStackMsg] = useState("");
+
+  const [section, setSection] = useState("invite");
   const baseUrl = useMemo(() => window.location.origin, []);
 
   useEffect(() => {
@@ -205,20 +231,38 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
     setLoading(true);
     setError("");
     try {
-      const [usersData, invitesData, settingsData, questionsData] = await Promise.all([
+      const [usersData, invitesData, settingsData, questionsData, modulesData, techStackData] = await Promise.all([
         apiFetch("/api/users", { token }),
         apiFetch("/api/users/invitations", { token }),
         apiFetch("/api/reminders/settings", { token }),
-        apiFetch("/api/questions", { token })
+        apiFetch("/api/questions", { token }),
+        apiFetch("/api/modules", { token }),
+        apiFetch("/api/settings/tech-stack", { token }),
       ]);
       setUsers(usersData);
       setInvitations(invitesData);
       setReminderOffsets(settingsData.defaultReminderOffsets || [7, 14, 30]);
       setQuestions(questionsData || []);
+      setModules(modulesData || []);
+      setTechStack(techStackData || {});
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveTechStack = async () => {
+    setTechStackSaving(true);
+    setTechStackMsg("");
+    try {
+      await apiFetch("/api/settings/tech-stack", { token, method: "PUT", body: techStack });
+      setTechStackMsg("Saved");
+      setTimeout(() => setTechStackMsg(""), 2500);
+    } catch (err) {
+      setTechStackMsg(err.message || "Save failed");
+    } finally {
+      setTechStackSaving(false);
     }
   };
 
@@ -235,7 +279,9 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
       });
       setInviteEmail("");
       setInviteRole("CONTRIBUTOR");
-      setInviteLink(result.inviteLink || "");
+      // Build invite link from current origin — never rely on backend URL
+      const invToken = result.invitation?.token || result.token || "";
+      setInviteLink(invToken ? `${baseUrl}/accept-invite/${invToken}` : (result.inviteLink || ""));
       await loadData();
     } catch (err) {
       setError(err.message);
@@ -314,6 +360,82 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
     }
   };
 
+  // Dependency handlers
+  const openDepsManager = async (questId) => {
+    setDepsManaging(questId);
+    setDepsEdited(null);
+    setDepsError("");
+    setDepsLoading(true);
+    try {
+      const data = await apiFetch(`/api/questions/${questId}/dependencies`, { token });
+      setDepsCurrent((data || []).map(d => d.questId));
+    } catch (err) {
+      setDepsError(err.message);
+    } finally {
+      setDepsLoading(false);
+    }
+  };
+
+  const saveDeps = async () => {
+    if (!depsManaging || depsEdited === null) return;
+    setDepsSaving(true);
+    setDepsError("");
+    try {
+      await apiFetch(`/api/questions/${depsManaging}/dependencies`, {
+        token,
+        method: "PUT",
+        body: JSON.stringify({ dependsOn: depsEdited }),
+      });
+      setDepsManaging(null);
+      setDepsEdited(null);
+      setDepsCurrent([]);
+      const questionsData = await apiFetch("/api/questions", { token });
+      setQuestions(questionsData || []);
+    } catch (err) {
+      setDepsError(err.message);
+    } finally {
+      setDepsSaving(false);
+    }
+  };
+
+  // Module dependency handlers
+  const openModDepsManager = async (moduleId) => {
+    setModDepsManaging(moduleId);
+    setModDepsEdited(null);
+    setModDepsError("");
+    setModDepsLoading(true);
+    try {
+      const data = await apiFetch(`/api/modules/${encodeURIComponent(moduleId)}/dependencies`, { token });
+      setModDepsCurrent((data || []).map(d => d.module_id));
+    } catch (err) {
+      setModDepsError(err.message);
+    } finally {
+      setModDepsLoading(false);
+    }
+  };
+
+  const saveModDeps = async () => {
+    if (!modDepsManaging || modDepsEdited === null) return;
+    setModDepsSaving(true);
+    setModDepsError("");
+    try {
+      await apiFetch(`/api/modules/${encodeURIComponent(modDepsManaging)}/dependencies`, {
+        token,
+        method: "PUT",
+        body: { dependsOn: modDepsEdited },
+      });
+      setModDepsManaging(null);
+      setModDepsEdited(null);
+      setModDepsCurrent([]);
+      const modulesData = await apiFetch("/api/modules", { token });
+      setModules(modulesData || []);
+    } catch (err) {
+      setModDepsError(err.message);
+    } finally {
+      setModDepsSaving(false);
+    }
+  };
+
   // Recurrence handlers
   const handleRecurrenceChange = (questId, field, value) => {
     setRecurrenceEdits(prev => ({
@@ -326,26 +448,57 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
     const edits = recurrenceEdits[questId];
     if (!edits) return;
     try {
-      await apiFetch(`/api/questions/${questId}/recurrence`, {
-        token,
-        method: "PUT",
-        body: JSON.stringify({
-          recurrenceInterval: edits.recurrenceInterval,
-          nextDueDate: edits.nextDueDate || null
-        })
-      });
+      if (edits.recurrenceInterval !== undefined || edits.nextDueDate !== undefined) {
+        await apiFetch(`/api/questions/${questId}/recurrence`, {
+          token,
+          method: "PUT",
+          body: JSON.stringify({
+            recurrenceInterval: edits.recurrenceInterval,
+            nextDueDate: edits.nextDueDate || null
+          })
+        });
+      }
+      if (edits.priority !== undefined || edits.dueDate !== undefined) {
+        const body = {};
+        if (edits.priority !== undefined) body.priority = edits.priority;
+        if (edits.dueDate !== undefined) body.dueDate = edits.dueDate || null;
+        await apiFetch(`/api/questions/${questId}`, {
+          token,
+          method: "PUT",
+          body: JSON.stringify(body)
+        });
+      }
       setRecurrenceEdits(prev => {
         const copy = { ...prev };
         delete copy[questId];
         return copy;
       });
-      // Refresh questions to show updated values
       const questionsData = await apiFetch("/api/questions", { token });
       setQuestions(questionsData || []);
     } catch (err) {
       setError(err.message);
     }
   };
+
+  const NAV_ITEMS = [
+    { key: "invite",      label: "Invite Member" },
+    { key: "members",     label: "Team" },
+    { key: "reminders",   label: "Reminders" },
+    { key: "recurrence",  label: "Recurrence" },
+    { key: "module-deps", label: "Module Order" },
+    { key: "tech-stack",  label: "Tech Stack" },
+    { key: "billing",     label: "Billing & Plan" },
+  ];
+
+  const navBtnStyle = (key) => ({
+    display: "block", width: "100%", textAlign: "left",
+    padding: "9px 14px", border: "none", borderRadius: 8,
+    background: section === key ? "rgba(99,102,241,0.12)" : "transparent",
+    color: section === key ? "var(--accent)" : "var(--text2)",
+    fontWeight: section === key ? 600 : 400,
+    cursor: "pointer", fontSize: 13, marginBottom: 2,
+    transition: "background 0.15s, color 0.15s",
+  });
 
   if (loading) {
     return (
@@ -378,199 +531,439 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
 
         {error && <p className="error-text">{error}</p>}
 
-        <section className="admin-section">
-          <h2>Invite a team member</h2>
-          <form className="invite-form" onSubmit={handleInvite}>
-            <div className="form-group">
-              <label htmlFor="inviteEmail">Email</label>
-              <input
-                id="inviteEmail"
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="inviteRole">Role</label>
-              <select
-                id="inviteRole"
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value)}
-              >
-                {ROLE_OPTIONS.map((role) => (
-                  <option key={role} value={role}>{role}</option>
-                ))}
-              </select>
-            </div>
-            <button type="submit" className="btn btn-primary">Create invite</button>
-          </form>
-          {inviteLink && (
-            <div className="invite-link">
-              <span>Invite link</span>
-              <div className="invite-link-row">
-                <input type="text" readOnly value={inviteLink} />
-                <button className="btn btn-ghost" onClick={() => copyInviteLink(inviteLink)}>Copy</button>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section className="admin-section">
-          <h2>Team members</h2>
-          <div className="admin-table">
-            <div className="admin-row admin-row-header">
-              <span>Email</span>
-              <span>Role</span>
-              <span>Actions</span>
-            </div>
-            {users.map((u) => {
-              const isSelf = user && u.id === user.userId;
-              return (
-              <div key={u.id} className="admin-row">
-                <span>{u.email}</span>
-                <span>
-                  <select
-                    value={u.role}
-                    onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                    disabled={isSelf}
-                    title={isSelf ? "Cannot change your own role" : ""}
-                  >
-                    {ROLE_OPTIONS.map((role) => (
-                      <option key={role} value={role}>{role}</option>
-                    ))}
-                    {u.role === "AUDITOR" && <option value="AUDITOR">AUDITOR</option>}
-                  </select>
-                </span>
-                <span>
-                  <button className="btn btn-ghost" onClick={() => handleDeleteUser(u.id)}>Remove</button>
-                </span>
-              </div>
-            );
-            })}
-            {users.length === 0 && (
-              <div className="admin-row admin-row-empty">
-                <span>No users yet.</span>
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="admin-section">
-          <h2>Pending invitations</h2>
-          <div className="admin-table">
-            <div className="admin-row admin-row-header admin-row-four">
-              <span>Email</span>
-              <span>Role</span>
-              <span>Invite link</span>
-              <span>Actions</span>
-            </div>
-            {invitations.map((invite) => {
-              const inviteUrl = `${baseUrl}/accept-invite/${invite.token}`;
-              return (
-                <div key={invite.id} className="admin-row admin-row-four">
-                  <span>{invite.email}</span>
-                  <span>{invite.role}</span>
-                  <span className="invite-url">{inviteUrl}</span>
-                  <span>
-                    <button className="btn btn-ghost" onClick={() => copyInviteLink(inviteUrl)}>Copy</button>
-                    <button className="btn btn-ghost" onClick={() => handleCancelInvite(invite.id)}>Cancel</button>
-                  </span>
-                </div>
-              );
-            })}
-            {invitations.length === 0 && (
-              <div className="admin-row admin-row-empty">
-                <span>No pending invitations.</span>
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="admin-section">
-          <h2>Reminder settings</h2>
-          <p style={{ color: "var(--text2)", marginBottom: 12, fontSize: 13 }}>
-            Default reminder offsets (days before due date). These apply automatically when an action is created for Partially Implemented, Planned, or Not Implemented answers.
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-            {reminderOffsets.map((days) => (
-              <span key={days} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--bg3)", border: "1px solid var(--border2)", borderRadius: 6, padding: "6px 12px", fontSize: 13 }}>
-                {days} day{days !== 1 ? "s" : ""} before
-                <button onClick={() => handleRemoveOffset(days)} style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>×</button>
-              </span>
+        <div style={{ display: "flex", gap: 0, alignItems: "flex-start" }}>
+          {/* Sidebar */}
+          <nav style={{ width: 176, flexShrink: 0, borderRight: "1px solid var(--border2)", paddingRight: 16, marginRight: 28, paddingTop: 4 }}>
+            {NAV_ITEMS.map(item => (
+              <button key={item.key} style={navBtnStyle(item.key)} onClick={() => setSection(item.key)}>
+                {item.label}
+              </button>
             ))}
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input
-              type="number"
-              min="1"
-              placeholder="Days"
-              value={newOffset}
-              onChange={(e) => setNewOffset(e.target.value)}
-              style={{ width: 80, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13 }}
-            />
-            <button className="btn btn-primary" onClick={handleAddOffset} style={{ padding: "8px 16px" }}>Add offset</button>
-          </div>
-        </section>
+          </nav>
 
-        <section className="admin-section">
-          <h2>Quest recurrence</h2>
-          <p style={{ color: "var(--text2)", marginBottom: 12, fontSize: 13 }}>
-            Set how often each question should be reassessed. Owners will be notified when a quest is due.
-          </p>
-          <div className="admin-table">
-            <div className="admin-row admin-row-header admin-row-four">
-              <span>Question</span>
-              <span>Recurrence</span>
-              <span>Next due</span>
-              <span>Actions</span>
-            </div>
-            {questions.map((q) => {
-              const edits = recurrenceEdits[q.questId] || {};
-              const interval = edits.recurrenceInterval !== undefined ? edits.recurrenceInterval : (q.recurrenceInterval || "monthly");
-              const nextDue = edits.nextDueDate !== undefined ? edits.nextDueDate : (q.nextDueDate ? q.nextDueDate.slice(0, 10) : "");
-              const hasChanges = edits.recurrenceInterval !== undefined || edits.nextDueDate !== undefined;
+          {/* Main content */}
+          <div style={{ flex: 1, minWidth: 0 }}>
 
-              return (
-                <div key={q.questId} className="admin-row admin-row-four">
-                  <span style={{ fontSize: 12 }} title={q.baselineQuestion}>{q.questId} - {q.controlArea}</span>
-                  <span>
+            {section === "invite" && (
+              <section className="admin-section">
+                <h2>Invite a team member</h2>
+                <form className="invite-form" onSubmit={handleInvite}>
+                  <div className="form-group">
+                    <label htmlFor="inviteEmail">Email</label>
+                    <input
+                      id="inviteEmail"
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="inviteRole">Role</label>
                     <select
-                      value={interval}
-                      onChange={(e) => handleRecurrenceChange(q.questId, "recurrenceInterval", e.target.value)}
-                      style={{ fontSize: 12, padding: "4px 6px", background: "var(--bg3)", border: "1px solid var(--border2)", color: "var(--text)", borderRadius: 4 }}
+                      id="inviteRole"
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value)}
                     >
-                      {RECURRENCE_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
+                      {ROLE_OPTIONS.map((role) => (
+                        <option key={role} value={role}>{role}</option>
                       ))}
                     </select>
-                  </span>
-                  <span>
-                    <input
-                      type="date"
-                      value={nextDue}
-                      onChange={(e) => handleRecurrenceChange(q.questId, "nextDueDate", e.target.value)}
-                      style={{ fontSize: 12, padding: "4px 6px", background: "var(--bg3)", border: "1px solid var(--border2)", color: "var(--text)", borderRadius: 4 }}
-                    />
-                  </span>
-                  <span>
-                    {hasChanges && (
-                      <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => saveRecurrence(q.questId)}>Save</button>
-                    )}
-                  </span>
-                </div>
-              );
-            })}
-            {questions.length === 0 && (
-              <div className="admin-row admin-row-empty">
-                <span>No questions loaded.</span>
-              </div>
+                  </div>
+                  <button type="submit" className="btn btn-primary">Create invite</button>
+                </form>
+                {inviteLink && (
+                  <div className="invite-link">
+                    <span>Invite link</span>
+                    <div className="invite-link-row">
+                      <input type="text" readOnly value={inviteLink} />
+                      <button className="btn btn-ghost" onClick={() => copyInviteLink(inviteLink)}>Copy</button>
+                    </div>
+                  </div>
+                )}
+              </section>
             )}
+
+            {section === "members" && (
+              <>
+                <section className="admin-section">
+                  <h2>Team members</h2>
+                  <div className="admin-table">
+                    <div className="admin-row admin-row-header">
+                      <span>Email</span>
+                      <span>Role</span>
+                      <span>Actions</span>
+                    </div>
+                    {users.map((u) => {
+                      const isSelf = user && u.id === user.userId;
+                      return (
+                        <div key={u.id} className="admin-row">
+                          <span>{u.email}</span>
+                          <span>
+                            <select
+                              value={u.role}
+                              onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                              disabled={isSelf}
+                              title={isSelf ? "Cannot change your own role" : ""}
+                            >
+                              {ROLE_OPTIONS.map((role) => (
+                                <option key={role} value={role}>{role}</option>
+                              ))}
+                              {u.role === "AUDITOR" && <option value="AUDITOR">AUDITOR</option>}
+                            </select>
+                          </span>
+                          <span>
+                            <button className="btn btn-ghost" onClick={() => handleDeleteUser(u.id)}>Remove</button>
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {users.length === 0 && (
+                      <div className="admin-row admin-row-empty"><span>No users yet.</span></div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="admin-section">
+                  <h2>Pending invitations</h2>
+                  <div className="admin-table">
+                    <div className="admin-row admin-row-header admin-row-four">
+                      <span>Email</span>
+                      <span>Role</span>
+                      <span>Invite link</span>
+                      <span>Actions</span>
+                    </div>
+                    {invitations.map((invite) => {
+                      const inviteUrl = `${baseUrl}/accept-invite/${invite.token}`;
+                      return (
+                        <div key={invite.id} className="admin-row admin-row-four">
+                          <span>{invite.email}</span>
+                          <span>{invite.role}</span>
+                          <span className="invite-url">{inviteUrl}</span>
+                          <span>
+                            <button className="btn btn-ghost" onClick={() => copyInviteLink(inviteUrl)}>Copy</button>
+                            <button className="btn btn-ghost" onClick={() => handleCancelInvite(invite.id)}>Cancel</button>
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {invitations.length === 0 && (
+                      <div className="admin-row admin-row-empty"><span>No pending invitations.</span></div>
+                    )}
+                  </div>
+                </section>
+              </>
+            )}
+
+            {section === "reminders" && (
+              <section className="admin-section">
+                <h2>Reminder settings</h2>
+                <p style={{ color: "var(--text2)", marginBottom: 12, fontSize: 13 }}>
+                  Default reminder offsets (days before due date). These apply automatically when an action is created for Partially Implemented, Planned, or Not Implemented answers.
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                  {reminderOffsets.map((days) => (
+                    <span key={days} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--bg3)", border: "1px solid var(--border2)", borderRadius: 6, padding: "6px 12px", fontSize: 13 }}>
+                      {days} day{days !== 1 ? "s" : ""} before
+                      <button onClick={() => handleRemoveOffset(days)} style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Days"
+                    value={newOffset}
+                    onChange={(e) => setNewOffset(e.target.value)}
+                    style={{ width: 80, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13 }}
+                  />
+                  <button className="btn btn-primary" onClick={handleAddOffset} style={{ padding: "8px 16px" }}>Add offset</button>
+                </div>
+              </section>
+            )}
+
+            {section === "recurrence" && (
+              <section className="admin-section">
+                <h2>Quest recurrence</h2>
+                <p style={{ color: "var(--text2)", marginBottom: 12, fontSize: 13 }}>
+                  Set how often each question should be reassessed and optionally a hard audit deadline.
+                </p>
+                <div className="admin-table">
+                  <div className="admin-row admin-row-header" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr" }}>
+                    <span>Question</span>
+                    <span>Priority</span>
+                    <span>Recurrence</span>
+                    <span>Audit deadline</span>
+                    <span>Actions</span>
+                    <span>Deps</span>
+                  </div>
+                  {questions.map((q) => {
+                    const edits = recurrenceEdits[q.questId] || {};
+                    const priority = edits.priority !== undefined ? edits.priority : (q.priority || "Medium");
+                    const interval = edits.recurrenceInterval !== undefined ? edits.recurrenceInterval : (q.recurrenceInterval || "monthly");
+                    const hasChanges = edits.priority !== undefined || edits.recurrenceInterval !== undefined || edits.dueDate !== undefined;
+
+                    return (
+                      <div key={q.questId} className="admin-row" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr" }}>
+                        <span style={{ fontSize: 12 }} title={q.baselineQuestion}>{q.questId} - {q.controlArea}</span>
+                        <span>
+                          <select
+                            value={priority}
+                            onChange={(e) => handleRecurrenceChange(q.questId, "priority", e.target.value)}
+                            style={{ fontSize: 12, padding: "4px 6px", background: "var(--bg3)", border: "1px solid var(--border2)", color: "var(--text)", borderRadius: 4 }}
+                          >
+                            {PRIORITY_OPTIONS.map((opt) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        </span>
+                        <span>
+                          <select
+                            value={interval}
+                            onChange={(e) => handleRecurrenceChange(q.questId, "recurrenceInterval", e.target.value)}
+                            style={{ fontSize: 12, padding: "4px 6px", background: "var(--bg3)", border: "1px solid var(--border2)", color: "var(--text)", borderRadius: 4 }}
+                          >
+                            {RECURRENCE_OPTIONS.map((opt) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        </span>
+                        <span>
+                          <input
+                            type="date"
+                            title="Hard deadline for compliance / audit purposes"
+                            value={edits.dueDate !== undefined ? (edits.dueDate || "") : (q.dueDate ? q.dueDate.slice(0, 10) : "")}
+                            onChange={(e) => handleRecurrenceChange(q.questId, "dueDate", e.target.value)}
+                            style={{ fontSize: 12, padding: "4px 6px", background: "var(--bg3)", border: "1px solid var(--border2)", color: "var(--text)", borderRadius: 4 }}
+                          />
+                        </span>
+                        <span>
+                          {hasChanges && (
+                            <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => saveRecurrence(q.questId)}>Save</button>
+                          )}
+                        </span>
+                        <span>
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 11, padding: "3px 8px" }}
+                            onClick={() => openDepsManager(q.questId)}
+                          >
+                            {q.dependencyCount > 0 ? `${q.dependencyCount} dep${q.dependencyCount !== 1 ? "s" : ""}` : "Set deps"}
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {questions.length === 0 && (
+                    <div className="admin-row admin-row-empty"><span>No questions loaded.</span></div>
+                  )}
+                </div>
+
+                {/* Dependencies modal */}
+                {depsManaging && (
+                  <div
+                    style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center" }}
+                    onClick={() => { setDepsManaging(null); setDepsEdited(null); setDepsError(""); }}
+                  >
+                    <div
+                      style={{ background: "var(--bg2)", borderRadius: 12, padding: 24, width: 480, maxWidth: "90vw", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                        <div style={{ fontWeight: 700, fontSize: 15 }}>
+                          Dependencies — <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>{depsManaging}</span>
+                        </div>
+                        <button
+                          style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 22, lineHeight: 1 }}
+                          onClick={() => { setDepsManaging(null); setDepsEdited(null); setDepsError(""); }}
+                        >×</button>
+                      </div>
+                      <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 12, marginTop: 0 }}>
+                        This question will be blocked until all selected questions are answered.
+                      </p>
+                      {depsLoading ? (
+                        <p style={{ fontSize: 13, color: "var(--text3)", margin: 0 }}>Loading...</p>
+                      ) : (
+                        <>
+                          <DependencySelect
+                            allQuestions={questions}
+                            value={depsEdited !== null ? depsEdited : depsCurrent}
+                            onChange={val => setDepsEdited(val)}
+                            selfQuestId={depsManaging}
+                          />
+                          {depsError && <p style={{ fontSize: 12, color: "var(--red)", marginTop: 8, marginBottom: 0 }}>{depsError}</p>}
+                          <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
+                            <button
+                              className="btn btn-ghost"
+                              style={{ fontSize: 12 }}
+                              onClick={() => { setDepsManaging(null); setDepsEdited(null); setDepsError(""); }}
+                            >Cancel</button>
+                            <button
+                              className="btn btn-primary"
+                              style={{ fontSize: 12 }}
+                              disabled={depsSaving || depsEdited === null}
+                              onClick={saveDeps}
+                            >
+                              {depsSaving ? "Saving..." : "Save"}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {section === "module-deps" && (
+              <section>
+                <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Module Order &amp; Dependencies</h2>
+                <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 20 }}>
+                  Lock a module behind one or more other modules. Users cannot answer questions in a locked module until all questions in its prerequisite modules are completed.
+                </p>
+
+                {modules.length === 0 && (
+                  <p style={{ color: "var(--text3)" }}>No modules found for your company.</p>
+                )}
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {modules.map(m => {
+                    const isManaging = modDepsManaging === m.moduleId;
+                    const currentDeps = isManaging
+                      ? (modDepsEdited !== null ? modDepsEdited : modDepsCurrent)
+                      : (m.depModuleIds || []);
+                    const otherModules = modules.filter(x => x.moduleId !== m.moduleId);
+
+                    return (
+                      <div key={m.moduleId} style={{
+                        border: "1px solid var(--border)", borderRadius: 8,
+                        background: "var(--bg3)", overflow: "hidden",
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}>
+                          {m.blockedByDeps && <span title="Locked">🔒</span>}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent2)", fontWeight: 600 }}>{m.moduleId}</div>
+                            <div style={{ fontSize: 13, color: "var(--text2)", marginTop: 1 }}>{m.name}</div>
+                          </div>
+                          {currentDeps.length > 0 && !isManaging && (
+                            <div style={{ fontSize: 11, color: "var(--text3)", flexShrink: 0 }}>
+                              requires: {currentDeps.join(", ")}
+                            </div>
+                          )}
+                          <button
+                            style={{ padding: "5px 12px", fontSize: 12, background: isManaging ? "var(--bg4)" : "var(--accent)", color: isManaging ? "var(--text2)" : "#fff", border: isManaging ? "1px solid var(--border)" : "none", borderRadius: 6, cursor: "pointer", flexShrink: 0 }}
+                            onClick={() => {
+                              if (isManaging) { setModDepsManaging(null); setModDepsEdited(null); setModDepsError(""); }
+                              else openModDepsManager(m.moduleId);
+                            }}
+                          >{isManaging ? "Cancel" : "Set deps"}</button>
+                        </div>
+
+                        {isManaging && (
+                          <div style={{ borderTop: "1px solid var(--border)", padding: "12px 14px", background: "var(--bg4)" }}>
+                            {modDepsLoading ? (
+                              <p style={{ fontSize: 13, color: "var(--text3)" }}>Loading…</p>
+                            ) : (
+                              <>
+                                <p style={{ fontSize: 12, color: "var(--text3)", margin: "0 0 10px" }}>
+                                  Select modules that must be 100% completed before <strong style={{ color: "var(--text)" }}>{m.moduleId}</strong> unlocks:
+                                </p>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                                  {otherModules.map(dep => {
+                                    const selected = currentDeps.includes(dep.moduleId);
+                                    return (
+                                      <button
+                                        key={dep.moduleId}
+                                        type="button"
+                                        onClick={() => {
+                                          const base = modDepsEdited !== null ? modDepsEdited : modDepsCurrent;
+                                          setModDepsEdited(
+                                            selected ? base.filter(id => id !== dep.moduleId) : [...base, dep.moduleId]
+                                          );
+                                        }}
+                                        style={{
+                                          padding: "4px 10px", fontSize: 11, borderRadius: 20, cursor: "pointer",
+                                          background: selected ? "var(--accent)" : "var(--bg3)",
+                                          color: selected ? "#fff" : "var(--text2)",
+                                          border: selected ? "1px solid var(--accent)" : "1px solid var(--border2)",
+                                          fontFamily: "var(--mono)",
+                                        }}
+                                      >{dep.moduleId}</button>
+                                    );
+                                  })}
+                                  {otherModules.length === 0 && (
+                                    <span style={{ fontSize: 12, color: "var(--text3)" }}>No other modules available.</span>
+                                  )}
+                                </div>
+                                {modDepsError && <p style={{ fontSize: 12, color: "var(--red)", margin: "0 0 8px" }}>{modDepsError}</p>}
+                                <button
+                                  style={{ padding: "6px 16px", fontSize: 12, background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", opacity: modDepsSaving ? 0.6 : 1 }}
+                                  disabled={modDepsSaving || modDepsEdited === null}
+                                  onClick={saveModDeps}
+                                >{modDepsSaving ? "Saving…" : "Save"}</button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {section === "tech-stack" && (
+              <section className="admin-section">
+                <h2>Technology Stack</h2>
+                <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 18 }}>
+                  Map the security and IT tools your organisation uses. AskTheChamp uses this to answer questions about your technology.
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 8, marginBottom: 20 }}>
+                  {TECH_CATEGORIES.map(cat => {
+                    const value = techStack[cat.id] || "";
+                    const filled = Boolean(value.trim());
+                    return (
+                      <div key={cat.id} style={{
+                        padding: "11px 14px", borderRadius: 10,
+                        background: filled ? "rgba(76,168,160,0.08)" : "var(--bg3)",
+                        boxShadow: filled ? "0 0 0 1px rgba(76,168,160,0.3)" : "var(--neu-inset-sm)",
+                        transition: "all 0.2s",
+                      }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
+                          <div style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: filled ? "#4CAF7D" : "var(--text3)", transition: "all 0.2s" }} />
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{cat.label}</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={value}
+                          onChange={e => setTechStack(prev => ({ ...prev, [cat.id]: e.target.value }))}
+                          placeholder={cat.placeholder}
+                          style={{ width: "100%", padding: "7px 10px", borderRadius: 7, border: "none", background: "var(--bg4)", color: "var(--text)", fontSize: 12, fontFamily: "var(--sans)", outline: "none", boxSizing: "border-box" }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <button className="btn btn-primary" onClick={saveTechStack} disabled={techStackSaving}>
+                    {techStackSaving ? "Saving…" : "Save Tech Stack"}
+                  </button>
+                  {techStackMsg && (
+                    <span style={{ fontSize: 13, color: techStackMsg === "Saved" ? "var(--green)" : "var(--red)" }}>
+                      {techStackMsg}
+                    </span>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {section === "billing" && (
+              <BillingSection company={company} user={user} />
+            )}
+
           </div>
-        </section>
-
-        <BillingSection company={company} user={user} />
-
+        </div>
       </div>
     </div>
   );

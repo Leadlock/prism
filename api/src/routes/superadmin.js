@@ -4,7 +4,6 @@ import { query, getClient } from "../db/index.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { deriveSortOrder } from "../utils/prismOrder.js";
 import multer from "multer";
-import XLSX from "xlsx";
 import fs from "fs";
 import path from "path";
 import { parseExcelImport } from "../utils/excelParser.js";
@@ -46,7 +45,7 @@ router.patch("/companies/:id/status", authenticate, requireSuperAdmin, asyncHand
   }
 
   const result = await query(
-    "UPDATE companies SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, domain, status",
+    "UPDATE companies SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, domain, status, template_id",
     [status, id]
   );
 
@@ -54,7 +53,66 @@ router.patch("/companies/:id/status", authenticate, requireSuperAdmin, asyncHand
     return res.status(404).json({ error: "Company not found" });
   }
 
-  res.json(result.rows[0]);
+  const company = result.rows[0];
+
+  // Auto-provision template when approving a company that has one assigned
+  let templateProvisioned = false;
+  if (status === "approved" && company.template_id) {
+    const tplResult = await query("SELECT * FROM module_templates WHERE id = $1", [company.template_id]);
+    if (tplResult.rows.length > 0) {
+      const template = tplResult.rows[0];
+      const modules = typeof template.module_data === "string" ? JSON.parse(template.module_data) : template.module_data;
+      const questions = typeof template.question_data === "string" ? JSON.parse(template.question_data) : template.question_data;
+      const tplClient = await getClient();
+      try {
+        await tplClient.query("BEGIN");
+        for (const mod of modules) {
+          const sortOrder = deriveSortOrder(mod.module_id);
+          await tplClient.query(
+            `INSERT INTO modules (module_id, company_id, name, primary_owner, frequency, total_quests, purpose, sort_order)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (company_id, module_id) DO NOTHING`,
+            [mod.module_id, company.id, mod.name, mod.primary_owner, mod.frequency, mod.total_quests, mod.purpose, sortOrder]
+          );
+        }
+        for (const q of questions) {
+          await tplClient.query(
+            `INSERT INTO questions (quest_id, company_id, module_id, module_name, control_area,
+             iso_reference, baseline_question, level3_yes_criteria, required_evidence,
+             default_owner, frequency, priority, tags)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (company_id, quest_id) DO NOTHING`,
+            [q.quest_id, company.id, q.module_id, q.module_name, q.control_area,
+             q.iso_reference, q.baseline_question, q.level3_yes_criteria,
+             q.required_evidence, q.default_owner, q.frequency, normPriority(q.priority), q.tags || null]
+          );
+        }
+        await tplClient.query("COMMIT");
+        templateProvisioned = true;
+      } catch (err) {
+        await tplClient.query("ROLLBACK");
+        console.error("[superadmin] Template provisioning failed:", err.message);
+      } finally {
+        tplClient.release();
+      }
+    }
+  }
+
+  res.json({ ...company, templateProvisioned });
+}));
+
+// PATCH /api/superadmin/companies/:id/reset-onboarding — re-show policy onboarding for this company's admin(s)
+router.patch("/companies/:id/reset-onboarding", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const result = await query(
+    "UPDATE users SET onboarding_completed = FALSE, updated_at = NOW() WHERE company_id = $1 AND role = 'ADMIN' RETURNING id",
+    [id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: "No admin users found for this company" });
+  }
+
+  res.json({ reset: true, usersUpdated: result.rows.length });
 }));
 
 // DELETE /api/superadmin/companies/:id — permanently delete a company and all its data
@@ -67,17 +125,27 @@ router.delete("/companies/:id", authenticate, requireSuperAdmin, asyncHandler(as
   }
   const companyName = companyCheck.rows[0].name;
 
-  // Delete in dependency order (children before parent)
-  await query("DELETE FROM reminders WHERE company_id = $1", [id]);
-  await query("DELETE FROM actions WHERE company_id = $1", [id]);
-  await query("DELETE FROM evidence WHERE company_id = $1", [id]);
-  await query("DELETE FROM assessments WHERE company_id = $1", [id]);
-  await query("DELETE FROM questions WHERE company_id = $1", [id]);
-  await query("DELETE FROM modules WHERE company_id = $1", [id]);
-  await query("DELETE FROM invitations WHERE company_id = $1", [id]);
-  await query("DELETE FROM auditor_profiles WHERE company_id = $1", [id]);
-  await query("DELETE FROM users WHERE company_id = $1", [id]);
-  await query("DELETE FROM companies WHERE id = $1", [id]);
+  // Delete in dependency order inside a transaction so partial failure leaves no orphans
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM reminders WHERE company_id = $1", [id]);
+    await client.query("DELETE FROM actions WHERE company_id = $1", [id]);
+    await client.query("DELETE FROM evidence WHERE company_id = $1", [id]);
+    await client.query("DELETE FROM assessments WHERE company_id = $1", [id]);
+    await client.query("DELETE FROM questions WHERE company_id = $1", [id]);
+    await client.query("DELETE FROM modules WHERE company_id = $1", [id]);
+    await client.query("DELETE FROM invitations WHERE company_id = $1", [id]);
+    await client.query("DELETE FROM auditor_profiles WHERE company_id = $1", [id]);
+    await client.query("DELETE FROM users WHERE company_id = $1", [id]);
+    await client.query("DELETE FROM companies WHERE id = $1", [id]);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 
   res.json({ deleted: true, companyName });
 }));
@@ -148,6 +216,61 @@ router.patch("/companies/:id/ai-toggle", authenticate, requireSuperAdmin, asyncH
   res.json({ companyId: parseInt(id), aiEnabled });
 }));
 
+// --- Logo multer (for company branding) ---
+const logoStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, process.env.UPLOAD_DIR || "./uploads"),
+  filename: (req, file, cb) => {
+    const suffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, "logo-" + suffix + path.extname(file.originalname));
+  }
+});
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Only image files are allowed"));
+  }
+});
+
+// POST /api/superadmin/companies/:id/logo — upload logo for a specific company
+router.post("/companies/:id/logo", authenticate, requireSuperAdmin, logoUpload.single("logo"), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  const logoUrl = `/uploads/${req.file.filename}`;
+  await query(
+    `INSERT INTO company_settings (company_id, logo_url)
+     VALUES ($1, $2)
+     ON CONFLICT (company_id) DO UPDATE SET logo_url = $2, updated_at = NOW()`,
+    [id, logoUrl]
+  );
+  res.json({ logoUrl });
+}));
+
+// PUT /api/superadmin/companies/:id/settings — update branding settings for a company
+router.put("/companies/:id/settings", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { primaryColor } = req.body;
+  await query(
+    `INSERT INTO company_settings (company_id, primary_color)
+     VALUES ($1, $2)
+     ON CONFLICT (company_id) DO UPDATE SET primary_color = $2, updated_at = NOW()`,
+    [id, primaryColor || null]
+  );
+  res.json({ success: true });
+}));
+
+// GET /api/superadmin/companies/:id/settings — get branding for a company
+router.get("/companies/:id/settings", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const result = await query(
+    "SELECT logo_url, primary_color FROM company_settings WHERE company_id = $1",
+    [id]
+  );
+  const row = result.rows[0];
+  res.json({ logoUrl: row?.logo_url || null, primaryColor: row?.primary_color || null });
+}));
+
 // --- Multer Configuration ---
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -167,12 +290,11 @@ const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (req, file, cb) => {
-    const allowedExts = ['.xlsx', '.xls'];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (allowedExts.includes(ext)) {
+    if (ext === '.xlsx') {
       cb(null, true);
     } else {
-      cb(new Error('Only .xlsx and .xls files are allowed'));
+      cb(new Error('Only .xlsx files are allowed'));
     }
   },
 });
@@ -191,10 +313,12 @@ router.post("/import-modules", authenticate, requireSuperAdmin, upload.single('f
 
   try {
     // Parse the Excel file
-    const parsed = parseExcelImport(filePath);
+    const parsed = await parseExcelImport(filePath);
 
-    // If no data at all and there are errors, return 400
-    if (parsed.modules.length === 0 && parsed.questions.length === 0 && parsed.errors.length > 0) {
+    const wantsTemplateOnly = (saveAsTemplate === 'true' || saveAsTemplate === true) && !companyId;
+
+    // If no data at all and there are errors, and we're not just saving a template, return 400
+    if (!wantsTemplateOnly && parsed.modules.length === 0 && parsed.questions.length === 0 && parsed.errors.length > 0) {
       return res.status(400).json({ errors: parsed.errors });
     }
 
@@ -233,13 +357,13 @@ router.post("/import-modules", authenticate, requireSuperAdmin, upload.single('f
         const insertResult = await client.query(
           `INSERT INTO questions (quest_id, company_id, module_id, module_name, control_area,
            iso_reference, baseline_question, level3_yes_criteria, required_evidence,
-           default_owner, frequency)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+           default_owner, frequency, priority, tags)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
            ON CONFLICT (company_id, quest_id) DO NOTHING
            RETURNING id`,
           [q.quest_id, companyId, q.module_id, q.module_name, q.control_area,
            q.iso_reference, q.baseline_question, q.level3_yes_criteria,
-           q.required_evidence, q.default_owner, q.frequency]
+           q.required_evidence, q.default_owner, q.frequency, normPriority(q.priority), q.tags || null]
         );
         if (insertResult.rows.length > 0) questionsInserted++;
       }
@@ -269,6 +393,26 @@ router.post("/import-modules", authenticate, requireSuperAdmin, upload.single('f
   }
 
   res.json(result);
+}));
+
+// POST /api/superadmin/preview-import — parse Excel and return mapping preview without inserting
+router.post("/preview-import", authenticate, requireSuperAdmin, upload.single('file'), asyncHandler(async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+  const filePath = req.file.path;
+  try {
+    const parsed = await parseExcelImport(filePath);
+    res.json({
+      modules: parsed.modules,
+      questions: parsed.questions,
+      errors: parsed.errors,
+      totalModules: parsed.modules.length,
+      totalQuestions: parsed.questions.length,
+    });
+  } finally {
+    try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch {}
+  }
 }));
 
 // GET /api/superadmin/templates — list all templates with module/question counts
@@ -348,13 +492,13 @@ router.post("/templates/:templateId/assign", authenticate, requireSuperAdmin, as
       const insertResult = await client.query(
         `INSERT INTO questions (quest_id, company_id, module_id, module_name, control_area,
          iso_reference, baseline_question, level3_yes_criteria, required_evidence,
-         default_owner, frequency)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         default_owner, frequency, priority, tags)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          ON CONFLICT (company_id, quest_id) DO NOTHING
          RETURNING id`,
         [q.quest_id, companyId, q.module_id, q.module_name, q.control_area,
          q.iso_reference, q.baseline_question, q.level3_yes_criteria,
-         q.required_evidence, q.default_owner, q.frequency]
+         q.required_evidence, q.default_owner, q.frequency, normPriority(q.priority), q.tags || null]
       );
       if (insertResult.rows.length > 0) questionCount++;
     }
@@ -506,13 +650,44 @@ router.delete("/companies/:id/modules/:moduleId", authenticate, requireSuperAdmi
   res.json({ deleted: true });
 }));
 
+const VALID_PRIORITIES = ["Critical", "High", "Medium", "Low"];
+const normPriority = (p) => (VALID_PRIORITIES.includes(p) ? p : "Medium");
+
+// GET /api/superadmin/companies/:id/questions — list questions for a company
+router.get("/companies/:id/questions", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const companyCheck = await query("SELECT id FROM companies WHERE id = $1", [id]);
+  if (companyCheck.rows.length === 0) {
+    return res.status(404).json({ error: "Company not found" });
+  }
+
+  const result = await query(
+    `SELECT q.*,
+       COALESCE((
+         SELECT COUNT(*)::INT FROM question_dependencies qd
+         WHERE qd.company_id = $1 AND qd.quest_id = q.quest_id
+       ), 0) AS dependency_count
+     FROM questions q
+     WHERE q.company_id = $1
+     ORDER BY q.quest_id ASC`,
+    [id]
+  );
+
+  res.json(result.rows);
+}));
+
 // POST /api/superadmin/companies/:id/questions — add single question
 router.post("/companies/:id/questions", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { questId, moduleId, moduleName, controlArea, isoReference, baselineQuestion, level3YesCriteria, requiredEvidence, defaultOwner, frequency } = req.body;
+  const { questId, moduleId, moduleName, controlArea, isoReference, baselineQuestion, level3YesCriteria, requiredEvidence, defaultOwner, frequency, priority, tags, dueDate } = req.body;
 
   if (!questId || !moduleId) {
     return res.status(400).json({ error: "questId and moduleId are required" });
+  }
+
+  if (priority && !VALID_PRIORITIES.includes(priority)) {
+    return res.status(400).json({ error: `priority must be one of: ${VALID_PRIORITIES.join(", ")}` });
   }
 
   // Verify module exists for company
@@ -525,10 +700,10 @@ router.post("/companies/:id/questions", authenticate, requireSuperAdmin, asyncHa
   }
 
   const result = await query(
-    `INSERT INTO questions (quest_id, company_id, module_id, module_name, control_area, iso_reference, baseline_question, level3_yes_criteria, required_evidence, default_owner, frequency)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `INSERT INTO questions (quest_id, company_id, module_id, module_name, control_area, iso_reference, baseline_question, level3_yes_criteria, required_evidence, default_owner, frequency, priority, tags, due_date)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING *`,
-    [questId, id, moduleId, moduleName || null, controlArea || null, isoReference || null, baselineQuestion || null, level3YesCriteria || null, requiredEvidence || null, defaultOwner || null, frequency || null]
+    [questId, id, moduleId, moduleName || null, controlArea || null, isoReference || null, baselineQuestion || null, level3YesCriteria || null, requiredEvidence || null, defaultOwner || null, frequency || null, normPriority(priority), tags || null, dueDate || null]
   );
 
   res.status(201).json(result.rows[0]);
@@ -548,6 +723,110 @@ router.delete("/companies/:id/questions/:questId", authenticate, requireSuperAdm
   }
 
   res.json({ deleted: true });
+}));
+
+// GET /api/superadmin/companies/:id/questions/:questId/dependencies
+router.get("/companies/:id/questions/:questId/dependencies", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { id, questId } = req.params;
+
+  const result = await query(
+    `WITH q_info AS (
+       SELECT DISTINCT ON (quest_id) quest_id, control_area, module_id
+       FROM questions
+       WHERE company_id = $1 OR company_id IS NULL
+       ORDER BY quest_id ASC, company_id ASC NULLS LAST
+     )
+     SELECT
+       qd.depends_on_quest_id AS dep_quest_id,
+       qi.control_area,
+       qi.module_id
+     FROM question_dependencies qd
+     LEFT JOIN q_info qi ON qi.quest_id = qd.depends_on_quest_id
+     WHERE qd.company_id = $1 AND qd.quest_id = $2
+     ORDER BY qd.depends_on_quest_id ASC`,
+    [id, questId]
+  );
+
+  res.json(result.rows.map(row => ({
+    questId: row.dep_quest_id,
+    controlArea: row.control_area,
+    moduleId: row.module_id,
+  })));
+}));
+
+// PUT /api/superadmin/companies/:id/questions/:questId/dependencies
+router.put("/companies/:id/questions/:questId/dependencies", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { id, questId } = req.params;
+  const { dependsOn = [] } = req.body;
+
+  if (!Array.isArray(dependsOn)) {
+    return res.status(400).json({ error: "dependsOn must be an array of quest IDs" });
+  }
+
+  const uniqueDeps = [...new Set(dependsOn)];
+
+  if (uniqueDeps.includes(questId)) {
+    return res.status(400).json({ error: "A question cannot depend on itself" });
+  }
+
+  const questCheck = await query(
+    "SELECT 1 FROM questions WHERE quest_id = $1 AND company_id = $2 LIMIT 1",
+    [questId, id]
+  );
+  if (questCheck.rows.length === 0) {
+    return res.status(404).json({ error: "Question not found" });
+  }
+
+  for (const depId of uniqueDeps) {
+    const depCheck = await query(
+      "SELECT 1 FROM questions WHERE quest_id = $1 AND (company_id = $2 OR company_id IS NULL) LIMIT 1",
+      [depId, id]
+    );
+    if (depCheck.rows.length === 0) {
+      return res.status(400).json({ error: `Dependency question not found: ${depId}` });
+    }
+  }
+
+  if (uniqueDeps.length > 0) {
+    const cycleResult = await query(
+      `WITH RECURSIVE reachable AS (
+         SELECT unnest($2::text[]) AS q
+         UNION
+         SELECT qd.depends_on_quest_id
+         FROM question_dependencies qd
+         INNER JOIN reachable r ON r.q = qd.quest_id
+         WHERE qd.company_id = $1 AND qd.quest_id != $3
+       )
+       SELECT 1 FROM reachable WHERE q = $3 LIMIT 1`,
+      [id, uniqueDeps, questId]
+    );
+    if (cycleResult.rows.length > 0) {
+      return res.status(400).json({ error: "Circular dependency detected: the requested dependencies would create a cycle" });
+    }
+  }
+
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "DELETE FROM question_dependencies WHERE company_id = $1 AND quest_id = $2",
+      [id, questId]
+    );
+    for (const depId of uniqueDeps) {
+      await client.query(
+        "INSERT INTO question_dependencies (company_id, quest_id, depends_on_quest_id) VALUES ($1, $2, $3)",
+        [id, questId, depId]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  res.json({ questId, dependsOn: uniqueDeps });
 }));
 
 export default router;

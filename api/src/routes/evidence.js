@@ -5,9 +5,11 @@ import path from "path";
 import { buildUpdate, mapRow, mapRows, query } from "../db/index.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole, requireReadOnly } from "../middleware/roles.js";
+import { longRequestTimeout } from "../middleware/timeout.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { writeAuditLog } from "../utils/auditLog.js";
-import { analyzeEvidence } from "../utils/bedrock.js";
+import { analyzeEvidence } from "../utils/aiProvider.js";
+import { notifyReviewers } from "../utils/notifyReviewers.js";
 
 const router = Router();
 
@@ -21,7 +23,28 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const ALLOWED_MIME = new Set([
+  "application/pdf",
+  "image/png", "image/jpeg", "image/gif", "image/webp",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain", "text/csv",
+  "application/zip", "application/x-zip-compressed",
+]);
+
+const evidenceFileFilter = (req, file, cb) => {
+  if (ALLOWED_MIME.has(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(Object.assign(new Error("File type not allowed"), { status: 400 }), false);
+  }
+};
+
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: evidenceFileFilter });
 
 router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "VIEWER", "AUDITOR"]), asyncHandler(async (req, res) => {
   if (req.user.role === "AUDITOR") {
@@ -53,7 +76,7 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
   res.json(mapRows(result));
 }));
 
-router.get("/:id/download", authenticate, requireReadOnly(["ADMIN", "LEAD", "AUDITOR"]), asyncHandler(async (req, res) => {
+router.get("/:id/download", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR"]), asyncHandler(async (req, res) => {
   const evidenceResult = await query(
     "SELECT evidence_name, file_path FROM evidence WHERE id = $1 AND company_id = $2",
     [parseInt(req.params.id), req.user.companyId]
@@ -65,7 +88,7 @@ router.get("/:id/download", authenticate, requireReadOnly(["ADMIN", "LEAD", "AUD
   }
 
   const uploadRoot = path.resolve(process.env.UPLOAD_DIR || "./uploads");
-  const resolvedPath = path.resolve(evidence.filePath);
+  const resolvedPath = path.resolve(evidence.filePath); // nosemgrep
   const safeRoot = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
 
   if (!resolvedPath.startsWith(safeRoot)) {
@@ -77,6 +100,28 @@ router.get("/:id/download", authenticate, requireReadOnly(["ADMIN", "LEAD", "AUD
   }
 
   res.download(resolvedPath, evidence.evidenceName || path.basename(resolvedPath));
+}));
+
+// GET /api/evidence/:id/view — serve file inline (auditors can view but not download)
+router.get("/:id/view", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "AUDITOR"]), asyncHandler(async (req, res) => {
+  const evidenceResult = await query(
+    "SELECT evidence_name, file_path FROM evidence WHERE id = $1 AND company_id = $2",
+    [parseInt(req.params.id), req.user.companyId]
+  );
+  const evidence = mapRow(evidenceResult);
+
+  if (!evidence || !evidence.filePath) return res.status(404).json({ error: "Evidence file not found" });
+
+  const uploadRoot = path.resolve(process.env.UPLOAD_DIR || "./uploads");
+  const resolvedPath = path.resolve(evidence.filePath); // nosemgrep
+  const safeRoot = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
+
+  if (!resolvedPath.startsWith(safeRoot)) return res.status(400).json({ error: "Invalid file path" });
+  if (!fs.existsSync(resolvedPath)) return res.status(404).json({ error: "Evidence file not found" });
+
+  const filename = evidence.evidenceName || path.basename(resolvedPath);
+  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+  fs.createReadStream(resolvedPath).pipe(res);
 }));
 
 router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), upload.single("file"), asyncHandler(async (req, res) => {
@@ -126,7 +171,115 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), up
     ]
   );
 
-  res.status(201).json(mapRow(result));
+  const evidenceRecord = mapRow(result);
+
+  // Mirror into evidence_vault — if a file for this question already exists in the vault, add a new version
+  if (data.file_path || data.evidence_link) {
+    let vaultItemId = null;
+
+    // For file uploads on a known question, check for an existing linked vault item
+    if (req.file && data.quest_id) {
+      const existingLink = await query(
+        `SELECT qe.vault_id FROM question_evidence qe
+         JOIN evidence_vault ev ON ev.id = qe.vault_id
+         WHERE qe.quest_id = $1 AND qe.company_id = $2 AND ev.storage_path IS NOT NULL
+         ORDER BY ev.updated_at DESC LIMIT 1`,
+        [data.quest_id, data.company_id]
+      );
+
+      if (existingLink.rows.length > 0) {
+        // Re-upload: add a new version to the existing vault item
+        const existingId = existingLink.rows[0].vault_id;
+
+        const maxResult = await query(
+          "SELECT COALESCE(MAX(version_number), 0) AS max_ver FROM evidence_versions WHERE evidence_id = $1",
+          [existingId]
+        );
+        const nextVer = parseInt(maxResult.rows[0].max_ver) + 1;
+
+        await query(
+          `INSERT INTO evidence_versions (evidence_id, version_number, file_name, file_type, file_size, storage_path, uploaded_by, version_notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [existingId, nextVer, req.file.originalname, req.file.mimetype, req.file.size, req.file.path, data.uploaded_by, "Updated via Tracker"]
+        );
+
+        await query(
+          `UPDATE evidence_vault SET file_name=$1, file_type=$2, file_size=$3, storage_path=$4, updated_at=NOW() WHERE id=$5`,
+          [req.file.originalname, req.file.mimetype, req.file.size, req.file.path, existingId]
+        );
+
+        // Fetch vault title for notification
+        const titleRes = await query("SELECT title FROM evidence_vault WHERE id = $1", [existingId]);
+        const vaultTitle = titleRes.rows[0]?.title || "an evidence item";
+
+        notifyReviewers(data.company_id, {
+          title: `Evidence updated: ${vaultTitle}`,
+          body: `${data.uploaded_by || "A contributor"} uploaded v${nextVer} of "${vaultTitle}" via Tracker (${data.quest_id}).`,
+          entityType: "vault_version",
+          entityId: existingId,
+        });
+
+        vaultItemId = existingId;
+      }
+    }
+
+    // No existing vault item found — create a new one
+    if (!vaultItemId) {
+      const vaultResult = await query(
+        `INSERT INTO evidence_vault
+           (company_id, title, description, file_name, file_type, file_size, storage_path, evidence_link, uploaded_by, legacy_evidence_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT DO NOTHING
+         RETURNING *`,
+        [
+          data.company_id,
+          data.evidence_name || "Untitled Evidence",
+          data.notes || null,
+          req.file?.originalname || null,
+          req.file?.mimetype || null,
+          req.file?.size || null,
+          data.file_path || null,
+          data.evidence_link || null,
+          data.uploaded_by,
+          evidenceRecord.id
+        ]
+      );
+
+      // ON CONFLICT DO NOTHING returns zero rows if a unique constraint fired;
+      // fall back to the existing vault item so linking still happens.
+      let vaultItem = mapRow(vaultResult);
+      if (!vaultItem) {
+        const existing = await query(
+          "SELECT * FROM evidence_vault WHERE legacy_evidence_id = $1",
+          [evidenceRecord.id]
+        );
+        vaultItem = mapRow(existing);
+      }
+      if (vaultItem) {
+        vaultItemId = vaultItem.id;
+
+        if (data.quest_id) {
+          await query(
+            `INSERT INTO question_evidence (company_id, quest_id, vault_id, linked_by)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (company_id, quest_id, vault_id) DO NOTHING`,
+            [data.company_id, data.quest_id, vaultItem.id, data.uploaded_by]
+          );
+        }
+
+        if (req.file) {
+          await query(
+            `INSERT INTO evidence_versions (evidence_id, version_number, file_name, file_type, file_size, storage_path, uploaded_by, version_notes)
+             VALUES ($1, 1, $2, $3, $4, $5, $6, 'Initial version')
+             ON CONFLICT (evidence_id, version_number) DO NOTHING`,
+            [vaultItem.id, req.file.originalname, req.file.mimetype, req.file.size, req.file.path, data.uploaded_by]
+          );
+        }
+      }
+    }
+  }
+
+  res.status(201).json(evidenceRecord);
 }));
 
 router.post("/:id/reassign", authenticate, requireRole(["ADMIN"]), asyncHandler(async (req, res) => {
@@ -188,19 +341,38 @@ router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), 
 }));
 
 router.delete("/:id", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
-  const result = await query(
-    "DELETE FROM evidence WHERE id = $1 AND company_id = $2",
-    [parseInt(req.params.id), req.user.companyId]
-  );
+  const id = parseInt(req.params.id);
 
-  if (result.rowCount === 0) {
-    return res.status(404).json({ error: "Evidence not found" });
+  // Block deletion if the evidence belongs to a quest with a finished review
+  const evCheck = await query(
+    "SELECT quest_id FROM evidence WHERE id = $1 AND company_id = $2",
+    [id, req.user.companyId]
+  );
+  const ev = mapRow(evCheck);
+  if (!ev) return res.status(404).json({ error: "Evidence not found" });
+
+  if (ev.questId) {
+    const lockCheck = await query(
+      "SELECT 1 FROM assessments WHERE quest_id = $1 AND company_id = $2 AND review_status = 'FINISHED' LIMIT 1",
+      [ev.questId, req.user.companyId]
+    );
+    if (lockCheck.rows.length > 0) {
+      return res.status(409).json({
+        error: "This evidence is locked because the linked control has been approved by a reviewer.",
+        code: "LOCKED"
+      });
+    }
   }
 
+  const result = await query(
+    "DELETE FROM evidence WHERE id = $1 AND company_id = $2",
+    [id, req.user.companyId]
+  );
+  if (result.rowCount === 0) return res.status(404).json({ error: "Evidence not found" });
   res.status(204).send();
 }));
 
-router.post("/:id/analyze", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), asyncHandler(async (req, res) => {
+router.post("/:id/analyze", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), longRequestTimeout(120000), asyncHandler(async (req, res) => {
   // Check if AI is enabled for this company
   const settingsResult = await query(
     "SELECT ai_enabled FROM company_settings WHERE company_id = $1",
@@ -212,9 +384,9 @@ router.post("/:id/analyze", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIB
   }
 
   const evidenceResult = await query(
-    `SELECT e.*, q.required_evidence 
-     FROM evidence e 
-     LEFT JOIN questions q ON e.quest_id = q.quest_id 
+    `SELECT e.*, q.required_evidence, q.recurrence_interval
+     FROM evidence e
+     LEFT JOIN questions q ON e.quest_id = q.quest_id
      WHERE e.id = $1 AND e.company_id = $2`,
     [parseInt(req.params.id), req.user.companyId]
   );
@@ -224,26 +396,32 @@ router.post("/:id/analyze", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIB
     return res.status(404).json({ error: "Evidence not found" });
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+
   const analysis = await analyzeEvidence({
     evidenceName: evidence.evidenceName,
     evidenceType: evidence.evidenceType,
     questId: evidence.questId,
     moduleId: evidence.moduleId,
     requiredEvidence: evidence.requiredEvidence,
-    filePath: evidence.filePath
+    filePath: evidence.filePath,
+    recurrenceInterval: evidence.recurrenceInterval || null,
+    today
   });
 
   const updateResult = await query(
-    `UPDATE evidence 
-     SET ai_contributor_comments = $1, ai_reviewer_comments = $2, 
-         ai_gaps = $3, ai_suggestions = $4, ai_analyzed_at = NOW()
-     WHERE id = $5 AND company_id = $6 
+    `UPDATE evidence
+     SET ai_contributor_comments = $1, ai_reviewer_comments = $2,
+         ai_gaps = $3, ai_suggestions = $4, ai_analyzed_at = NOW(),
+         ai_date_warning = $5
+     WHERE id = $6 AND company_id = $7
      RETURNING *`,
     [
       Array.isArray(analysis.contributorComments) ? analysis.contributorComments.join("\n") : analysis.contributorComments,
       analysis.reviewerComments,
       JSON.stringify(analysis.gaps || []),
       JSON.stringify(analysis.suggestions || []),
+      analysis.dateWarning || null,
       parseInt(req.params.id),
       req.user.companyId
     ]

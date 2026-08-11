@@ -6,6 +6,8 @@ own tab for tool selection, data discovery, and control assessment.
 
 from __future__ import annotations
 
+import html
+import os
 import uuid
 from datetime import datetime, timezone
 
@@ -27,10 +29,47 @@ from prism_dpdp.services.recommendation_engine import RecommendationEngine
 from prism_dpdp.services.review_data import build_review_data
 
 import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
 BASE = os.environ.get("PRISM_BASE_URL", "")
 
+
+def _send_email(to: str, subject: str, text_body: str, html_body: str | None = None) -> bool:
+    """Send email via SMTP env vars. Returns True on success, False if skipped/failed."""
+    host = os.environ.get("SMTP_HOST", "")
+    if not host:
+        print(f"[email] SMTP_HOST not set — skipping email to {to}")
+        return False
+    port = int(os.environ.get("SMTP_PORT", 587))
+    user = os.environ.get("SMTP_USER", "")
+    password = os.environ.get("SMTP_PASSWORD", "")
+    from_addr = os.environ.get("EMAIL_FROM", user or "noreply@auditready.local")
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = from_addr
+        msg["To"] = to
+        msg.attach(MIMEText(text_body, "plain"))
+        if html_body:
+            msg.attach(MIMEText(html_body, "html"))
+        with smtplib.SMTP(host, port) as server:
+            server.ehlo()
+            if os.environ.get("SMTP_STARTTLS", "true").lower() == "true":
+                server.starttls()
+                server.ehlo()
+            if user and password:
+                server.login(user, password)
+            server.sendmail(from_addr, [to], msg.as_string())
+        return True
+    except Exception as exc:
+        print(f"[email] Failed to send to {to}: {exc}")
+        return False
+
 app = FastAPI(title="PRISM DPDP Governance Platform", docs_url="/api/docs")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+_cors_origins = [o.strip() for o in os.environ.get("DPDP_CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=_cors_origins, allow_methods=["GET", "POST"], allow_headers=["Content-Type", "Authorization"])
 store = AssessmentStore()
 engine = RecommendationEngine()
 
@@ -264,13 +303,46 @@ h4{{font-size:0.84rem;color:var(--accent);margin-bottom:4px;border-left:3px soli
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
-    content = """
-    <div class="card" style="text-align:center">
-        <h2>Welcome to PRISM</h2>
-        <p style="color:#6B7280;margin:10px 0 16px">Identify what personal data your organisation handles, where it lives, and what to do next — through guided checkboxes.</p>
-        <a href="/departments" class="btn">Start Assessment →</a>
+    user = store.load_user_info()
+    if user.get("email"):
+        resume_notice = f"""
+        <div style="background:rgba(76,168,160,0.10);border:1px solid rgba(76,168,160,0.3);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:0.85rem;color:var(--teal)">
+            ✅ Welcome back, <strong>{user.get('name', user['email'])}</strong>! Your progress is saved.
+            <a href="/departments" style="color:var(--accent);font-weight:600;margin-left:8px">Continue →</a>
+        </div>"""
+    else:
+        resume_notice = ""
+    content = f"""
+    {resume_notice}
+    <div class="card">
+        <h2 style="text-align:center">Welcome to PRISM</h2>
+        <p style="color:#6B7280;margin:8px 0 18px;text-align:center">Identify what personal data your organisation handles, where it lives, and what to do next — through guided checkboxes.</p>
+        <p style="font-size:0.84rem;color:var(--muted);margin-bottom:14px">Enter your details to save progress and receive the report by email when you're done.</p>
+        <form method="post" action="/">
+            <label class="fl">Full Name *</label>
+            <input type="text" name="name" placeholder="Jane Smith" value="{user.get('name','')}" required>
+            <label class="fl">Work Email *</label>
+            <input type="email" name="email" placeholder="jane@company.com" value="{user.get('email','')}" required>
+            <label class="fl">Company <span style="font-weight:400;color:var(--muted2)">(optional)</span></label>
+            <input type="text" name="company" placeholder="Acme Corp" value="{user.get('company','')}">
+            <button type="submit" class="btn" style="margin-top:16px;width:100%">Begin Assessment →</button>
+        </form>
+        <p style="font-size:0.75rem;color:var(--muted2);margin-top:10px;text-align:center">Your progress is saved in this browser session. Email is only used to send your report.</p>
     </div>"""
     return _page("Home", content)
+
+
+@app.post("/", response_class=HTMLResponse)
+async def home_post(request: Request):
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    email = (form.get("email") or "").strip()
+    company = (form.get("company") or "").strip()
+    if not name or not email:
+        content = """<div class="card"><p style="color:var(--red)">Name and email are required.</p><a href="/" class="btn">← Back</a></div>"""
+        return _page("Home", content)
+    store.save_user_info({"name": name, "email": email, "company": company})
+    return RedirectResponse(url=f"{BASE}/departments", status_code=303)
 
 
 # ─── Step 2: Department Selection ─────────────────────────────────────────────
@@ -1368,8 +1440,173 @@ async def review_page():
         <a href="/departments/heads" class="btn btn-secondary">← Heads</a>
         <a href="/it-review" class="btn btn-secondary">← IT Review</a>
         <a href="/dpdpa-assessment" class="btn">📜 DPDPA Assessment</a>
-    </div>"""
+    </div>
+    {_email_report_card(overall_score, pillar_scores)}"""
     return _page("Review", content, step="Step 5 of 5 — PRISM Review & Action Plan")
+
+
+def _email_report_card(overall_score: int, pillar_scores: dict) -> str:
+    user = store.load_user_info()
+    email = user.get("email", "")
+    color = "#22C55E" if overall_score >= 75 else "#F59E0B" if overall_score >= 40 else "#EF4444"
+    return f"""
+    <div class="card" style="margin-top:14px">
+        <h2>📧 Email My Report</h2>
+        <p style="color:#6B7280;font-size:0.84rem;margin-bottom:12px">Receive a summary of your DPDPA readiness assessment — scores, gaps, and action items — directly in your inbox.</p>
+        <form method="post" action="/email-report">
+            <label class="fl">Send to</label>
+            <input type="email" name="email" value="{email}" placeholder="your@email.com" required>
+            <button type="submit" class="btn btn-green" style="margin-top:12px">📧 Send Report</button>
+        </form>
+    </div>"""
+
+
+@app.post("/email-report", response_class=HTMLResponse)
+async def email_report(request: Request):
+    form = await request.form()
+    email = (form.get("email") or "").strip()
+    if not email:
+        return RedirectResponse(url=f"{BASE}/review", status_code=303)
+
+    # Gather current assessment data for the email
+    departments = store.load_departments()
+    tools = store.load_tools()
+    recs = store.load_recommendations()
+    summary = store.load_review_summary()
+    user = store.load_user_info()
+    dpdpa_answers: dict = summary.get("dpdpa_answers", {})
+
+    # Recompute pillar scores (same logic as review page)
+    pillar_scores: dict[str, dict] = {}
+    for pillar, pillar_questions in DPDPA_QUESTIONS.items():
+        total = len(pillar_questions)
+        yes_count = partial_count = no_count = na_count = unanswered = 0
+        for q in pillar_questions:
+            ans = dpdpa_answers.get(q["id"], "")
+            if ans == "Yes": yes_count += 1
+            elif ans == "Partially": partial_count += 1
+            elif ans in ("No", "Not Sure"): no_count += 1
+            elif ans == "Not Applicable": na_count += 1
+            else: unanswered += 1
+        applicable = total - na_count
+        if applicable == 0: score = 100
+        elif unanswered == applicable: score = 0
+        else: score = int(((yes_count * 1.0 + partial_count * 0.5) / max(applicable, 1)) * 100)
+        pillar_scores[pillar] = {"score": score, "answered": total - unanswered, "total": total}
+
+    all_scores = [ps["score"] for ps in pillar_scores.values()]
+    overall_score = int(sum(all_scores) / len(all_scores)) if all_scores else 0
+    overall_color = "#22C55E" if overall_score >= 75 else "#F59E0B" if overall_score >= 40 else "#EF4444"
+
+    critical = sum(1 for r in recs if r.severity == "Critical")
+    high = sum(1 for r in recs if r.severity == "High")
+    date_str = datetime.now(timezone.utc).strftime("%d %B %Y")
+    name = user.get("name", email)
+    company = user.get("company", "")
+
+    # Plain text body
+    pillar_text = "\n".join(f"  {p}: {ps['score']}% ({ps['answered']}/{ps['total']} answered)" for p, ps in pillar_scores.items())
+    text_body = f"""PRISM DPDP Readiness Assessment Report
+========================================
+
+Name:    {name}
+Email:   {email}
+{f'Company: {company}' if company else ''}
+Date:    {date_str}
+
+Overall Score: {overall_score}%
+Departments:   {len(departments)}
+Tools assessed: {len(tools)}
+Critical gaps: {critical}
+High gaps:     {high}
+
+PRISM Pillar Scores:
+{pillar_text}
+
+Log back in to view the full report with action items:
+https://prism.auditready.in/test
+
+— PRISM Compliance Platform
+"""
+
+    # HTML body
+    pillar_rows = ""
+    for p, ps in pillar_scores.items():
+        s = ps["score"]
+        bar_color = "#22C55E" if s >= 75 else "#F59E0B" if s >= 40 else "#EF4444"
+        pillar_rows += f"""<tr>
+            <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">{p}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb">
+                <div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;width:120px">
+                    <div style="height:100%;width:{s}%;background:{bar_color};border-radius:4px"></div>
+                </div>
+            </td>
+            <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;color:{bar_color};font-weight:700">{s}%</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:0.85em">{ps['answered']}/{ps['total']} answered</td>
+        </tr>"""
+
+    html_body = f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>PRISM DPDP Report</title></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<div style="max-width:640px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08)">
+  <div style="background:#1e3a5f;color:#fff;padding:28px 32px">
+    <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px">PRISM</div>
+    <div style="font-size:14px;opacity:.75;margin-top:4px">DPDPA Readiness Assessment · {date_str}</div>
+  </div>
+  <div style="padding:28px 32px">
+    <p style="color:#374151;font-size:14px;margin:0 0 6px">Hi <strong>{name}</strong>{f', {company}' if company else ''}</p>
+    <p style="color:#6b7280;font-size:13px;margin:0 0 24px">{email}</p>
+
+    <div style="text-align:center;padding:20px 0 16px">
+      <div style="font-size:56px;font-weight:800;color:{overall_color};line-height:1">{overall_score}%</div>
+      <div style="font-size:14px;color:#6b7280;margin-top:6px">Overall DPDPA Readiness Score</div>
+    </div>
+
+    <div style="display:flex;gap:16px;margin:16px 0;text-align:center">
+      <div style="flex:1;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+        <div style="font-size:22px;font-weight:700;color:#374151">{len(departments)}</div>
+        <div style="font-size:12px;color:#6b7280">Departments</div>
+      </div>
+      <div style="flex:1;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+        <div style="font-size:22px;font-weight:700;color:#dc2626">{critical}</div>
+        <div style="font-size:12px;color:#6b7280">Critical Gaps</div>
+      </div>
+      <div style="flex:1;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+        <div style="font-size:22px;font-weight:700;color:#d97706">{high}</div>
+        <div style="font-size:12px;color:#6b7280">High Gaps</div>
+      </div>
+    </div>
+
+    <div style="font-size:14px;font-weight:700;color:#374151;margin:20px 0 10px;border-bottom:1px solid #e5e7eb;padding-bottom:6px">PRISM Pillar Scores</div>
+    <table style="width:100%;border-collapse:collapse"><tbody>{pillar_rows}</tbody></table>
+
+    <div style="margin-top:24px;padding:16px;background:#eff6ff;border-radius:8px;border:1px solid #bfdbfe">
+      <div style="font-size:14px;font-weight:700;color:#1e40af;margin-bottom:6px">Review your full action plan</div>
+      <div style="font-size:13px;color:#1e3a5f;margin-bottom:12px">Log back in to PRISM to see department-level gaps, tool recommendations, and prioritised actions.</div>
+      <a href="https://prism.auditready.in/test" style="display:inline-block;padding:10px 20px;background:#1e3a5f;color:#fff;border-radius:6px;font-weight:600;font-size:13px;text-decoration:none">Open PRISM →</a>
+    </div>
+  </div>
+  <div style="background:#f3f4f6;padding:16px 32px;font-size:12px;color:#6b7280;text-align:center">
+    PRISM Compliance Platform · prism.auditready.in
+  </div>
+</div>
+</body></html>"""
+
+    sent = _send_email(email, f"[PRISM] Your DPDPA Readiness Report — {overall_score}%", text_body, html_body)
+
+    if sent:
+        msg = f"✅ Report sent to <strong>{html.escape(email)}</strong>."  # nosemgrep
+    else:
+        msg = "⚠️ Email could not be sent (SMTP not configured). Please download the PDF report instead."
+
+    content = f"""
+    <div class="card" style="text-align:center">
+        <p style="font-size:1rem;margin:8px 0 20px">{msg}</p>
+        <a href="/review" class="btn btn-secondary">← Back to Report</a>
+        &nbsp;
+        <a href="/download-report" class="btn btn-green">📄 Download PDF</a>
+    </div>"""
+    return _page("Report Sent", content)
 
 
 @app.get("/download-report")

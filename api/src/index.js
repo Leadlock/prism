@@ -1,9 +1,11 @@
 import express from "express";
+import helmet from "helmet";
 import cors from "cors";
 import path from "path";
 import dotenv from "dotenv";
 import { router as apiRouter } from "./routes/index.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { requestTimeout } from "./middleware/timeout.js";
 import { startScheduler } from "./utils/scheduler.js";
 import { seedSuperAdmin } from "./utils/seedSuperAdmin.js";
 
@@ -15,9 +17,13 @@ const corsOrigin = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((value) => value.trim())
   : "*";
 
+app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+// Global request timeout (30 seconds) — fail fast
+app.use(requestTimeout(30000));
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });

@@ -17,9 +17,25 @@ services:
       timeout: 5s
       retries: 5
 
+  clamav:
+    image: clamav/clamav:stable_base
+    platform: linux/amd64
+    restart: unless-stopped
+    volumes:
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
   api:
     build: ./api
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     env_file:
       - ./.env
     environment:
@@ -32,9 +48,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
-      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_PORT: 587
+      SMTP_STARTTLS: "true"
+      SMTP_SECURE: "false"
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@auditready.local}
@@ -44,9 +60,12 @@ services:
       AWS_REGION: ${AWS_REGION:-us-east-1}
       BEDROCK_CHAT_MODEL: ${BEDROCK_CHAT_MODEL}
       BEDROCK_EMBEDDING_MODEL: ${BEDROCK_EMBEDDING_MODEL}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
       SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
       PRISM_BASE_URL: /test
+      DPDP_CORS_ORIGINS: ${CORS_ORIGIN}
     volumes:
       - api_uploads:/app/uploads
       - prism_data:/app/prism_dpdp/data
@@ -54,6 +73,8 @@ services:
       - ./api:/app
       - /app/node_modules
     depends_on:
+      clamav:
+        condition: service_healthy
       db:
         condition: service_healthy
     ports:
@@ -70,6 +91,7 @@ services:
       - "${WEB_PORT}:5173"
 
 volumes:
+  clamav_data:
   db_data:
   api_uploads:
   prism_data:

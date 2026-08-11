@@ -1,0 +1,1114 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { apiFetch, apiUpload } from "../api/client.js";
+import NotificationBell from "../components/NotificationBell.jsx";
+
+function formatBytes(n) {
+  if (!n) return "—";
+  if (n < 1024) return `${n} B`;
+  if (n < 1048576) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1048576).toFixed(1)} MB`;
+}
+
+function formatDate(s) {
+  if (!s) return "—";
+  return new Date(s).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function addInterval(date, interval) {
+  const d = new Date(date);
+  const s = (interval || "monthly").toLowerCase();
+  if (s === "none") return null;
+  if (s === "weekly") d.setDate(d.getDate() + 7);
+  else if (s === "fortnightly") d.setDate(d.getDate() + 14);
+  else if (s.includes("annual") || s.includes("year")) d.setFullYear(d.getFullYear() + 1);
+  else if (s.includes("quarter")) d.setMonth(d.getMonth() + 3);
+  else if (s.includes("semi") || s.includes("bi")) d.setMonth(d.getMonth() + 6);
+  else d.setMonth(d.getMonth() + 1);
+  return d;
+}
+
+function computeDueDate(uploadedAt, recurrenceInterval, nextDueDate) {
+  if (!uploadedAt) return null;
+  const due = nextDueDate ? new Date(nextDueDate) : addInterval(uploadedAt, recurrenceInterval);
+  if (!due) return null;
+  const now = new Date();
+  const daysLeft = Math.round((due - now) / 86400000);
+  return {
+    dateStr: due.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }),
+    daysLeft,
+    overdue: daysLeft < 0,
+    soon: daysLeft >= 0 && daysLeft <= 14,
+  };
+}
+
+function fileIcon(type) {
+  if (!type) return "📄";
+  if (type.startsWith("image/")) return "🖼";
+  if (type.includes("pdf")) return "📋";
+  if (type.includes("sheet") || type.includes("excel") || type.includes("csv")) return "📊";
+  if (type.includes("word") || type.includes("document")) return "📝";
+  if (type.includes("zip") || type.includes("compressed")) return "🗜";
+  return "📄";
+}
+
+export default function EvidenceVault({ token, user, onLogout, theme, onThemeToggle }) {
+  const navigate = useNavigate();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState(null);       // detail panel item
+  const [selectedDetail, setSelectedDetail] = useState(null); // full detail with linked questions
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+
+  // Vault PIN state
+  const [pinSet, setPinSet] = useState(false);
+  const [vaultUnlocked, setVaultUnlocked] = useState(false);
+  const [pinStatusLoaded, setPinStatusLoaded] = useState(false);
+  const [vaultToken, setVaultToken] = useState(null);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [pinVerifying, setPinVerifying] = useState(false);
+  // Admin PIN management
+  const [showSetPin, setShowSetPin] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [adminPinError, setAdminPinError] = useState("");
+  const [setPinSaving, setSetPinSaving] = useState(false);
+  const [removingPin, setRemovingPin] = useState(false);
+
+  const isAdmin = user?.role === "ADMIN";
+
+  // Upload modal
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadTitle, setUploadTitle] = useState("");
+  const [uploadDesc, setUploadDesc] = useState("");
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadDrag, setUploadDrag] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileInputRef = useRef(null);
+
+  // Edit modal
+  const [editing, setEditing] = useState(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
+  // Delete state
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { item, linkedCount }
+  const [deleting, setDeleting] = useState(false);
+
+  // Version history state
+  const [versions, setVersions] = useState([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+
+  // Upload new version modal
+  const [showUploadVersion, setShowUploadVersion] = useState(false);
+  const [versionFile, setVersionFile] = useState(null);
+  const [versionNotes, setVersionNotes] = useState("");
+  const [versionDrag, setVersionDrag] = useState(false);
+  const [uploadingVersion, setUploadingVersion] = useState(false);
+  const [versionError, setVersionError] = useState("");
+  const versionFileInputRef = useRef(null);
+
+  // Restore state
+  const [restoringVersionId, setRestoringVersionId] = useState(null);
+
+  const canWrite = ["ADMIN", "LEAD", "CONTRIBUTOR"].includes(user?.role);
+  const canDelete = ["ADMIN", "LEAD"].includes(user?.role);
+  const canDownload = ["ADMIN", "LEAD", "CONTRIBUTOR", "VIEWER"].includes(user?.role);
+
+  // Build headers with vault token for all vault API calls
+  const vaultHeaders = vaultToken ? { "X-Vault-Token": vaultToken } : {};
+
+  // Check PIN status on mount
+  useEffect(() => {
+    apiFetch("/api/vault/pin/status", { token })
+      .then(d => {
+        setPinSet(d.pinSet);
+        if (!d.pinSet || isAdmin) setVaultUnlocked(true);
+      })
+      .catch(() => setVaultUnlocked(true))
+      .finally(() => setPinStatusLoaded(true));
+  }, []);
+
+  const handleVerifyPin = async () => {
+    if (pinInput.length !== 6) { setPinError("Enter a 6-digit PIN"); return; }
+    setPinVerifying(true);
+    setPinError("");
+    try {
+      const data = await apiFetch("/api/vault/pin/verify", {
+        token, method: "POST",
+        body: JSON.stringify({ pin: pinInput })
+      });
+      setVaultToken(data.token);
+      setVaultUnlocked(true);
+      setPinInput("");
+    } catch (e) {
+      setPinError(e.message || "Incorrect PIN");
+    } finally {
+      setPinVerifying(false);
+    }
+  };
+
+  const handleSetPin = async () => {
+    if (!/^\d{6}$/.test(newPin)) { setAdminPinError("PIN must be exactly 6 digits"); return; }
+    setSetPinSaving(true);
+    setAdminPinError("");
+    try {
+      await apiFetch("/api/vault/pin", { token, method: "PUT", body: JSON.stringify({ pin: newPin }) });
+      setPinSet(true);
+      setShowSetPin(false);
+      setNewPin("");
+    } catch (e) {
+      setAdminPinError(e.message || "Failed to set PIN");
+    } finally {
+      setSetPinSaving(false);
+    }
+  };
+
+  const handleRemovePin = async () => {
+    if (!confirm("Remove the vault PIN? Everyone with vault access will be able to enter without a PIN.")) return;
+    setRemovingPin(true);
+    try {
+      await apiFetch("/api/vault/pin", { token, method: "DELETE" });
+      setPinSet(false);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRemovingPin(false);
+    }
+  };
+
+  const load = useCallback(async (q = search) => {
+    setLoading(true);
+    setError("");
+    try {
+      const url = q.trim() ? `/api/vault?search=${encodeURIComponent(q.trim())}` : "/api/vault";
+      const data = await apiFetch(url, { token, headers: vaultHeaders });
+      setItems(data || []);
+    } catch (e) {
+      if (e.message?.includes("VAULT_PIN_REQUIRED") || e.status === 403) {
+        setVaultUnlocked(false);
+      } else {
+        setError(e.message || "Failed to load vault");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [token, vaultToken]);
+
+  useEffect(() => { if (vaultUnlocked) load(); }, [vaultUnlocked]);
+
+  // Debounced search
+  useEffect(() => {
+    const t = setTimeout(() => load(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Revoke blob URL when it changes or on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const openDetail = async (item) => {
+    setSelected(item);
+    setSelectedDetail(null);
+    setPreviewUrl(null);
+    setDetailLoading(true);
+    setVersions([]);
+    setShowVersionHistory(false);
+    try {
+      const detail = await apiFetch(`/api/vault/${item.id}`, { token, headers: vaultHeaders });
+      setSelectedDetail(detail);
+      if (detail.fileType?.startsWith("image/") && detail.storagePath) {
+        const API_URL = import.meta.env.VITE_API_URL || "";
+        fetch(`${API_URL}/api/vault/${item.id}/download`, {
+          headers: { Authorization: `Bearer ${token}`, ...vaultHeaders }
+        })
+          .then(r => r.blob())
+          .then(blob => setPreviewUrl(URL.createObjectURL(blob)))
+          .catch(() => {});
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const loadVersions = async (itemId) => {
+    setVersionsLoading(true);
+    try {
+      const data = await apiFetch(`/api/vault/${itemId}/versions`, { token, headers: vaultHeaders });
+      setVersions(data || []);
+      setShowVersionHistory(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setVersionsLoading(false);
+    }
+  };
+
+  const handleUploadVersion = async () => {
+    if (!versionFile) { setVersionError("Please select a file"); return; }
+    setUploadingVersion(true);
+    setVersionError("");
+    try {
+      const newVer = await apiUpload(
+        `/api/vault/${selectedDetail.id}/versions`,
+        versionFile,
+        { versionNotes: versionNotes.trim() },
+        token,
+        vaultHeaders
+      );
+      setVersions(prev => [newVer, ...prev]);
+      setSelectedDetail(d => ({
+        ...d,
+        fileName: newVer.fileName,
+        fileType: newVer.fileType,
+        fileSize: newVer.fileSize,
+        storagePath: newVer.storagePath,
+      }));
+      setItems(prev => prev.map(i => i.id === selectedDetail.id
+        ? { ...i, fileName: newVer.fileName, fileType: newVer.fileType, fileSize: newVer.fileSize }
+        : i
+      ));
+      setShowUploadVersion(false);
+      setVersionFile(null);
+      setVersionNotes("");
+    } catch (e) {
+      setVersionError(e.message || "Upload failed");
+    } finally {
+      setUploadingVersion(false);
+    }
+  };
+
+  const handleRestoreVersion = async (ver) => {
+    if (!selectedDetail) return;
+    setRestoringVersionId(ver.id);
+    try {
+      const newVer = await apiFetch(`/api/vault/${selectedDetail.id}/versions/${ver.id}/restore`, {
+        token, method: "POST",
+        body: JSON.stringify({}),
+        headers: vaultHeaders
+      });
+      setVersions(prev => [newVer, ...prev]);
+      setSelectedDetail(d => ({
+        ...d,
+        fileName: newVer.fileName,
+        fileType: newVer.fileType,
+        fileSize: newVer.fileSize,
+        storagePath: newVer.storagePath,
+      }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRestoringVersionId(null);
+    }
+  };
+
+  const handleDownloadVersion = async (vaultId, ver) => {
+    const API_URL = import.meta.env.VITE_API_URL || "";
+    const res = await fetch(`${API_URL}/api/vault/${vaultId}/versions/${ver.id}/download`, {
+      headers: { Authorization: `Bearer ${token}`, ...vaultHeaders }
+    });
+    if (!res.ok) { setError("Download failed"); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = ver.fileName || `version-${ver.versionNumber}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const closeDetail = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setSelected(null);
+    setSelectedDetail(null);
+    setPreviewUrl(null);
+    setVersions([]);
+    setShowVersionHistory(false);
+    setShowUploadVersion(false);
+  };
+
+  const handleUpload = async () => {
+    if (!uploadTitle.trim()) { setUploadError("Title is required"); return; }
+    if (!uploadFile) { setUploadError("Please select a file"); return; }
+    setUploading(true);
+    setUploadError("");
+    try {
+      const created = await apiUpload("/api/vault", uploadFile, {
+        title: uploadTitle.trim(),
+        description: uploadDesc.trim() || ""
+      }, token, vaultHeaders);
+      setItems(prev => [created, ...prev]);
+      setShowUpload(false);
+      setUploadTitle("");
+      setUploadDesc("");
+      setUploadFile(null);
+    } catch (e) {
+      setUploadError(e.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleEdit = async () => {
+    if (!editTitle.trim()) return;
+    setEditSaving(true);
+    try {
+      const updated = await apiFetch(`/api/vault/${editing.id}`, {
+        token, method: "PUT",
+        body: JSON.stringify({ title: editTitle.trim(), description: editDesc.trim() || null }),
+        headers: vaultHeaders
+      });
+      setItems(prev => prev.map(i => i.id === updated.id ? { ...i, ...updated } : i));
+      if (selectedDetail?.id === updated.id) setSelectedDetail(d => ({ ...d, ...updated }));
+      setEditing(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleDeleteClick = async (item) => {
+    try {
+      await apiFetch(`/api/vault/${item.id}`, { token, method: "DELETE", headers: vaultHeaders });
+      setItems(prev => prev.filter(i => i.id !== item.id));
+      if (selected?.id === item.id) closeDetail();
+    } catch (e) {
+      if (e.message?.toLowerCase().includes("locked")) {
+        setError("This evidence is locked — it cannot be deleted because a reviewer has approved a linked control.");
+      } else if (e.message?.includes("linked to")) {
+        const match = e.message.match(/(\d+) question/);
+        setDeleteConfirm({ item, linkedCount: match ? parseInt(match[1]) : 1 });
+      } else {
+        setError(e.message);
+      }
+    }
+  };
+
+  const handleForceDelete = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`/api/vault/${deleteConfirm.item.id}?force=true`, { token, method: "DELETE", headers: vaultHeaders });
+      setItems(prev => prev.filter(i => i.id !== deleteConfirm.item.id));
+      if (selected?.id === deleteConfirm.item.id) closeDetail();
+      setDeleteConfirm(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDownload = async (item) => {
+    const API_URL = import.meta.env.VITE_API_URL || "";
+    const res = await fetch(`${API_URL}/api/vault/${item.id}/download`, {
+      headers: { Authorization: `Bearer ${token}`, ...vaultHeaders }
+    });
+    if (!res.ok) { setError("Download failed"); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = item.fileName || item.title;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleView = async (item) => {
+    const API_URL = import.meta.env.VITE_API_URL || "";
+    const res = await fetch(`${API_URL}/api/vault/${item.id}/view`, {
+      headers: { Authorization: `Bearer ${token}`, ...vaultHeaders }
+    });
+    if (!res.ok) { setError("Could not open file"); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+
+  const handleViewVersion = async (vaultId, ver) => {
+    const API_URL = import.meta.env.VITE_API_URL || "";
+    const res = await fetch(`${API_URL}/api/vault/${vaultId}/versions/${ver.id}/view`, {
+      headers: { Authorization: `Bearer ${token}`, ...vaultHeaders }
+    });
+    if (!res.ok) { setError("Could not open file"); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+
+  const handleUnlink = async (questId) => {
+    if (!selectedDetail) return;
+    try {
+      await apiFetch(`/api/vault/${selectedDetail.id}/link/${encodeURIComponent(questId)}`, {
+        token, method: "DELETE", headers: vaultHeaders
+      });
+      setSelectedDetail(d => ({
+        ...d,
+        linkedQuestions: d.linkedQuestions.filter(q => q.questId !== questId),
+        linkedCount: d.linkedCount - 1
+      }));
+      setItems(prev => prev.map(i => i.id === selectedDetail.id ? { ...i, linkedCount: i.linkedCount - 1 } : i));
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  // PIN gate screen
+  // PIN gate screen — wait for status to load first
+  if (!pinStatusLoaded) {
+    return (
+      <div className="review-shell fade-in" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div className="loading-spinner" />
+      </div>
+    );
+  }
+
+  if (!vaultUnlocked && pinSet) {
+    return (
+      <div className="review-shell fade-in" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div className="card" style={{ maxWidth: 360, width: "100%", padding: 32, textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🔐</div>
+          <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 6 }}>Evidence Vault</div>
+          <div style={{ fontSize: 13, color: "var(--text3)", marginBottom: 24 }}>Enter the 6-digit vault PIN to continue</div>
+          <input
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            value={pinInput}
+            onChange={e => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onKeyDown={e => e.key === "Enter" && handleVerifyPin()}
+            placeholder="••••••"
+            autoFocus
+            style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 22, textAlign: "center", letterSpacing: 8, boxSizing: "border-box", marginBottom: 12 }}
+          />
+          {pinError && <div style={{ fontSize: 12, color: "var(--red)", marginBottom: 10 }}>✗ {pinError}</div>}
+          <button className="btn btn-primary" style={{ width: "100%" }} onClick={handleVerifyPin} disabled={pinVerifying}>
+            {pinVerifying ? "Verifying…" : "Unlock Vault"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="review-shell fade-in">
+      {/* Header */}
+      <div className="review-header" style={{ justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div className="logo" style={{ cursor: "pointer" }} onClick={() => navigate("/tracker")}>PRISM</div>
+          <div className="review-title">Evidence Vault {pinSet && <span style={{ fontSize: 13, color: "var(--text3)" }}>🔒</span>}</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <NotificationBell token={token} />
+          <button className="btn btn-ghost theme-toggle" onClick={onThemeToggle} title="Toggle theme">
+            {theme === "dark" ? "☀" : "☾"}
+          </button>
+          <button className="btn btn-ghost" onClick={() => navigate("/tracker")}>Tracker</button>
+          <button className="btn btn-ghost" onClick={() => navigate("/dashboard")}>Dashboard</button>
+          {isAdmin && (
+            <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => { setShowSetPin(true); setNewPin(""); setAdminPinError(""); }}>
+              {pinSet ? "🔑 Reset PIN" : "🔑 Set PIN"}
+            </button>
+          )}
+          {canWrite && (
+            <button className="btn btn-primary" onClick={() => { setShowUpload(true); setUploadError(""); }}>
+              + Upload Evidence
+            </button>
+          )}
+          <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
+        </div>
+      </div>
+
+      <div className="review-content">
+        {error && (
+          <div style={{ padding: "10px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid var(--red)", borderRadius: 8, color: "var(--red)", marginBottom: 16, fontSize: 13 }}>
+            {error}
+            <button onClick={() => setError("")} style={{ marginLeft: 12, background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 14 }}>×</button>
+          </div>
+        )}
+
+        {/* Search */}
+        <div style={{ marginBottom: 20 }}>
+          <input
+            type="text"
+            placeholder="Search by title or description…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ width: "100%", maxWidth: 480, padding: "9px 14px", borderRadius: 8, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 14, boxSizing: "border-box" }}
+          />
+          {search && (
+            <button onClick={() => setSearch("")} style={{ marginLeft: 8, background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 18, verticalAlign: "middle" }}>×</button>
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+          {/* Item list */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {loading ? (
+              <div style={{ textAlign: "center", padding: 40, color: "var(--text3)" }}>
+                <div className="loading-spinner" />
+                <p style={{ marginTop: 12 }}>Loading vault…</p>
+              </div>
+            ) : items.length === 0 ? (
+              <div className="card" style={{ textAlign: "center", padding: 40 }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>🗄</div>
+                <p style={{ color: "var(--text3)", margin: 0 }}>
+                  {search ? "No evidence matches your search." : "No evidence in the vault yet."}
+                </p>
+                {canWrite && !search && (
+                  <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowUpload(true)}>
+                    Upload first evidence
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {items.map(item => (
+                  <div
+                    key={item.id}
+                    className="card"
+                    style={{
+                      padding: "14px 18px", cursor: "pointer",
+                      border: selected?.id === item.id ? "1px solid var(--accent)" : "1px solid var(--border)",
+                      transition: "border-color 0.15s"
+                    }}
+                    onClick={() => selected?.id === item.id ? closeDetail() : openDetail(item)}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                      <div style={{ fontSize: 28, flexShrink: 0, lineHeight: 1 }}>{fileIcon(item.fileType)}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text)", marginBottom: 2, wordBreak: "break-word" }}>
+                          {item.title}
+                          {item.locked && (
+                            <span title="Locked — linked to a reviewer-approved control" style={{ marginLeft: 8, fontSize: 12, cursor: "default" }}>🔒</span>
+                          )}
+                        </div>
+                        {item.description && (
+                          <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {item.description}
+                          </div>
+                        )}
+                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, color: "var(--text3)" }}>
+                          {item.fileType && <span>{item.fileType.split("/")[1]?.toUpperCase() || item.fileType}</span>}
+                          {item.fileSize && <span>{formatBytes(item.fileSize)}</span>}
+                          <span>Uploaded by {item.uploadedBy || "—"}</span>
+                          <span>{formatDate(item.uploadedAt)}</span>
+                          <span style={{ color: item.linkedCount > 0 ? "var(--accent)" : "var(--text3)", fontWeight: item.linkedCount > 0 ? 600 : 400 }}>
+                            {item.linkedCount} question{item.linkedCount !== 1 ? "s" : ""} linked
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        {item.storagePath && canDownload && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 11, padding: "4px 10px" }}
+                            onClick={e => { e.stopPropagation(); handleDownload(item); }}
+                          >
+                            ↓ Download
+                          </button>
+                        )}
+                        {item.storagePath && !canDownload && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 11, padding: "4px 10px" }}
+                            onClick={e => { e.stopPropagation(); handleView(item); }}
+                          >
+                            ↗ View
+                          </button>
+                        )}
+                        {canWrite && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 11, padding: "4px 10px" }}
+                            onClick={e => { e.stopPropagation(); setEditing(item); setEditTitle(item.title); setEditDesc(item.description || ""); }}
+                          >
+                            ✎ Edit
+                          </button>
+                        )}
+                        {canDelete && !item.locked && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 11, padding: "4px 10px", color: "var(--red)" }}
+                            onClick={e => { e.stopPropagation(); handleDeleteClick(item); }}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Detail panel */}
+          {selected && (
+            <div className="card" style={{ width: 340, flexShrink: 0, padding: 20, position: "sticky", top: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                <div style={{ fontSize: 32 }}>{fileIcon(selected.fileType)}</div>
+                <button onClick={closeDetail} style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 20, lineHeight: 1 }}>×</button>
+              </div>
+
+              {detailLoading ? (
+                <div style={{ textAlign: "center", padding: 20, color: "var(--text3)" }}>Loading…</div>
+              ) : selectedDetail ? (
+                <>
+                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6, wordBreak: "break-word" }}>{selectedDetail.title}</div>
+                  {selectedDetail.locked && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text3)", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 6, padding: "5px 10px", marginBottom: 10 }}>
+                      🔒 <span>Locked — linked to a reviewer-approved control</span>
+                    </div>
+                  )}
+                  {selectedDetail.description && (
+                    <div style={{ fontSize: 13, color: "var(--text2)", marginBottom: 14, lineHeight: 1.5 }}>{selectedDetail.description}</div>
+                  )}
+
+                  {/* Image preview */}
+                  {previewUrl && (
+                    <div style={{ marginBottom: 14, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border2)" }}>
+                      <img src={previewUrl} alt={selectedDetail.title} style={{ width: "100%", display: "block", maxHeight: 200, objectFit: "contain" }} />
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, marginBottom: 16 }}>
+                    {selectedDetail.fileName && (
+                      <div><span style={{ color: "var(--text3)" }}>File: </span>{selectedDetail.fileName}</div>
+                    )}
+                    {selectedDetail.fileType && (
+                      <div><span style={{ color: "var(--text3)" }}>Type: </span>{selectedDetail.fileType}</div>
+                    )}
+                    {selectedDetail.fileSize && (
+                      <div><span style={{ color: "var(--text3)" }}>Size: </span>{formatBytes(selectedDetail.fileSize)}</div>
+                    )}
+                    <div><span style={{ color: "var(--text3)" }}>Uploaded by: </span>{selectedDetail.uploadedBy || "—"}</div>
+                    <div><span style={{ color: "var(--text3)" }}>Date: </span>{formatDate(selectedDetail.uploadedAt)}</div>
+                  </div>
+
+                  {selectedDetail.storagePath && canDownload && (
+                    <button className="btn btn-primary" style={{ width: "100%", marginBottom: 8 }} onClick={() => handleDownload(selectedDetail)}>
+                      ↓ Download Current Version
+                    </button>
+                  )}
+                  {selectedDetail.storagePath && !canDownload && (
+                    <button className="btn btn-ghost" style={{ width: "100%", marginBottom: 8 }} onClick={() => handleView(selectedDetail)}>
+                      ↗ View File
+                    </button>
+                  )}
+                  {canWrite && (
+                    <button
+                      className="btn btn-ghost"
+                      style={{ width: "100%", marginBottom: 8, fontSize: 13 }}
+                      onClick={() => { setShowUploadVersion(true); setVersionError(""); }}
+                    >
+                      ↑ Upload New Version
+                    </button>
+                  )}
+
+                  {/* Version history */}
+                  <div style={{ borderTop: "1px solid var(--border2)", paddingTop: 14, marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text2)" }}>Version History</div>
+                      {!showVersionHistory && (
+                        <button
+                          style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12, padding: 0 }}
+                          onClick={() => loadVersions(selectedDetail.id)}
+                          disabled={versionsLoading}
+                        >
+                          {versionsLoading ? "Loading…" : "Show"}
+                        </button>
+                      )}
+                      {showVersionHistory && (
+                        <button
+                          style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 12, padding: 0 }}
+                          onClick={() => setShowVersionHistory(false)}
+                        >
+                          Hide
+                        </button>
+                      )}
+                    </div>
+                    {showVersionHistory && (
+                      versions.length === 0 ? (
+                        <p style={{ fontSize: 12, color: "var(--text3)", margin: 0 }}>No versions recorded yet.</p>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {versions.map((ver, idx) => (
+                            <div key={ver.id} style={{ padding: "8px 10px", background: "var(--bg3)", borderRadius: 6, border: idx === 0 ? "1px solid var(--accent)" : "1px solid transparent" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: idx === 0 ? "var(--accent)" : "var(--text2)" }}>
+                                    v{ver.versionNumber}
+                                  </span>
+                                  {idx === 0 && (
+                                    <span style={{ fontSize: 10, background: "var(--accent)", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>LATEST</span>
+                                  )}
+                                </div>
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  {ver.storagePath && canDownload && (
+                                    <button
+                                      style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 11, padding: "2px 4px" }}
+                                      onClick={() => handleDownloadVersion(selectedDetail.id, ver)}
+                                      title="Download"
+                                    >
+                                      ↓
+                                    </button>
+                                  )}
+                                  {ver.storagePath && !canDownload && (
+                                    <button
+                                      style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 11, padding: "2px 4px" }}
+                                      onClick={() => handleViewVersion(selectedDetail.id, ver)}
+                                      title="View"
+                                    >
+                                      ↗
+                                    </button>
+                                  )}
+                                  {idx !== 0 && canWrite && (
+                                    <button
+                                      style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 11, padding: "2px 4px" }}
+                                      onClick={() => handleRestoreVersion(ver)}
+                                      disabled={restoringVersionId === ver.id}
+                                      title="Restore this version"
+                                    >
+                                      {restoringVersionId === ver.id ? "…" : "↺"}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--text3)" }}>{formatDate(ver.uploadedAt)}</div>
+                              {ver.uploadedBy && <div style={{ fontSize: 11, color: "var(--text3)" }}>by {ver.uploadedBy}</div>}
+                              {ver.fileName && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ver.fileName}</div>}
+                              {ver.versionNotes && <div style={{ fontSize: 11, color: "var(--text2)", marginTop: 4, fontStyle: "italic" }}>{ver.versionNotes}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    )}
+                  </div>
+
+                  {/* Linked questions */}
+                  <div style={{ borderTop: "1px solid var(--border2)", paddingTop: 14 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: "var(--text2)" }}>
+                      Linked Questions ({selectedDetail.linkedQuestions?.length || 0})
+                    </div>
+                    {selectedDetail.linkedQuestions?.length === 0 ? (
+                      <p style={{ fontSize: 12, color: "var(--text3)", margin: 0 }}>Not linked to any questions yet.</p>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {selectedDetail.linkedQuestions.map(q => {
+                          const dueInfo = computeDueDate(selectedDetail.uploadedAt, q.recurrenceInterval, q.nextDueDate);
+                          return (
+                            <div key={q.questId} style={{ padding: "8px 10px", background: "var(--bg3)", borderRadius: 6 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <div>
+                                  <div
+                                    style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}
+                                    onClick={() => navigate(`/questions/${q.questId}`)}
+                                  >
+                                    {q.questId}
+                                  </div>
+                                  {q.controlArea && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 1 }}>{q.controlArea}</div>}
+                                </div>
+                                {canWrite && !q.isReviewed && (
+                                  <button
+                                    onClick={() => handleUnlink(q.questId)}
+                                    style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 12, padding: "2px 6px" }}
+                                    title="Unlink"
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                                {q.isReviewed && (
+                                  <span title="Control has been reviewed — link cannot be removed" style={{ fontSize: 11, cursor: "default", padding: "2px 6px" }}>🔒</span>
+                                )}
+                              </div>
+                              {dueInfo && (
+                                <div style={{ marginTop: 5, display: "flex", gap: 4, alignItems: "center", fontSize: 10 }}>
+                                  <span style={{ color: "var(--text3)" }}>🔄 {q.recurrenceInterval || "monthly"}</span>
+                                  <span style={{ color: "var(--text3)" }}>·</span>
+                                  <span style={{ color: dueInfo.overdue ? "var(--red)" : dueInfo.soon ? "var(--amber)" : "var(--green)", fontWeight: 600 }}>
+                                    {dueInfo.overdue ? "⚠ Overdue" : dueInfo.soon ? `⏳ Due in ${dueInfo.daysLeft}d` : `✓ Due ${dueInfo.dateStr}`}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Upload modal */}
+      {showUpload && (
+        <div className="modal-overlay" onClick={() => setShowUpload(false)}>
+          <div className="module-modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="module-modal-header">
+              <div className="module-modal-title">Upload to Evidence Vault</div>
+              <button className="modal-close" onClick={() => setShowUpload(false)}>×</button>
+            </div>
+            <div className="module-modal-content" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text3)", display: "block", marginBottom: 4 }}>Title *</label>
+                <input
+                  type="text"
+                  value={uploadTitle}
+                  onChange={e => setUploadTitle(e.target.value)}
+                  placeholder="e.g. ISO 27001 Certificate 2025"
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, boxSizing: "border-box" }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text3)", display: "block", marginBottom: 4 }}>Description</label>
+                <textarea
+                  value={uploadDesc}
+                  onChange={e => setUploadDesc(e.target.value)}
+                  placeholder="Brief description of what this evidence demonstrates…"
+                  rows={3}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, resize: "vertical", boxSizing: "border-box" }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text3)", display: "block", marginBottom: 4 }}>File *</label>
+                <div
+                  onDragOver={e => { e.preventDefault(); setUploadDrag(true); }}
+                  onDragLeave={() => setUploadDrag(false)}
+                  onDrop={e => { e.preventDefault(); setUploadDrag(false); if (e.dataTransfer.files[0]) setUploadFile(e.dataTransfer.files[0]); }}
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    border: `2px dashed ${uploadDrag ? "var(--accent)" : "var(--border2)"}`,
+                    borderRadius: 8, padding: "20px 16px", textAlign: "center",
+                    cursor: "pointer", background: uploadDrag ? "rgba(99,102,241,0.05)" : "var(--bg3)",
+                    transition: "all 0.15s"
+                  }}
+                >
+                  <input ref={fileInputRef} type="file" style={{ display: "none" }} onChange={e => setUploadFile(e.target.files[0])} />
+                  {uploadFile ? (
+                    <div>
+                      <div style={{ fontSize: 24 }}>{fileIcon(uploadFile.type)}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>{uploadFile.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--text3)" }}>{formatBytes(uploadFile.size)}</div>
+                    </div>
+                  ) : (
+                    <div style={{ color: "var(--text3)", fontSize: 13 }}>
+                      <div style={{ fontSize: 24, marginBottom: 6 }}>📁</div>
+                      Drag a file here or click to browse
+                    </div>
+                  )}
+                </div>
+              </div>
+              {uploadError && <div style={{ fontSize: 12, color: "var(--red)" }}>✗ {uploadError}</div>}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleUpload} disabled={uploading}>
+                  {uploading ? "Uploading…" : "Upload to Vault"}
+                </button>
+                <button className="btn btn-ghost" onClick={() => setShowUpload(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal */}
+      {editing && (
+        <div className="modal-overlay" onClick={() => setEditing(null)}>
+          <div className="module-modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div className="module-modal-header">
+              <div className="module-modal-title">Edit Evidence</div>
+              <button className="modal-close" onClick={() => setEditing(null)}>×</button>
+            </div>
+            <div className="module-modal-content" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text3)", display: "block", marginBottom: 4 }}>Title *</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={e => setEditTitle(e.target.value)}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, boxSizing: "border-box" }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text3)", display: "block", marginBottom: 4 }}>Description</label>
+                <textarea
+                  value={editDesc}
+                  onChange={e => setEditDesc(e.target.value)}
+                  rows={3}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, resize: "vertical", boxSizing: "border-box" }}
+                />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleEdit} disabled={editSaving}>
+                  {editSaving ? "Saving…" : "Save Changes"}
+                </button>
+                <button className="btn btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload new version modal */}
+      {showUploadVersion && selectedDetail && (
+        <div className="modal-overlay" onClick={() => setShowUploadVersion(false)}>
+          <div className="module-modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="module-modal-header">
+              <div className="module-modal-title">Upload New Version</div>
+              <button className="modal-close" onClick={() => setShowUploadVersion(false)}>×</button>
+            </div>
+            <div className="module-modal-content" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ fontSize: 13, color: "var(--text2)" }}>
+                Uploading a new version of <strong>{selectedDetail.title}</strong>. The previous file is kept in version history.
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text3)", display: "block", marginBottom: 4 }}>File *</label>
+                <div
+                  onDragOver={e => { e.preventDefault(); setVersionDrag(true); }}
+                  onDragLeave={() => setVersionDrag(false)}
+                  onDrop={e => { e.preventDefault(); setVersionDrag(false); if (e.dataTransfer.files[0]) setVersionFile(e.dataTransfer.files[0]); }}
+                  onClick={() => versionFileInputRef.current?.click()}
+                  style={{
+                    border: `2px dashed ${versionDrag ? "var(--accent)" : "var(--border2)"}`,
+                    borderRadius: 8, padding: "20px 16px", textAlign: "center",
+                    cursor: "pointer", background: versionDrag ? "rgba(99,102,241,0.05)" : "var(--bg3)",
+                    transition: "all 0.15s"
+                  }}
+                >
+                  <input ref={versionFileInputRef} type="file" style={{ display: "none" }} onChange={e => setVersionFile(e.target.files[0])} />
+                  {versionFile ? (
+                    <div>
+                      <div style={{ fontSize: 24 }}>{fileIcon(versionFile.type)}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>{versionFile.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--text3)" }}>{formatBytes(versionFile.size)}</div>
+                    </div>
+                  ) : (
+                    <div style={{ color: "var(--text3)", fontSize: 13 }}>
+                      <div style={{ fontSize: 24, marginBottom: 6 }}>📁</div>
+                      Drag a file here or click to browse
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text3)", display: "block", marginBottom: 4 }}>Version notes (optional)</label>
+                <input
+                  type="text"
+                  value={versionNotes}
+                  onChange={e => setVersionNotes(e.target.value)}
+                  placeholder="e.g. Updated after Q3 audit"
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, boxSizing: "border-box" }}
+                />
+              </div>
+              {versionError && <div style={{ fontSize: 12, color: "var(--red)" }}>✗ {versionError}</div>}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleUploadVersion} disabled={uploadingVersion}>
+                  {uploadingVersion ? "Uploading…" : "Upload Version"}
+                </button>
+                <button className="btn btn-ghost" onClick={() => { setShowUploadVersion(false); setVersionFile(null); setVersionNotes(""); }}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Set/Reset PIN modal (admin only) */}
+      {showSetPin && (
+        <div className="modal-overlay" onClick={() => setShowSetPin(false)}>
+          <div className="module-modal" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div className="module-modal-header">
+              <div className="module-modal-title">{pinSet ? "Reset Vault PIN" : "Set Vault PIN"}</div>
+              <button className="modal-close" onClick={() => setShowSetPin(false)}>×</button>
+            </div>
+            <div className="module-modal-content" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ fontSize: 13, color: "var(--text2)" }}>
+                {pinSet
+                  ? "Enter a new 6-digit PIN. All existing vault sessions will need to re-enter the new PIN."
+                  : "Set a 6-digit numeric PIN. All users (except admins) will need to enter it to access the vault."}
+              </div>
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                value={newPin}
+                onChange={e => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                onKeyDown={e => e.key === "Enter" && handleSetPin()}
+                placeholder="6-digit PIN"
+                autoFocus
+                style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 20, textAlign: "center", letterSpacing: 6, boxSizing: "border-box" }}
+              />
+              {adminPinError && <div style={{ fontSize: 12, color: "var(--red)" }}>✗ {adminPinError}</div>}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSetPin} disabled={setPinSaving}>
+                  {setPinSaving ? "Saving…" : pinSet ? "Reset PIN" : "Set PIN"}
+                </button>
+                <button className="btn btn-ghost" onClick={() => setShowSetPin(false)}>Cancel</button>
+              </div>
+              {pinSet && (
+                <button
+                  className="btn btn-ghost"
+                  style={{ color: "var(--red)", fontSize: 12 }}
+                  onClick={() => { setShowSetPin(false); handleRemovePin(); }}
+                  disabled={removingPin}
+                >
+                  {removingPin ? "Removing…" : "Remove PIN (open access)"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="module-modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <div className="module-modal-header">
+              <div className="module-modal-title">Delete Evidence</div>
+              <button className="modal-close" onClick={() => setDeleteConfirm(null)}>×</button>
+            </div>
+            <div className="module-modal-content" style={{ padding: 20 }}>
+              <p style={{ fontSize: 14, marginBottom: 16 }}>
+                <strong>{deleteConfirm.item.title}</strong> is currently linked to{" "}
+                <strong>{deleteConfirm.linkedCount} question{deleteConfirm.linkedCount !== 1 ? "s" : ""}</strong>.
+                Deleting it will remove all those links.
+              </p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  className="btn btn-ghost"
+                  style={{ flex: 1, color: "var(--red)", borderColor: "var(--red)" }}
+                  onClick={handleForceDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting…" : "Delete anyway"}
+                </button>
+                <button className="btn btn-ghost" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

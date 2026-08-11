@@ -70,3 +70,16 @@ class AssessmentStore:
             with open(p, encoding="utf-8") as f:
                 return json.load(f)
         return {}
+
+    # ─── User Info ────────────────────────────────────────────────────────
+
+    def save_user_info(self, info: dict) -> None:
+        with open(self._path("user_info"), "w", encoding="utf-8") as f:
+            json.dump(info, f, indent=2, default=str)
+
+    def load_user_info(self) -> dict:
+        p = self._path("user_info")
+        if p.exists():
+            with open(p, encoding="utf-8") as f:
+                return json.load(f)
+        return {}

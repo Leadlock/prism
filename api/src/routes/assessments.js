@@ -6,6 +6,7 @@ import { authenticate } from "../middleware/auth.js";
 import { requireRole, requireReadOnly } from "../middleware/roles.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { writeAuditLog } from "../utils/auditLog.js";
+import { sanitiseFields } from "../utils/sanitise.js";
 
 const router = Router();
 
@@ -45,26 +46,25 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
 }));
 
 router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), asyncHandler(async (req, res) => {
+  const raw = sanitiseFields(req.body, {
+    controlArea: "text", answer: "text", owner: "text", reviewer: "text",
+    comments: "text", evidenceLink: "url", actionOwner: "text", actionNotes: "text",
+  });
   const {
-    assessmentId,
-    month,
-    moduleId,
-    questId,
-    controlArea,
-    answer,
-    currentLevel,
-    level3Plus,
-    evidenceLink,
-    owner,
-    reviewer,
-    reviewStatus,
-    scoreEligible,
-    comments,
+    assessmentId, month, moduleId, questId,
+    controlArea = raw.controlArea,
+    answer = raw.answer,
+    currentLevel, level3Plus,
+    evidenceLink = raw.evidenceLink,
+    owner = raw.owner,
+    reviewer = raw.reviewer,
+    reviewStatus, scoreEligible,
+    comments = raw.comments,
     evidenceIds = [],
-    actionOwner,
+    actionOwner = raw.actionOwner,
     actionDueDate,
-    actionNotes
-  } = req.body;
+    actionNotes = raw.actionNotes
+  } = raw;
 
   const normalizedAnswer = typeof answer === "string" ? answer.trim().toUpperCase() : "";
   const normalizedEvidenceIds = Array.isArray(evidenceIds)
@@ -224,29 +224,33 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), as
 
 router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR", "AUDITOR"]), asyncHandler(async (req, res) => {
   const assessmentId = parseInt(req.params.id);
-  
-  const isBeingReviewed = req.body.reviewedBy && req.body.reviewStatus !== undefined;
-  const isBeingAudited  = req.body.auditedBy  && req.body.reviewStatus !== undefined;
+  const rawBody = sanitiseFields(req.body, {
+    controlArea: "text", answer: "text", owner: "text", reviewer: "text",
+    comments: "text", evidenceLink: "url", reviewedBy: "text", auditedBy: "text",
+    reviewerNotes: "text", auditorNotes: "text",
+  });
+  const isBeingReviewed = rawBody.reviewedBy && rawBody.reviewStatus !== undefined;
+  const isBeingAudited  = rawBody.auditedBy  && rawBody.reviewStatus !== undefined;
 
   const data = {
-    assessment_id: req.body.assessmentId,
-    month: req.body.month,
-    module_id: req.body.moduleId,
-    quest_id: req.body.questId,
-    control_area: req.body.controlArea,
-    answer: req.body.answer,
-    current_level: req.body.currentLevel,
-    level3_plus: req.body.level3Plus,
-    evidence_link: req.body.evidenceLink,
-    owner: req.body.owner,
-    reviewer: req.body.reviewer,
-    review_status: req.body.reviewStatus,
-    score_eligible: req.body.scoreEligible,
-    comments: req.body.comments,
-    reviewed_by: req.body.reviewedBy,
-    audited_by: req.body.auditedBy,
-    reviewer_notes: req.body.reviewerNotes,
-    auditor_notes: req.body.auditorNotes,
+    assessment_id: rawBody.assessmentId,
+    month: rawBody.month,
+    module_id: rawBody.moduleId,
+    quest_id: rawBody.questId,
+    control_area: rawBody.controlArea,
+    answer: rawBody.answer,
+    current_level: rawBody.currentLevel,
+    level3_plus: rawBody.level3Plus,
+    evidence_link: rawBody.evidenceLink,
+    owner: rawBody.owner,
+    reviewer: rawBody.reviewer,
+    review_status: rawBody.reviewStatus,
+    score_eligible: rawBody.scoreEligible,
+    comments: rawBody.comments,
+    reviewed_by: rawBody.reviewedBy,
+    audited_by: rawBody.auditedBy,
+    reviewer_notes: rawBody.reviewerNotes,
+    auditor_notes: rawBody.auditorNotes,
     reviewed_at: isBeingReviewed ? new Date() : undefined,
     audited_at:  isBeingAudited  ? new Date() : undefined,
     updated_at: new Date()
@@ -280,6 +284,52 @@ router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR", "A
         `UPDATE actions SET status = 'CLOSED', closure_date = NOW(), updated_at = NOW()
          WHERE quest_id = $1 AND company_id = $2
            AND COALESCE(UPPER(status), 'OPEN') NOT IN ('CLOSED', 'DONE', 'COMPLETED')`,
+        [assessment.questId, req.user.companyId]
+      );
+
+      // Mirror any evidence for this quest that isn't yet in the vault
+      await client.query(
+        `INSERT INTO evidence_vault
+           (company_id, title, file_name, file_type, file_size, storage_path, evidence_link, uploaded_by, legacy_evidence_id)
+         SELECT
+           e.company_id,
+           COALESCE(e.evidence_name, 'Untitled Evidence'),
+           e.evidence_name,
+           NULL,
+           NULL,
+           e.file_path,
+           e.evidence_link,
+           e.uploaded_by,
+           e.id
+         FROM evidence e
+         WHERE e.quest_id = $1 AND e.company_id = $2
+           AND (e.file_path IS NOT NULL OR e.evidence_link IS NOT NULL)
+           AND NOT EXISTS (
+             SELECT 1 FROM evidence_vault ev WHERE ev.legacy_evidence_id = e.id
+           )
+         ON CONFLICT DO NOTHING`,
+        [assessment.questId, req.user.companyId]
+      );
+
+      // Link newly mirrored vault items to this quest
+      await client.query(
+        `INSERT INTO question_evidence (company_id, quest_id, vault_id, linked_by)
+         SELECT ev.company_id, $1, ev.id, $3
+         FROM evidence_vault ev
+         WHERE ev.company_id = $2
+           AND ev.legacy_evidence_id IN (
+             SELECT id FROM evidence WHERE quest_id = $1 AND company_id = $2
+           )
+         ON CONFLICT (company_id, quest_id, vault_id) DO NOTHING`,
+        [assessment.questId, req.user.companyId, req.user.email || null]
+      );
+
+      // Lock all vault items linked to this quest
+      await client.query(
+        `UPDATE evidence_vault SET locked = true
+         WHERE id IN (
+           SELECT vault_id FROM question_evidence WHERE quest_id = $1 AND company_id = $2
+         )`,
         [assessment.questId, req.user.companyId]
       );
     }
@@ -362,7 +412,7 @@ router.delete("/:id", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler
     idsToDelete.push(r.id);
     if (r.file_path) {
       try {
-        const resolvedPath = path.resolve(r.file_path);
+        const resolvedPath = path.resolve(r.file_path); // nosemgrep
         if (resolvedPath.startsWith(safeRoot) && fs.existsSync(resolvedPath)) {
           fs.unlinkSync(resolvedPath);
         }

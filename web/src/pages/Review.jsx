@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, apiDownload } from "../api/client.js";
+import RetryBanner from "../components/RetryBanner.jsx";
 
 export default function Review({ token, user, onLogout, theme, onThemeToggle }) {
   const [assessments, setAssessments] = useState([]);
@@ -7,6 +8,8 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
   const [evidence, setEvidence] = useState([]);
   const [error, setError] = useState("");
   const [notesModal, setNotesModal] = useState(null); // { id, status, notes }
+  const [retryError, setRetryError] = useState(null);
+  const [lastFailedAction, setLastFailedAction] = useState(null);
   const notesRef = useRef("");
 
   const load = useCallback(async () => {
@@ -20,8 +23,14 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
       setAssessments((as || []).filter(a => (a.reviewStatus || a.review_status) === "Submitted"));
       setEvidence(ev || []);
       setError("");
+      setRetryError(null);
     } catch (e) {
-      setError(e.message);
+      if (e.code === "TIMEOUT" || e.code === "COOLDOWN" || e.code === "QUEUE_FULL") {
+        setRetryError(e);
+        setLastFailedAction(() => load);
+      } else {
+        setError(e.message);
+      }
     }
   }, [token]);
 
@@ -59,28 +68,11 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
     const notes = notesRef.current;
     setNotesModal(null);
     try {
-      if (status === "WIP") {
-        const assessment = assessments.find(a => a.id === id);
-        if (assessment) {
-          const linkedEvidence = evidence.filter(e =>
-            String(e.evidenceId || e.evidence_id) === String(id)
-          );
-          for (const ev of linkedEvidence) {
-            try {
-              await apiFetch(`/api/evidence/${ev.id}`, { token, method: "DELETE" });
-            } catch (err) {
-              console.error(`Failed to delete evidence ${ev.id}:`, err);
-            }
-          }
-        }
-        await apiFetch(`/api/assessments/${id}`, { token, method: "DELETE" });
-      } else {
-        await apiFetch(`/api/assessments/${id}`, {
-          token,
-          method: "PUT",
-          body: JSON.stringify({ reviewStatus: status, reviewedBy: user?.email, reviewerNotes: notes || undefined })
-        });
-      }
+      await apiFetch(`/api/assessments/${id}`, {
+        token,
+        method: "PUT",
+        body: JSON.stringify({ reviewStatus: status, reviewedBy: user?.email, reviewerNotes: notes || undefined })
+      });
       await load();
     } catch (e) {
       setError(e.message || "Update failed");
@@ -106,6 +98,16 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
       </div>
 
       <div className="review-content">
+        {retryError && (
+          <RetryBanner
+            error={retryError}
+            onRetry={() => {
+              setRetryError(null);
+              if (lastFailedAction) lastFailedAction();
+            }}
+            onDismiss={() => setRetryError(null)}
+          />
+        )}
         {error && <div className="error-text" style={{ marginBottom: 16 }}>{error}</div>}
 
         <section className="card" style={{ marginTop: 0 }}>
@@ -132,9 +134,32 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
                         <div className="list-item-meta">
                           Level {a.currentLevel} | {a.reviewStatus || a.review_status} | Submitted by: {a.submittedBy || a.submitted_by}
                         </div>
+                        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                          {a.comments && (
+                            <span
+                              title={a.comments.slice(0, 100)}
+                              style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: "var(--bg4)", color: "var(--text2)", border: "1px solid var(--border2)", cursor: "default" }}
+                            >
+                              📝 Notes
+                            </span>
+                          )}
+                          {(a.reviewerNotes || a.reviewer_notes) && (
+                            <span
+                              title={(a.reviewerNotes || a.reviewer_notes).slice(0, 100)}
+                              style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: "var(--bg4)", color: "var(--amber)", border: "1px solid var(--border2)", cursor: "default" }}
+                            >
+                              👁 Review
+                            </span>
+                          )}
+                        </div>
 
                         <div style={{ marginTop: 16 }}>
-                          <div className="section-label">Question ID: {questId}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                            <div className="section-label" style={{ margin: 0 }}>Question ID: {questId}</div>
+                            {q.priority && (
+                              <span className={`priority-badge priority-${q.priority.toLowerCase()}`}>{q.priority}</span>
+                            )}
+                          </div>
                           <div className="list-item-title" style={{ fontSize: 14, marginTop: 4, marginBottom: 8 }}>
                             {q.controlArea || q.control_area}
                           </div>
@@ -243,7 +268,7 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
             </div>
             <div className="module-modal-content" style={{ padding: 20 }}>
               <label style={{ display: "block", marginBottom: 8, fontSize: 13, color: "var(--text2)" }}>
-                Notes for contributor (optional)
+                Reviewer Notes (optional)
               </label>
               <textarea
                 className="comments-textarea"

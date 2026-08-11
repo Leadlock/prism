@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
+import Logo from "../components/Logo";
+
+const LoginHero = lazy(() => import("../components/LoginHero"));
 
 const INDUSTRIES = [
   "Technology",
@@ -56,7 +59,6 @@ export default function Register() {
 
   const update = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
 
-  // Blocked email domains
   const BLOCKED_DOMAINS = [
     "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "yahoo.co.in",
     "hotmail.com", "outlook.com", "live.com", "msn.com",
@@ -110,7 +112,6 @@ export default function Register() {
     setLoading(true);
 
     try {
-      // Generate domain from company name
       const domain = form.companyName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
       await apiFetch("/api/auth/register", {
@@ -138,189 +139,221 @@ export default function Register() {
 
   if (submitted) {
     return (
-      <div className="register-container">
-        <div className="register-card">
-          <div className="register-success">
-            <span className="register-success-icon">&#10003;</span>
-            <h1>Registration Submitted</h1>
-            <p>Your company account is pending approval by a platform administrator. You will be able to sign in once your account has been approved.</p>
-            <Link to="/login" className="btn btn-primary">Back to Sign In</Link>
+      <div className="login-split">
+        <div className="login-split-left">
+          <div className="login-form-inner">
+            <div className="login-logo-wrap">
+              <Logo className="login-logo" />
+            </div>
+            <div className="register-success">
+              <span className="register-success-icon">&#10003;</span>
+              <h1 className="login-heading">Registration Submitted</h1>
+              <p className="login-subtitle">
+                Your company account is pending approval by a platform administrator.
+                You will be able to sign in once your account has been approved.
+              </p>
+              <Link to="/login" className="login-btn" style={{ display: "block", textAlign: "center", textDecoration: "none" }}>
+                Back to Sign In <span className="btn-arrow">→</span>
+              </Link>
+            </div>
           </div>
+        </div>
+        <div className="login-split-right">
+          <Suspense fallback={<div className="lh-root"><div className="lh-bg" /></div>}>
+            <LoginHero />
+          </Suspense>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="register-container">
-      <div className="register-card">
-        <h1>Create Your Workspace</h1>
-        <p className="register-subtitle">Set up your company's compliance tracking environment</p>
-
-        <form onSubmit={handleSubmit}>
-          {/* Company Information */}
-          <div className="register-section">
-            <h2>Company Information</h2>
-
-            <div className="form-group">
-              <label htmlFor="companyName">Company Name <span className="required">*</span></label>
-              <input
-                id="companyName"
-                type="text"
-                value={form.companyName}
-                onChange={update("companyName")}
-                required
-                placeholder="Acme Corporation"
-              />
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="industry">Industry <span className="required">*</span></label>
-                <select id="industry" value={form.industry} onChange={update("industry")} required>
-                  <option value="">Select industry...</option>
-                  {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="companySize">Company Size <span className="required">*</span></label>
-                <select id="companySize" value={form.companySize} onChange={update("companySize")} required>
-                  <option value="">Select size...</option>
-                  {COMPANY_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-            </div>
+    <div className="login-split">
+      {/* Left Panel - Form */}
+      <div className="login-split-left" style={{ overflowY: "auto" }}>
+        <div className="login-form-inner">
+          <div className="login-logo-wrap">
+            <Logo className="login-logo" />
           </div>
+          <h1 className="login-heading">Create Your Workspace</h1>
+          <p className="login-subtitle">Set up your company's compliance environment</p>
 
-          {/* Administrator Account */}
-          <div className="register-section">
-            <h2>Administrator Account</h2>
+          <form onSubmit={handleSubmit}>
+            {/* Company Information */}
+            <div className="register-section">
+              <h2 className="register-section-title">Company Information</h2>
 
-            <div className="form-group">
-              <label htmlFor="fullName">Full Name <span className="required">*</span></label>
-              <input
-                id="fullName"
-                type="text"
-                value={form.fullName}
-                onChange={update("fullName")}
-                required
-                placeholder="John Smith"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="adminEmail">Email Address <span className="required">*</span></label>
-              <input
-                id="adminEmail"
-                type="email"
-                value={form.adminEmail}
-                onChange={update("adminEmail")}
-                required
-                placeholder="john@acme.com"
-                className={emailError ? "input-error" : ""}
-              />
-              {emailError && <span className="field-error">{emailError}</span>}
-              <span className="field-hint">Must be a corporate email (no Gmail, Yahoo, iCloud, etc.)</span>
-            </div>
-
-            <div className="form-row">
               <div className="form-group">
-                <label htmlFor="department">Department <span className="required">*</span></label>
+                <label htmlFor="companyName">Company Name <span className="required">*</span></label>
                 <input
-                  id="department"
+                  id="companyName"
                   type="text"
-                  value={form.department}
-                  onChange={update("department")}
+                  value={form.companyName}
+                  onChange={update("companyName")}
                   required
-                  placeholder="IT / Security"
+                  placeholder="Acme Corporation"
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="industry">Industry <span className="required">*</span></label>
+                  <select id="industry" value={form.industry} onChange={update("industry")} required>
+                    <option value="">Select industry...</option>
+                    {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="companySize">Company Size <span className="required">*</span></label>
+                  <select id="companySize" value={form.companySize} onChange={update("companySize")} required>
+                    <option value="">Select size...</option>
+                    {COMPANY_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Administrator Account */}
+            <div className="register-section">
+              <h2 className="register-section-title">Administrator Account</h2>
+
+              <div className="form-group">
+                <label htmlFor="fullName">Full Name <span className="required">*</span></label>
+                <input
+                  id="fullName"
+                  type="text"
+                  value={form.fullName}
+                  onChange={update("fullName")}
+                  required
+                  placeholder="John Smith"
                 />
               </div>
 
               <div className="form-group">
-                <label htmlFor="jobTitle">Job Title <span className="required">*</span></label>
+                <label htmlFor="adminEmail">Email Address <span className="required">*</span></label>
                 <input
-                  id="jobTitle"
-                  type="text"
-                  value={form.jobTitle}
-                  onChange={update("jobTitle")}
+                  id="adminEmail"
+                  type="email"
+                  value={form.adminEmail}
+                  onChange={update("adminEmail")}
                   required
-                  placeholder="CISO"
+                  placeholder="john@acme.com"
+                  className={emailError ? "input-error" : ""}
                 />
+                {emailError && <span className="field-error">{emailError}</span>}
+                <span className="field-hint">Must be a corporate email (no Gmail, Yahoo, iCloud, etc.)</span>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="department">Department <span className="required">*</span></label>
+                  <input
+                    id="department"
+                    type="text"
+                    value={form.department}
+                    onChange={update("department")}
+                    required
+                    placeholder="IT / Security"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="jobTitle">Job Title <span className="required">*</span></label>
+                  <input
+                    id="jobTitle"
+                    type="text"
+                    value={form.jobTitle}
+                    onChange={update("jobTitle")}
+                    required
+                    placeholder="CISO"
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="password">Password <span className="required">*</span></label>
+                  <div className="password-input-wrap">
+                    <input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={form.password}
+                      onChange={update("password")}
+                      required
+                      minLength={8}
+                      placeholder="Min 8 characters"
+                      className={form.password && passwordIssues.length > 0 ? "input-error" : ""}
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                    </button>
+                  </div>
+                  {form.password && passwordIssues.length > 0 && (
+                    <span className="field-error">Needs: {passwordIssues.join(", ")}</span>
+                  )}
+                  {form.password && passwordIssues.length === 0 && (
+                    <span className="field-success">Strong password</span>
+                  )}
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="confirmPassword">Confirm Password <span className="required">*</span></label>
+                  <div className="password-input-wrap">
+                    <input
+                      id="confirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={form.confirmPassword}
+                      onChange={update("confirmPassword")}
+                      required
+                      minLength={8}
+                      placeholder="Repeat password"
+                      className={form.confirmPassword && form.confirmPassword !== form.password ? "input-error" : ""}
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                    >
+                      {showConfirmPassword ? <EyeOffIcon /> : <EyeIcon />}
+                    </button>
+                  </div>
+                  {form.confirmPassword && form.confirmPassword !== form.password && (
+                    <span className="field-error">Passwords do not match</span>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="password">Password <span className="required">*</span></label>
-                <div className="password-input-wrap">
-                  <input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    value={form.password}
-                    onChange={update("password")}
-                    required
-                    minLength={8}
-                    placeholder="Min 8 characters"
-                    className={form.password && passwordIssues.length > 0 ? "input-error" : ""}
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowPassword(!showPassword)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-                  </button>
-                </div>
-                {form.password && passwordIssues.length > 0 && (
-                  <span className="field-error">Needs: {passwordIssues.join(", ")}</span>
-                )}
-                {form.password && passwordIssues.length === 0 && (
-                  <span className="field-success">Strong password</span>
-                )}
-              </div>
+            {error && <p className="error-text">{error}</p>}
 
-              <div className="form-group">
-                <label htmlFor="confirmPassword">Confirm Password <span className="required">*</span></label>
-                <div className="password-input-wrap">
-                  <input
-                    id="confirmPassword"
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={form.confirmPassword}
-                    onChange={update("confirmPassword")}
-                    required
-                    minLength={8}
-                    placeholder="Repeat password"
-                    className={form.confirmPassword && form.confirmPassword !== form.password ? "input-error" : ""}
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-                  >
-                    {showConfirmPassword ? <EyeOffIcon /> : <EyeIcon />}
-                  </button>
-                </div>
-                {form.confirmPassword && form.confirmPassword !== form.password && (
-                  <span className="field-error">Passwords do not match</span>
-                )}
-              </div>
-            </div>
+            <button type="submit" disabled={loading} className="login-btn">
+              {loading ? "Submitting..." : "Register Company"} <span className="btn-arrow">→</span>
+            </button>
+          </form>
+
+          <p className="login-terms">
+            By registering, you agree to our <Link to="/terms-of-service">Terms of Service</Link> and <Link to="/privacy-policy">Privacy Policy</Link>
+          </p>
+
+          <div className="auth-footer">
+            <span>Already have an account?</span>
+            <Link to="/login">Sign in</Link>
           </div>
-
-          {error && <p className="error-text">{error}</p>}
-
-          <button type="submit" disabled={loading} className="btn-primary register-submit">
-            {loading ? "Submitting..." : "Register Company"}
-          </button>
-        </form>
-
-        <div className="auth-footer">
-          <span>Already have an account?</span>
-          <Link to="/login">Sign in</Link>
         </div>
+      </div>
+
+      {/* Right Panel - Animated Hero */}
+      <div className="login-split-right">
+        <Suspense fallback={<div className="lh-root"><div className="lh-bg" /></div>}>
+          <LoginHero />
+        </Suspense>
       </div>
     </div>
   );

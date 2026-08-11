@@ -28,7 +28,7 @@ const IMAGE_TYPES = {
 // Lazy singletons — imported once on first use, cached thereafter.
 let _pdfParse, _xlsx, _mammoth;
 async function getPdfParse() { return (_pdfParse ??= (await import("pdf-parse/lib/pdf-parse.js")).default); }
-async function getXlsx()     { return (_xlsx     ??= await import("xlsx")); }
+async function getExcelJS()  { return (_xlsx     ??= (await import("exceljs")).default); }
 async function getMammoth()  { return (_mammoth  ??= (await import("mammoth")).default); }
 
 async function extractFileContent(filePath, fileExt) {
@@ -46,15 +46,31 @@ async function extractFileContent(filePath, fileExt) {
     return { type: "text", content: text || "(PDF contained no extractable text)" };
   }
 
-  if (["xlsx", "xls", "xlsm"].includes(fileExt)) {
-    const { read, utils } = await getXlsx();
-    const workbook = read(fs.readFileSync(filePath));
-    const sheets = workbook.SheetNames.map(name => {
-      const csv = utils.sheet_to_csv(workbook.Sheets[name]);
-      return `--- Sheet: ${name} ---\n${csv}`;
+  if (["xlsx", "xlsm"].includes(fileExt)) {
+    const ExcelJS = await getExcelJS();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(fs.readFileSync(filePath));
+    const sheets = wb.worksheets.map(ws => {
+      const rows = [];
+      ws.eachRow({ includeEmpty: true }, row => {
+        const cells = [];
+        row.eachCell({ includeEmpty: true }, cell => {
+          let v = cell.value;
+          if (v !== null && v !== undefined && typeof v === 'object') {
+            if ('result' in v) v = v.result ?? '';
+            else if ('richText' in v) v = v.richText.map(t => t.text).join('');
+            else if (v instanceof Date) v = v.toISOString();
+            else v = '';
+          }
+          const s = (v === null || v === undefined) ? '' : String(v);
+          cells.push(s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s);
+        });
+        rows.push(cells.join(','));
+      });
+      return `--- Sheet: ${ws.name} ---\n${rows.join('\n')}`;
     }).join("\n\n");
     const content = sheets.substring(0, MAX_CONTENT_CHARS);
-    console.log(`[AI] Extracted ${content.length} chars from Excel (${workbook.SheetNames.length} sheets)`);
+    console.log(`[AI] Extracted ${content.length} chars from Excel (${wb.worksheets.length} sheets)`);
     return { type: "text", content };
   }
 
@@ -80,27 +96,39 @@ function buildText(metaBlock, taskBlock, middle = "") {
   return [metaBlock, middle, taskBlock].filter(Boolean).join("\n\n");
 }
 
-export async function analyzeEvidence({ evidenceName, evidenceType, questId, moduleId, requiredEvidence, filePath }) {
+export async function analyzeEvidence({ evidenceName, evidenceType, questId, moduleId, requiredEvidence, filePath, recurrenceInterval, today }) {
   console.log(`[AI] Analyzing evidence: ${evidenceName}`);
   console.log(`[AI] File path: ${filePath}`);
   console.log(`[AI] Evidence type: ${evidenceType}`);
   console.log(`[AI] Using Bedrock model: ${MODEL_ID}`);
+
+  const intervalLabel = recurrenceInterval ? recurrenceInterval.toLowerCase() : null;
+  const dateContext = intervalLabel && intervalLabel !== "none"
+    ? `- Today's Date: ${today}\n- Control Recurrence: ${intervalLabel} (evidence must be refreshed at this cadence)`
+    : `- Today's Date: ${today}`;
 
   const metaBlock = `**Evidence Details:**
 - Evidence Name: ${evidenceName || "N/A"}
 - Type: ${evidenceType}
 - Question ID: ${questId || "N/A"}
 - Module ID: ${moduleId || "N/A"}
-- Required Evidence per ISO 27001: ${requiredEvidence || "Not specified"}`;
+- Required Evidence per ISO 27001: ${requiredEvidence || "Not specified"}
+${dateContext}`;
+
+  const dateInstruction = intervalLabel && intervalLabel !== "none"
+    ? `4. DATE VALIDATION: Scan the document for any dates (creation date, review date, approval date, policy date, report date, etc.). Compare the most recent date found against today (${today}). Given the control recurrence is "${intervalLabel}", flag if the evidence appears expired or stale. If no dates are found in the document, note that dates could not be verified. Set "dateWarning" to null if evidence appears current, or to a concise warning string (e.g. "Policy last reviewed Jan 2023 — may be overdue for ${intervalLabel} refresh") if stale.`
+    : `4. DATE VALIDATION: Scan the document for any dates. Set "dateWarning" to null if evidence appears current, or to a concise warning if you find dates suggesting the document is significantly out of date.`;
 
   const taskBlock = `**Task:**
 Evaluate whether this evidence adequately addresses the ISO 27001 compliance requirements.
+${dateInstruction}
 Respond with ONLY a JSON object (no markdown fences) with these exact keys:
 {
   "contributorComments": "feedback for the person who uploaded the evidence",
   "reviewerComments": "recommendation for the reviewer/approver",
   "gaps": ["array of identified gaps"],
-  "suggestions": ["array of improvement suggestions"]
+  "suggestions": ["array of improvement suggestions"],
+  "dateWarning": null
 }`;
 
   let messageContent;
@@ -152,7 +180,8 @@ Respond with ONLY a JSON object (no markdown fences) with these exact keys:
         contributorComments: parsed.contributorComments || "No contributor feedback generated",
         reviewerComments: parsed.reviewerComments || "No reviewer feedback generated",
         gaps: Array.isArray(parsed.gaps) ? parsed.gaps : [],
-        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : []
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+        dateWarning: parsed.dateWarning || null
       };
     } catch (parseError) {
       console.error(`[AI] JSON parse error:`, parseError.message);
@@ -160,7 +189,8 @@ Respond with ONLY a JSON object (no markdown fences) with these exact keys:
         contributorComments: rawContent,
         reviewerComments: "AI provided unstructured feedback. See contributor comments.",
         gaps: [],
-        suggestions: []
+        suggestions: [],
+        dateWarning: null
       };
     }
   } catch (error) {
@@ -168,3 +198,82 @@ Respond with ONLY a JSON object (no markdown fences) with these exact keys:
     throw new Error(`AI analysis failed: ${error.message}`);
   }
 }
+
+export async function suggestEvidence({ questionContext, vaultItems }) {
+  if (!vaultItems.length) return [];
+
+  const { questId, moduleName, controlArea, baselineQuestion, requiredEvidence, tags } = questionContext;
+
+  const itemsList = vaultItems
+    .map(v => `ID:${v.id} | "${v.title}"${v.description ? ` — ${v.description.substring(0, 120)}` : ""}`)
+    .join("\n");
+
+  const prompt = `You are a compliance evidence matcher. Given a compliance control question and a list of evidence items from a vault, identify which items are relevant.
+
+**Compliance Control:**
+- ID: ${questId}
+- Module: ${moduleName || "N/A"}
+- Control Area: ${controlArea || "N/A"}
+- Question: ${baselineQuestion || "N/A"}
+- Required Evidence: ${requiredEvidence || "N/A"}
+- Tags: ${tags || "N/A"}
+
+**Evidence Vault Items:**
+${itemsList}
+
+**Instructions:**
+Score each item's relevance to this control from 0–100.
+Return only items scoring 40 or above, up to 5 items.
+Respond with ONLY a valid JSON array, no markdown fences, no explanation:
+[{"vaultId":<number>,"relevanceScore":<number>,"reason":"<one sentence why relevant>"}]
+If nothing scores 40+, return: []`;
+
+  try {
+    const command = new ConverseCommand({
+      modelId: MODEL_ID,
+      messages: [{ role: "user", content: [{ text: prompt }] }],
+      inferenceConfig: { maxTokens: 1024, temperature: 0.1 }
+    });
+    const response = await client.send(command);
+    const raw = response.output?.message?.content?.[0]?.text || "[]";
+    console.log(`[AI] suggestEvidence response preview: ${raw.substring(0, 200)}`);
+
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return [];
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map(p => ({
+        vaultId: parseInt(p.vaultId),
+        relevanceScore: Math.min(100, Math.max(0, parseInt(p.relevanceScore) || 0)),
+        reason: p.reason || "Relevant to this control",
+      }))
+      .filter(p => !isNaN(p.vaultId) && p.relevanceScore >= 40);
+  } catch (error) {
+    console.error(`[AI] Bedrock suggestEvidence error:`, error.message);
+    throw new Error(`AI suggestion failed: ${error.message}`);
+  }
+}
+
+export async function chatWithDocuments({ systemPrompt, history, message }) {
+  console.log(`[AI] Vault chat — ${history.length} prior turns, query: "${message.substring(0, 80)}"`);
+
+  const messages = [
+    ...history.map(m => ({ role: m.role, content: [{ text: m.content }] })),
+    { role: "user", content: [{ text: message }] }
+  ];
+
+  const command = new ConverseCommand({
+    modelId: MODEL_ID,
+    system: [{ text: systemPrompt }],
+    messages,
+    inferenceConfig: { maxTokens: 2048, temperature: 0.5 }
+  });
+
+  const response = await client.send(command);
+  return response.output?.message?.content?.[0]?.text || "I couldn't generate a response. Please try again.";
+}
+
+export { extractFileContent };
