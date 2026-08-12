@@ -45,11 +45,16 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
   res.json(mapRows(result));
 }));
 
+const VALID_REVIEW_STATUSES = new Set(["Submitted", "WIP", "FINISHED", "AUDITED"]);
+
 router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), asyncHandler(async (req, res) => {
   const raw = sanitiseFields(req.body, {
     controlArea: "text", answer: "text", owner: "text", reviewer: "text",
     comments: "text", evidenceLink: "url", actionOwner: "text", actionNotes: "text",
   });
+  if (raw.reviewStatus !== undefined && !VALID_REVIEW_STATUSES.has(raw.reviewStatus)) {
+    raw.reviewStatus = null;
+  }
   const {
     assessmentId, month, moduleId, questId,
     controlArea = raw.controlArea,
@@ -229,6 +234,9 @@ router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR", "A
     comments: "text", evidenceLink: "url", reviewedBy: "text", auditedBy: "text",
     reviewerNotes: "text", auditorNotes: "text",
   });
+  if (rawBody.reviewStatus !== undefined && !VALID_REVIEW_STATUSES.has(rawBody.reviewStatus)) {
+    rawBody.reviewStatus = undefined;
+  }
   const isBeingReviewed = rawBody.reviewedBy && rawBody.reviewStatus !== undefined;
   const isBeingAudited  = rawBody.auditedBy  && rawBody.reviewStatus !== undefined;
 

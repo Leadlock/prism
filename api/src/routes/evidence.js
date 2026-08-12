@@ -15,7 +15,10 @@ const router = Router();
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, process.env.UPLOAD_DIR || "./uploads");
+    const baseDir = process.env.UPLOAD_DIR || "./uploads";
+    const tenantDir = path.join(baseDir, String(req.user.companyId));
+    fs.mkdirSync(tenantDir, { recursive: true });
+    cb(null, tenantDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
@@ -313,7 +316,7 @@ router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), 
     evidence_type: req.body.evidenceType,
     evidence_name: req.body.evidenceName,
     evidence_link: req.body.evidenceLink,
-    file_path: req.body.filePath,
+    // file_path intentionally excluded — only set at upload time, never via API update
     uploaded_by: req.body.uploadedBy || req.user?.email || null,
     upload_date: req.body.uploadDate,
     reviewer: req.body.reviewer,

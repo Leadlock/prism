@@ -8,7 +8,7 @@ RUN npm install -g npm@latest
 # Install system deps: PostgreSQL client + Python
 RUN apt-get update -y && \
     apt-get upgrade -y && \
-    apt-get install -y postgresql-client python3 python3-pip python3-venv && \
+    apt-get install -y postgresql-client python3 python3-pip python3-venv gosu && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -22,7 +22,7 @@ RUN npm install --omit=dev
 # Copy all app files
 COPY . .
 
-RUN chmod +x wait-for-db.sh start.sh
+RUN chmod +x wait-for-db.sh start.sh docker-entrypoint.sh
 
 RUN mkdir -p prism_dpdp/data exports uploads
 
@@ -32,5 +32,5 @@ RUN addgroup --system appgroup \
 
 EXPOSE 4000 8080
 
-USER appuser
-CMD ["sh", "start.sh"]
+# Entrypoint runs as root to fix named-volume ownership, then drops to appuser via gosu
+ENTRYPOINT ["sh", "docker-entrypoint.sh"]

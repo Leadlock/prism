@@ -108,7 +108,7 @@ const VAULT_DELETERS = ["ADMIN", "LEAD"];
 
 const vaultStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(process.env.UPLOAD_DIR || "./uploads", "vault");
+    const dir = path.join(process.env.UPLOAD_DIR || "./uploads", String(req.user.companyId), "vault");
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },

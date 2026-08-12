@@ -246,7 +246,7 @@ export default function QuestionCard({ question, assessment, response, onSetResp
         await apiFetch(`/api/assessments/${assessment.id}`, {
           token,
           method: "PUT",
-          body: JSON.stringify({ reviewStatus: "Submitted" })
+          body: JSON.stringify({ reviewStatus: "WIP" })
         });
         setIsEditing(true);
       } catch (err) {

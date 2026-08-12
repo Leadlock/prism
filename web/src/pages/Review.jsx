@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiFetch, apiDownload } from "../api/client.js";
 import RetryBanner from "../components/RetryBanner.jsx";
 
@@ -11,16 +12,24 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
   const [retryError, setRetryError] = useState(null);
   const [lastFailedAction, setLastFailedAction] = useState(null);
   const notesRef = useRef("");
+  const navigate = useNavigate();
 
   const load = useCallback(async () => {
     try {
       const [qs, as, ev] = await Promise.all([
         apiFetch("/api/questions", { token }),
-        apiFetch("/api/assessments", { token }),
+        apiFetch("/api/assessments?reviewStatus=Submitted", { token }),
         apiFetch("/api/evidence", { token })
       ]);
       setQuestions(qs || []);
-      setAssessments((as || []).filter(a => (a.reviewStatus || a.review_status) === "Submitted"));
+      // Deduplicate: keep only the latest submission per (questId, month) pair
+      const submitted = (as || []).filter(a => (a.reviewStatus || a.review_status) === "Submitted");
+      const seen = new Map();
+      for (const a of submitted) {
+        const key = `${a.questId || a.quest_id}__${a.month || ""}`;
+        if (!seen.has(key) || a.id > seen.get(key).id) seen.set(key, a);
+      }
+      setAssessments([...seen.values()]);
       setEvidence(ev || []);
       setError("");
       setRetryError(null);
@@ -92,6 +101,7 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
           <button className="btn btn-ghost theme-toggle" onClick={onThemeToggle} title="Toggle theme">
             {theme === "dark" ? "☀" : "☾"}
           </button>
+          <button className="btn btn-ghost" onClick={() => navigate("/tracker")}>← Tracker</button>
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
           <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
         </div>
