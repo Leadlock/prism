@@ -5,11 +5,6 @@ export const CONSENT = JSON.stringify({
   timestamp: 1000000000000,
 });
 
-/**
- * Seeds localStorage before React initialises and registers ambient API mocks.
- * Register test-specific route overrides AFTER calling setAuth so they take
- * LIFO priority over the catch-all **/api/** handler registered here.
- */
 export async function setAuth(page, role, { onboardingCompleted = true, isVerified = true } = {}) {
   const user = { id: 1, email: `${role.toLowerCase()}@test.com`, role, onboardingCompleted };
   const company = { id: 1, name: "Test Corp", isVerified };
