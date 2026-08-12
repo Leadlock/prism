@@ -1,26 +1,41 @@
 import { test, expect } from "@playwright/test";
 
-// Sets localStorage auth state and mocks the startup /me sync
+const CONSENT = JSON.stringify({
+  action: "accepted_all",
+  choices: { strictly_necessary: true, functional: true, analytics: true, marketing: true },
+  version: "1.0",
+  timestamp: 1000000000000,
+});
+
+// Sets route mocks and pre-loads auth into localStorage via addInitScript so
+// React reads the correct role before its first render (avoids race with page.evaluate).
 async function setAuth(page, role, { onboardingCompleted = true, isVerified = true } = {}) {
   const user = { id: 1, email: `${role.toLowerCase()}@test.com`, role, onboardingCompleted };
   const company = { id: 1, name: "Test Corp", isVerified };
 
-  await page.route("**/api/prefs/version", r => r.fulfill({ json: {} }));
+  // Specific mocks first (first-match wins in Playwright)
+  await page.route("**/api/prefs/version", r => r.fulfill({ json: { version: "1.0" } }));
   await page.route("**/api/settings", r => r.fulfill({
     json: { logoUrl: null, primaryColor: null, aiEnabled: true },
   }));
   await page.route("**/api/auth/me", r => r.fulfill({ json: { user, company } }));
   await page.route("**/api/**", r => r.fulfill({ json: [] }));
 
-  await page.evaluate(([u, c]) => {
+  // addInitScript runs before React initializes on every subsequent navigation
+  await page.addInitScript(({ u, c, consent }) => {
     localStorage.setItem("token", "mock-token");
     localStorage.setItem("user", JSON.stringify(u));
     localStorage.setItem("company", JSON.stringify(c));
-  }, [user, company]);
+    localStorage.setItem("cookie_consent", consent);
+  }, { u: user, c: company, consent: CONSENT });
 }
 
 test.describe("Route guards", () => {
   test.beforeEach(async ({ page }) => {
+    // Pre-dismiss the cookie consent banner on every navigation so it never blocks the UI
+    await page.addInitScript((consent) => {
+      localStorage.setItem("cookie_consent", consent);
+    }, CONSENT);
     await page.goto("/");
     await page.evaluate(() => {
       localStorage.clear();
@@ -28,13 +43,13 @@ test.describe("Route guards", () => {
   });
 
   test("unauthenticated access to /tracker redirects to /", async ({ page }) => {
-    await page.route("**/api/prefs/version", r => r.fulfill({ json: {} }));
+    await page.route("**/api/prefs/version", r => r.fulfill({ json: { version: "1.0" } }));
     await page.goto("/tracker");
     await expect(page).toHaveURL("/", { timeout: 5_000 });
   });
 
   test("unauthenticated access to /vault redirects to /login", async ({ page }) => {
-    await page.route("**/api/prefs/version", r => r.fulfill({ json: {} }));
+    await page.route("**/api/prefs/version", r => r.fulfill({ json: { version: "1.0" } }));
     await page.goto("/vault");
     await expect(page).toHaveURL("/login", { timeout: 5_000 });
   });

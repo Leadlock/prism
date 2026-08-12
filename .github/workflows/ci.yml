@@ -17,11 +17,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: web/package.json
+          cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
         working-directory: web
-        run: npm install
+        run: npm ci
 
       - name: Build
         working-directory: web
@@ -96,11 +96,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: web/package.json
+          cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
         working-directory: web
-        run: npm install
+        run: npm ci
 
       - name: Install Playwright browsers
         working-directory: web

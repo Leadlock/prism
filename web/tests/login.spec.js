@@ -7,9 +7,16 @@ const MOCK_SESSION = {
   company: { id: 1, name: "Test Corp", isVerified: true, plan: "pro", billingStatus: "active" },
 };
 
+const CONSENT = JSON.stringify({
+  action: "accepted_all",
+  choices: { strictly_necessary: true, functional: true, analytics: true, marketing: true },
+  version: "1.0",
+  timestamp: 1000000000000,
+});
+
 // Mock all ambient API calls the app fires on startup / page load
 async function mockAmbient(page) {
-  await page.route("**/api/prefs/version", r => r.fulfill({ json: { version: "1.0.0" } }));
+  await page.route("**/api/prefs/version", r => r.fulfill({ json: { version: "1.0" } }));
   await page.route("**/api/settings", r => r.fulfill({
     json: { logoUrl: null, primaryColor: null, aiEnabled: true },
   }));
@@ -25,6 +32,12 @@ async function mockAmbient(page) {
 
 test.describe("Login page", () => {
   test.beforeEach(async ({ page }) => {
+    // Pre-dismiss the cookie consent banner on every navigation so it never blocks the UI.
+    // Version "1.0" matches the mock responses so needsBanner stays false.
+    await page.addInitScript((consent) => {
+      localStorage.setItem("cookie_consent", consent);
+    }, CONSENT);
+
     // Clear any leftover auth state from previous tests
     await page.goto("/");
     await page.evaluate(() => {
@@ -47,7 +60,7 @@ test.describe("Login page", () => {
   });
 
   test("wrong password shows inline error", async ({ page }) => {
-    await page.route("**/api/prefs/version", r => r.fulfill({ json: {} }));
+    await page.route("**/api/prefs/version", r => r.fulfill({ json: { version: "1.0" } }));
     await page.route("**/api/auth/login", r =>
       r.fulfill({ status: 401, json: { error: "Invalid credentials" } })
     );
@@ -62,7 +75,7 @@ test.describe("Login page", () => {
   });
 
   test("unauthenticated user is not shown authenticated content", async ({ page }) => {
-    await page.route("**/api/prefs/version", r => r.fulfill({ json: {} }));
+    await page.route("**/api/prefs/version", r => r.fulfill({ json: { version: "1.0" } }));
     await page.goto("/login");
 
     // Submit button should be visible; no dashboard content
