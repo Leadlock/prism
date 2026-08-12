@@ -47,10 +47,10 @@ describe("PUT /api/settings/tech-stack", () => {
     const res = await request(app)
       .put("/api/settings/tech-stack")
       .set("Authorization", `Bearer ${admin.token}`)
-      .send({ techStack: stack });
+      .send(stack);
 
     expect(res.status).toBe(200);
-    expect(res.body.techStack ?? res.body.technology_stack ?? res.body).toBeDefined();
+    expect(res.body.saved).toBe(true);
   });
 
   test("VIEWER is forbidden from updating tech stack", async () => {
@@ -60,7 +60,7 @@ describe("PUT /api/settings/tech-stack", () => {
     const res = await request(app)
       .put("/api/settings/tech-stack")
       .set("Authorization", `Bearer ${viewer.token}`)
-      .send({ techStack: { cloud: ["AWS"] } });
+      .send({ cloud: ["AWS"] });
 
     expect(res.status).toBe(403);
   });

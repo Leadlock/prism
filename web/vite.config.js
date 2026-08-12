@@ -8,7 +8,7 @@ export default defineConfig({
     port: 5173,
     watch: { usePolling: true, interval: 500 },
     allowedHosts: ["prism.askthechamp.com"],
-    proxy: {
+    proxy: process.env.PLAYWRIGHT ? {} : {
       "/test": {
         target: "http://api:8080",
         rewrite: (path) => path.replace(/^\/test/, ""),
