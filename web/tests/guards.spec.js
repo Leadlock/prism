@@ -33,10 +33,10 @@ test.describe("Route guards", () => {
     await expect(page).toHaveURL("/", { timeout: 5_000 });
   });
 
-  test("unauthenticated access to /vault redirects to /", async ({ page }) => {
+  test("unauthenticated access to /vault redirects to /login", async ({ page }) => {
     await page.route("**/api/prefs/version", r => r.fulfill({ json: {} }));
     await page.goto("/vault");
-    await expect(page).toHaveURL("/", { timeout: 5_000 });
+    await expect(page).toHaveURL("/login", { timeout: 5_000 });
   });
 
   test("VIEWER role at /tracker is redirected to /review", async ({ page }) => {

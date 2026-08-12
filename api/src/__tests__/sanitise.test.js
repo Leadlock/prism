@@ -16,7 +16,7 @@ describe("sanitiseText", () => {
 
   it("strips javascript: patterns", () => expect(sanitiseText("javascript:alert(1)")).toBe("alert(1)"));
   it("strips javascript: with spaces (bypass attempt)", () =>
-    expect(sanitiseText("javascript :alert(1)")).toBe(":alert(1)"));
+    expect(sanitiseText("javascript :alert(1)")).toBe("alert(1)"));
 
   it("strips null bytes", () => expect(sanitiseText("hel\x00lo")).toBe("hello"));
   it("strips multiple null bytes", () => expect(sanitiseText("\x00\x00test\x00")).toBe("test"));
