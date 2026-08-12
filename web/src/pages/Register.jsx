@@ -1,5 +1,5 @@
 import { useState, lazy, Suspense } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import Logo from "../components/Logo";
 
@@ -39,7 +39,8 @@ const EyeOffIcon = () => (
   </svg>
 );
 
-export default function Register() {
+export default function Register({ onLogin }) {
+  const navigate = useNavigate();
   const [form, setForm] = useState({
     companyName: "",
     industry: "",
@@ -55,7 +56,6 @@ export default function Register() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
 
   const update = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
 
@@ -114,7 +114,7 @@ export default function Register() {
     try {
       const domain = form.companyName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-      await apiFetch("/api/auth/register", {
+      const data = await apiFetch("/api/auth/register", {
         method: "POST",
         body: JSON.stringify({
           companyName: form.companyName,
@@ -129,43 +129,14 @@ export default function Register() {
         })
       });
 
-      setSubmitted(true);
+      if (onLogin) onLogin(data);
+      navigate("/tracker", { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
-
-  if (submitted) {
-    return (
-      <div className="login-split">
-        <div className="login-split-left">
-          <div className="login-form-inner">
-            <div className="login-logo-wrap">
-              <Logo className="login-logo" />
-            </div>
-            <div className="register-success">
-              <span className="register-success-icon">&#10003;</span>
-              <h1 className="login-heading">Registration Submitted</h1>
-              <p className="login-subtitle">
-                Your company account is pending approval by a platform administrator.
-                You will be able to sign in once your account has been approved.
-              </p>
-              <Link to="/login" className="login-btn" style={{ display: "block", textAlign: "center", textDecoration: "none" }}>
-                Back to Sign In <span className="btn-arrow">→</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-        <div className="login-split-right">
-          <Suspense fallback={<div className="lh-root"><div className="lh-bg" /></div>}>
-            <LoginHero />
-          </Suspense>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="login-split">

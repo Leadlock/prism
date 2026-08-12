@@ -6,7 +6,7 @@ import QuestionCard from "../components/QuestionCard.jsx";
 import Toast from "../components/Toast.jsx";
 import RetryBanner from "../components/RetryBanner.jsx";
 
-export default function Tracker({ token, onLogout, user, company, branding, theme, onThemeToggle }) {
+export default function Tracker({ token, onLogout, user, company, branding, theme, onThemeToggle, isVerified }) {
   const [modules, setModules] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [assessments, setAssessments] = useState([]);
@@ -212,6 +212,56 @@ export default function Tracker({ token, onLogout, user, company, branding, them
   const saveDraft = () => {
     localStorage.setItem(`prism_draft_${user?.id || "guest"}`, JSON.stringify(responses));
     showToast("Draft saved locally", "success");
+  };
+
+  const saveAndContinue = async () => {
+    const quest = filteredQuestions[currentIndex];
+    const resp = getResponse(quest.questId);
+
+    if (!resp.answer) {
+      showToast("Please select an answer first");
+      return;
+    }
+
+    try {
+      const evidenceIds = (resp.files || [])
+        .map(file => (file && typeof file === "object" ? file.id : null))
+        .filter(Boolean);
+
+      await apiFetch("/api/assessments", {
+        token,
+        method: "POST",
+        body: JSON.stringify({
+          questId: quest.questId,
+          moduleId: quest.moduleId,
+          month,
+          answer: resp.answer,
+          currentLevel: resp.maturity || 1,
+          level3Plus: false,
+          owner: quest.defaultOwner,
+          reviewStatus: "WIP",
+          scoreEligible: false,
+          comments: resp.comment,
+          evidenceIds,
+        })
+      });
+
+      showToast("Progress saved ✓", "success");
+      setResponses(prev => { const copy = { ...prev }; delete copy[quest.questId]; return copy; });
+
+      try {
+        const newAssessments = await apiFetch(`/api/assessments?month=${month}`, { token });
+        setAssessments(newAssessments || []);
+      } catch (e) {
+        console.error("Failed to refresh assessments", e.message);
+      }
+
+      if (currentIndex < filteredQuestions.length - 1) {
+        setTimeout(() => navigate(1), 800);
+      }
+    } catch (err) {
+      showToast("Error saving: " + err.message);
+    }
   };
 
   const getResponse = (questId) => {
@@ -440,6 +490,7 @@ export default function Tracker({ token, onLogout, user, company, branding, them
           onNavigate={navigate}
           onSaveDraft={saveDraft}
           onSubmitReview={submitReview}
+          onSaveAndContinue={saveAndContinue}
           onLogout={onLogout}
           user={user}
           company={company}
@@ -448,6 +499,7 @@ export default function Tracker({ token, onLogout, user, company, branding, them
           onThemeToggle={onThemeToggle}
           onMenuToggle={() => setTrackerSidebarOpen((v) => !v)}
           token={token}
+          isVerified={isVerified}
         />
         <div className="card-area">
           {retryError && (
@@ -505,6 +557,7 @@ export default function Tracker({ token, onLogout, user, company, branding, them
                     key={currentQuest.questId}
                     question={currentQuest}
                     assessment={assessment}
+                    isVerified={isVerified}
                     response={getResponse(currentQuest.questId)}
                     onSetResponse={(key, value) => setResponse(currentQuest.questId, key, value)}
                     token={token}

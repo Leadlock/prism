@@ -21,7 +21,7 @@ const WIDGET_DEFS = [
 ];
 const DEFAULT_WIDGET_ORDER = WIDGET_DEFS.map(w => w.id);
 
-export default function Dashboard({ token, user, company, onLogout, theme, onThemeToggle }) {
+export default function Dashboard({ token, user, company, onLogout, theme, onThemeToggle, isVerified }) {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
@@ -32,6 +32,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
   const [loadingModule, setLoadingModule] = useState(false);
   const [auditorNotesModal, setAuditorNotesModal] = useState(null);
   const auditorNotesRef = useRef("");
+  const [reviewLockedOpen, setReviewLockedOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -539,8 +540,10 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
             ⊞ Reset Layout
           </button>
           {isAdmin && <button className="btn btn-ghost" onClick={() => navigate("/admin")}>Admin</button>}
-          {isAdmin && <button className="btn btn-ghost" onClick={() => navigate("/auditors")}>Auditors</button>}
-          {isLeadOrAdmin && <button className="btn btn-ghost" onClick={() => navigate("/review")}>Review</button>}
+          {isAdmin && isVerified !== false && <button className="btn btn-ghost" onClick={() => navigate("/auditors")}>Auditors</button>}
+          {isLeadOrAdmin && (
+            <button className="btn btn-ghost" onClick={() => isVerified === false ? setReviewLockedOpen(true) : navigate("/review")}>Review</button>
+          )}
           {!isAuditor && <button className="btn btn-ghost" onClick={() => navigate("/tracker")}>Tracker</button>}
           {stats && <ExportMenu stats={stats} company={company} />}
           <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
@@ -782,6 +785,20 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                 </div>
               ) : null}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Review locked modal (unverified accounts) */}
+      {reviewLockedOpen && (
+        <div className="modal-overlay" onClick={() => setReviewLockedOpen(false)}>
+          <div className="module-modal" style={{ maxWidth: 420, textAlign: "center" }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 48, marginBottom: 16, marginTop: 8 }}>🔒</div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 10, color: "var(--text)" }}>Review Workflow Locked</h2>
+            <p style={{ fontSize: 14, color: "var(--text2)", lineHeight: 1.6, marginBottom: 20 }}>
+              The review workflow is available after your account is verified by a platform administrator.
+            </p>
+            <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => setReviewLockedOpen(false)}>Close</button>
           </div>
         </div>
       )}

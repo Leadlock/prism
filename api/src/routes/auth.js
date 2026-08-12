@@ -9,6 +9,7 @@ import { DEFAULT_LIST_ITEMS } from "../utils/defaultLists.js";
 import { writeAuditLog } from "../utils/auditLog.js";
 import { sendEmail } from "../utils/email.js";
 import { authenticate } from "../middleware/auth.js";
+import { DEPT_QUESTIONS, DEPT_MODULE_META, getGenericDeptQuestions } from "../utils/departmentQuestions.js";
 
 const router = Router();
 
@@ -86,7 +87,7 @@ router.post("/register", asyncHandler(async (req, res) => {
     await client.query("BEGIN");
 
     const companyResult = await client.query(
-      "INSERT INTO companies (name, domain, admin_email, industry, company_size, status) VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING id, name, domain, status",
+      "INSERT INTO companies (name, domain, admin_email, industry, company_size, status, is_verified) VALUES ($1, $2, $3, $4, $5, 'active', FALSE) RETURNING id, name, domain, status",
       [trimmedName, normalizedDomain, normalizedEmail, industry || null, companySize || null]
     );
     company = mapRow(companyResult);
@@ -112,10 +113,16 @@ router.post("/register", asyncHandler(async (req, res) => {
     client.release();
   }
 
-  // Do NOT issue a token — company must be approved first
+  const token = jwt.sign(
+    { userId: user.id, email: user.email, role: user.role, companyId: user.companyId },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+
   res.status(201).json({
-    message: "Registration submitted. Your account is pending approval by a platform administrator.",
-    company: { id: company.id, name: company.name, domain: company.domain, status: "pending" }
+    token,
+    user: { id: user.id, email: user.email, role: user.role, companyId: user.companyId, onboardingCompleted: false },
+    company: { id: company.id, name: company.name, domain: company.domain, isVerified: false }
   });
 }));
 
@@ -157,7 +164,8 @@ router.post("/login", loginLimiter, asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT u.id, u.email, u.role, u.password_hash, u.company_id, u.onboarding_completed,
             c.name AS company_name, c.domain AS company_domain, c.status AS company_status,
-            c.plan AS company_plan, c.billing_status, c.trial_ends_at
+            c.plan AS company_plan, c.billing_status, c.trial_ends_at,
+            c.is_verified AS company_is_verified
      FROM users u JOIN companies c ON c.id = u.company_id WHERE u.email = $1`,
     [normalizedEmail]
   );
@@ -213,6 +221,7 @@ router.post("/login", loginLimiter, asyncHandler(async (req, res) => {
       plan:          user.companyPlan,
       billingStatus: user.billingStatus,
       trialEndsAt:   user.trialEndsAt,
+      isVerified:    user.companyIsVerified ?? true,
     }
   });
 }));
@@ -425,13 +434,80 @@ router.post("/reset-password", asyncHandler(async (req, res) => {
   res.json({ message: "Password has been reset successfully. You can now log in." });
 }));
 
-// POST /api/auth/complete-onboarding — marks the user's onboarding as done
+// POST /api/auth/complete-onboarding — creates department modules/quests and marks onboarding done
 router.post("/complete-onboarding", authenticate, asyncHandler(async (req, res) => {
+  const { departments = [] } = req.body;
+  const companyId = req.user.companyId;
+
+  if (departments.length > 0) {
+    const client = await getClient();
+    try {
+      await client.query("BEGIN");
+
+      for (let di = 0; di < departments.length; di++) {
+        const dept = departments[di];
+        const slug = dept.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const moduleId = `dept-${slug}`;
+        const meta = DEPT_MODULE_META[dept];
+        const moduleName = meta ? meta.name : dept;
+        const modulePurpose = meta ? meta.purpose : `${dept} compliance and data privacy controls`;
+        const questions = DEPT_QUESTIONS[dept] || getGenericDeptQuestions(dept);
+
+        await client.query(
+          `INSERT INTO modules (module_id, company_id, name, purpose, total_quests, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (company_id, module_id) DO NOTHING`,
+          [moduleId, companyId, moduleName, modulePurpose, questions.length, di + 1]
+        );
+
+        for (let qi = 0; qi < questions.length; qi++) {
+          const q = questions[qi];
+          const questId = `dept-${slug}-q${String(qi + 1).padStart(2, "0")}`;
+          await client.query(
+            `INSERT INTO questions (quest_id, company_id, module_id, module_name, control_area,
+                                   baseline_question, priority, tags, recurrence_interval)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'annual')
+             ON CONFLICT (company_id, quest_id) DO NOTHING`,
+            [questId, companyId, moduleId, moduleName, q.cat, q.text, q.priority, q.tags]
+          );
+        }
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   await query(
     "UPDATE users SET onboarding_completed = TRUE, updated_at = NOW() WHERE id = $1",
     [req.user.userId]
   );
   res.json({ onboardingCompleted: true });
+}));
+
+// GET /api/auth/me — return fresh user + company state for the current session
+router.get("/me", authenticate, asyncHandler(async (req, res) => {
+  if (req.user.role === "SUPERADMIN") {
+    return res.json({ user: { id: req.user.userId, email: req.user.email, role: "SUPERADMIN", companyId: null }, company: null });
+  }
+  const result = await query(
+    `SELECT u.id, u.email, u.role, u.company_id, u.onboarding_completed,
+            c.name AS company_name, c.domain AS company_domain,
+            c.plan AS company_plan, c.billing_status, c.trial_ends_at,
+            c.is_verified AS company_is_verified
+     FROM users u JOIN companies c ON c.id = u.company_id WHERE u.id = $1`,
+    [req.user.userId]
+  );
+  const user = mapRow(result);
+  if (!user) return res.status(404).json({ error: "User not found" });
+  res.json({
+    user: { id: user.id, email: user.email, role: user.role, companyId: user.companyId, onboardingCompleted: user.onboardingCompleted },
+    company: { id: user.companyId, name: user.companyName, domain: user.companyDomain, plan: user.companyPlan, billingStatus: user.billingStatus, trialEndsAt: user.trialEndsAt, isVerified: user.companyIsVerified ?? true }
+  });
 }));
 
 export default router;

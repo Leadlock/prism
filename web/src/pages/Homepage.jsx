@@ -131,7 +131,7 @@ export default function Homepage() {
           <nav className="hp-nav">
             <a href="#why" className="hp-nav-link">Why PRISM</a>
             <a href="#about" className="hp-nav-link">About Us</a>
-            <Link to="/test" className="hp-nav-cta">Test Your Compliance</Link>
+            <Link to="/register" className="hp-nav-cta">Test Your Compliance</Link>
             <button className="hp-toggle" onClick={() => setDark(!dark)} aria-label="Toggle theme">
               <span className={`hp-toggle-knob ${dark ? "active" : ""}`} />
             </button>

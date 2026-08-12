@@ -85,6 +85,9 @@ services:
     build: ./web
     environment:
       VITE_API_URL: ${VITE_API_URL}
+    volumes:
+      - ./web:/app
+      - /app/node_modules
     depends_on:
       - api
     ports:

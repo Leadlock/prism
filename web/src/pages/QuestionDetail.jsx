@@ -45,7 +45,7 @@ function addInterval(date, interval) {
   return d;
 }
 
-export default function QuestionDetail({ token, user, onLogout }) {
+export default function QuestionDetail({ token, user, onLogout, isVerified }) {
   const { questId } = useParams();
   const navigate = useNavigate();
   const [question, setQuestion] = useState(null);
@@ -437,14 +437,23 @@ export default function QuestionDetail({ token, user, onLogout }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div className="section-title" style={{ marginBottom: 0 }}>Vault Evidence ({vaultItems.length})</div>
             {canWriteVault && (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button className="btn btn-ghost" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => { setPickerSearch(""); setShowPicker(true); }}>
-                  Attach Existing
-                </button>
-                <button className="btn btn-primary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => { setShowVaultUpload(true); setVUploadError(""); }}>
-                  + Upload New
-                </button>
-              </div>
+              isVerified === false ? (
+                <div style={{
+                  fontSize: 12, color: "var(--text2)", padding: "6px 10px",
+                  background: "var(--bg2)", borderRadius: 6, border: "1px solid var(--border)",
+                }}>
+                  🔒 Evidence upload available after account verification
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button className="btn btn-ghost" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => { setPickerSearch(""); setShowPicker(true); }}>
+                    Attach Existing
+                  </button>
+                  <button className="btn btn-primary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => { setShowVaultUpload(true); setVUploadError(""); }}>
+                    + Upload New
+                  </button>
+                </div>
+              )
             )}
           </div>
           {vaultLoading ? (
@@ -491,7 +500,7 @@ export default function QuestionDetail({ token, user, onLogout }) {
                       style={{ fontSize: 12, padding: "4px 10px" }}
                       onClick={() => navigate("/vault")}
                     >View in Vault</button>
-                    {canWriteVault && !question.assessments?.some(a => a.reviewStatus === "FINISHED") && (
+                    {canWriteVault && isVerified !== false && !question.assessments?.some(a => a.reviewStatus === "FINISHED") && (
                       <button
                         className="btn btn-ghost"
                         style={{ fontSize: 12, padding: "4px 10px", color: "var(--text3)" }}
@@ -506,7 +515,7 @@ export default function QuestionDetail({ token, user, onLogout }) {
           )}
 
           {/* Suggested Evidence — inline below vault items */}
-          {(suggestionsLoading || (suggestions !== null && suggestions.filter(s => !ignoredSuggestions.has(s.id) && !vaultItems.some(v => v.id === s.id)).length > 0)) && (
+          {isVerified !== false && (suggestionsLoading || (suggestions !== null && suggestions.filter(s => !ignoredSuggestions.has(s.id) && !vaultItems.some(v => v.id === s.id)).length > 0)) && (
             <div style={{ marginTop: 16, borderTop: "1px solid var(--border2)", paddingTop: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text2)" }}>Suggested Evidence</div>
@@ -710,24 +719,26 @@ export default function QuestionDetail({ token, user, onLogout }) {
                           Download
                         </button>
                       )}
-                      <button
-                        className="btn btn-secondary"
-                        disabled={analyzingId === evidence.id}
-                        onClick={async () => {
-                          setAnalyzingId(evidence.id);
-                          try {
-                            await apiFetch(`/api/evidence/${evidence.id}/analyze`, { token, method: 'POST' });
-                            const q = await apiFetch(`/api/questions/${questId}`, { token });
-                            setQuestion(q);
-                          } catch (e) {
-                            setError(e.message);
-                          } finally {
-                            setAnalyzingId(null);
-                          }
-                        }}
-                      >
-                        {analyzingId === evidence.id ? "Analyzing…" : "🤖 AI Analyze"}
-                      </button>
+                      {isVerified !== false && (
+                        <button
+                          className="btn btn-secondary"
+                          disabled={analyzingId === evidence.id}
+                          onClick={async () => {
+                            setAnalyzingId(evidence.id);
+                            try {
+                              await apiFetch(`/api/evidence/${evidence.id}/analyze`, { token, method: 'POST' });
+                              const q = await apiFetch(`/api/questions/${questId}`, { token });
+                              setQuestion(q);
+                            } catch (e) {
+                              setError(e.message);
+                            } finally {
+                              setAnalyzingId(null);
+                            }
+                          }}
+                        >
+                          {analyzingId === evidence.id ? "Analyzing…" : "🤖 AI Analyze"}
+                        </button>
+                      )}
                     </div>
                   </div>
                   {evidence.aiContributorComments && (

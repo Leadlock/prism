@@ -30,7 +30,7 @@ const MATURITY = [
   { n: 5, label: "Optimised", desc: "Continuous improvement cycle is active. Process is benchmarked and proactively refined." }
 ];
 
-export default function QuestionCard({ question, assessment, response, onSetResponse, token, month, reminders, onEvidenceChange, onSaveActionDetails, user }) {
+export default function QuestionCard({ question, assessment, response, onSetResponse, token, month, reminders, onEvidenceChange, onSaveActionDetails, user, isVerified }) {
   const inputId = `fileInput-${question.questId}`;
   const [isEditing, setIsEditing] = useState(false);
 
@@ -498,20 +498,28 @@ export default function QuestionCard({ question, assessment, response, onSetResp
               <div className="maturity-desc">{maturityDesc}</div>
 
               <div className="section-label">Evidence</div>
-              <div className="evidence-drop" onClick={() => document.getElementById(inputId).click()}>
-                <div className="upload-icon">Upload</div>
-                <p>
-                  <strong>Click to upload evidence file</strong>
-                  PDF, DOCX, XLSX, PNG, ZIP and more — max 10 MB
-                </p>
-              </div>
-              <input
-                type="file"
-                id={inputId}
-                style={{ display: "none" }}
-                accept=".pdf,.docx,.png,.xlsx,.zip,.csv,.pptx,.txt,.jpg,.jpeg"
-                onChange={handleFileUpload}
-              />
+              {isVerified === false ? (
+                <div style={{ padding: "14px 16px", borderRadius: 8, border: "1px dashed var(--border2)", background: "var(--bg2)", textAlign: "center", fontSize: 13, color: "var(--text3)" }}>
+                  🔒 Evidence upload available after account verification
+                </div>
+              ) : (
+                <>
+                  <div className="evidence-drop" onClick={() => document.getElementById(inputId).click()}>
+                    <div className="upload-icon">Upload</div>
+                    <p>
+                      <strong>Click to upload evidence file</strong>
+                      PDF, DOCX, XLSX, PNG, ZIP and more — max 10 MB
+                    </p>
+                  </div>
+                  <input
+                    type="file"
+                    id={inputId}
+                    style={{ display: "none" }}
+                    accept=".pdf,.docx,.png,.xlsx,.zip,.csv,.pptx,.txt,.jpg,.jpeg"
+                    onChange={handleFileUpload}
+                  />
+                </>
+              )}
               {response.files && response.files.length > 0 && (
                 <div className="file-list">
                   {response.files.map((file, i) => {
@@ -535,9 +543,9 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                             <span className="file-name">{displayName}</span>
                           )}
                           <div style={{ display: 'flex', gap: 8 }}>
-                            {evidenceId && (
-                              <button 
-                                className="btn-compact" 
+                            {evidenceId && isVerified !== false && (
+                              <button
+                                className="btn-compact"
                                 style={{ fontSize: 12, padding: '4px 8px' }}
                                 onClick={async () => {
                                   try {
@@ -602,40 +610,44 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                 </div>
               )}
 
-              <div className="link-row">
-                <input
-                  className="link-input"
-                  type="text"
-                  placeholder="Or paste a link (SharePoint, Drive, Confluence...)"
-                  value={response.link || ""}
-                  onChange={(e) => onSetResponse("link", e.target.value)}
-                />
-                <button className="add-link-btn" onClick={async () => {
-                  const link = response.link?.trim();
-                  if (!link) return;
-                  try {
-                    const created = await apiFetch("/api/evidence", { token, method: "POST", body: JSON.stringify({ month, moduleId: question.moduleId, questId: question.questId, evidenceLink: link, evidenceName: `Link: ${link.substring(0, 50)}` }) });
-                    const files = [...(response.files || []), { id: created.id, name: created.evidenceName || created.evidence_name, link: created.evidenceLink || created.evidence_link }];
-                    onSetResponse("files", files);
-                    onSetResponse("link", "");
-                    if (onEvidenceChange) await onEvidenceChange();
-                  } catch (err) {
-                    console.error("Add link failed", err);
-                    alert(`Failed to add link: ${err.message || "Please try again"}`);
-                  }
-                }}>Add link</button>
-              </div>
+              {isVerified !== false && (
+                <>
+                  <div className="link-row">
+                    <input
+                      className="link-input"
+                      type="text"
+                      placeholder="Or paste a link (SharePoint, Drive, Confluence...)"
+                      value={response.link || ""}
+                      onChange={(e) => onSetResponse("link", e.target.value)}
+                    />
+                    <button className="add-link-btn" onClick={async () => {
+                      const link = response.link?.trim();
+                      if (!link) return;
+                      try {
+                        const created = await apiFetch("/api/evidence", { token, method: "POST", body: JSON.stringify({ month, moduleId: question.moduleId, questId: question.questId, evidenceLink: link, evidenceName: `Link: ${link.substring(0, 50)}` }) });
+                        const files = [...(response.files || []), { id: created.id, name: created.evidenceName || created.evidence_name, link: created.evidenceLink || created.evidence_link }];
+                        onSetResponse("files", files);
+                        onSetResponse("link", "");
+                        if (onEvidenceChange) await onEvidenceChange();
+                      } catch (err) {
+                        console.error("Add link failed", err);
+                        alert(`Failed to add link: ${err.message || "Please try again"}`);
+                      }
+                    }}>Add link</button>
+                  </div>
 
-              {/* ── Link from Vault ── */}
-              <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
-                <button
-                  className="btn btn-ghost"
-                  style={{ fontSize: 12, padding: "6px 14px" }}
-                  onClick={() => { setShowVaultPicker(true); loadPicker(pickerSearch); }}
-                >
-                  🗄 Link from Vault
-                </button>
-              </div>
+                  {/* ── Link from Vault ── */}
+                  <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 12, padding: "6px 14px" }}
+                      onClick={() => { setShowVaultPicker(true); loadPicker(pickerSearch); }}
+                    >
+                      🗄 Link from Vault
+                    </button>
+                  </div>
+                </>
+              )}
 
               {/* Linked vault items */}
               {vaultItems.length > 0 && (
@@ -664,11 +676,13 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                           )}
                         </div>
                         <span style={{ fontSize: 10, color: "var(--text3)", flexShrink: 0 }}>Vault</span>
-                        <button
-                          title="Detach from this question"
-                          onClick={() => handleVaultDetach(item.id)}
-                          style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
-                        >×</button>
+                        {isVerified !== false && (
+                          <button
+                            title="Detach from this question"
+                            onClick={() => handleVaultDetach(item.id)}
+                            style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
+                          >×</button>
+                        )}
                       </div>
                     );
                   })}
@@ -676,7 +690,7 @@ export default function QuestionCard({ question, assessment, response, onSetResp
               )}
 
               {/* Suggested Evidence */}
-              {(suggestionsLoading || (suggestions !== null && suggestions.filter(s => !ignoredSuggestions.has(s.id) && !vaultItems.some(v => v.id === s.id)).length > 0)) && (
+              {isVerified !== false && (suggestionsLoading || (suggestions !== null && suggestions.filter(s => !ignoredSuggestions.has(s.id) && !vaultItems.some(v => v.id === s.id)).length > 0)) && (
                 <div style={{ marginTop: 12, padding: "10px 12px", background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border2)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)" }}>Suggested Evidence</span>

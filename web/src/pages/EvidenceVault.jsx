@@ -52,7 +52,7 @@ function fileIcon(type) {
   return "📄";
 }
 
-export default function EvidenceVault({ token, user, onLogout, theme, onThemeToggle }) {
+export default function EvidenceVault({ token, user, onLogout, theme, onThemeToggle, isVerified }) {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -503,6 +503,20 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
           <button className="btn btn-primary" style={{ width: "100%" }} onClick={handleVerifyPin} disabled={pinVerifying}>
             {pinVerifying ? "Verifying…" : "Unlock Vault"}
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isVerified === false) {
+    return (
+      <div className="review-shell fade-in" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div style={{ textAlign: "center", maxWidth: 420, padding: 32 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 10, color: "var(--text)" }}>Evidence Vault Locked</h2>
+          <p style={{ fontSize: 14, color: "var(--text2)", lineHeight: 1.6 }}>
+            The Evidence Vault is available after your account is verified by a platform administrator.
+          </p>
         </div>
       </div>
     );

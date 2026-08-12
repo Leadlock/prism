@@ -182,7 +182,7 @@ function BillingSection({ company, user }) {
   );
 }
 
-export default function AdminPanel({ token, company, user, onLogout, theme, onThemeToggle }) {
+export default function AdminPanel({ token, company, user, onLogout, theme, onThemeToggle, isVerified }) {
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [invitations, setInvitations] = useState([]);
@@ -480,6 +480,7 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
     }
   };
 
+  const VERIFIED_ONLY_SECTIONS = new Set(["reminders", "recurrence", "module-deps", "tech-stack"]);
   const NAV_ITEMS = [
     { key: "invite",      label: "Invite Member" },
     { key: "members",     label: "Team" },
@@ -488,7 +489,7 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
     { key: "module-deps", label: "Module Order" },
     { key: "tech-stack",  label: "Tech Stack" },
     { key: "billing",     label: "Billing & Plan" },
-  ];
+  ].filter(item => isVerified !== false || !VERIFIED_ONLY_SECTIONS.has(item.key));
 
   const navBtnStyle = (key) => ({
     display: "block", width: "100%", textAlign: "left",

@@ -276,4 +276,79 @@ export async function chatWithDocuments({ systemPrompt, history, message }) {
   return response.output?.message?.content?.[0]?.text || "I couldn't generate a response. Please try again.";
 }
 
+export async function analyzePolicy({ policyName, filePath, fileExt }) {
+  console.log(`[AI] analyzePolicy: ${policyName} (${fileExt})`);
+
+  let extracted;
+  try {
+    if (!fs.existsSync(filePath)) throw new Error("File not found");
+    extracted = await extractFileContent(filePath, fileExt);
+  } catch (err) {
+    extracted = { type: "text", content: `(Could not extract file content: ${err.message})` };
+  }
+
+  const contentSection = extracted.type === "image"
+    ? "Analyze the policy document shown in this image."
+    : `**Document Content:**\n${(extracted.content || "(No content extracted)").substring(0, 15000)}`;
+
+  const prompt = `You are a compliance analyst. Evaluate this policy document for completeness and alignment with India's DPDPA (Digital Personal Data Protection Act 2023).
+
+**Policy Name:** ${policyName}
+
+${contentSection}
+
+**Task:**
+1. Assess how complete and production-ready this policy is.
+2. Identify general gaps — missing sections, vague ownership, missing review dates, undefined scope.
+3. Identify DPDPA-specific gaps — obligations under India's DPDPA 2023 not adequately addressed (e.g. consent mechanisms, data principal rights, breach notification timelines, data fiduciary obligations, retention & deletion, third-party processor controls, grievance redressal).
+4. Provide 3–5 concrete improvement suggestions.
+
+Respond with ONLY a valid JSON object, no markdown fences, no explanation:
+{
+  "readiness": "strong" | "adequate" | "incomplete" | "placeholder",
+  "summary": "one sentence summary of the policy's current state",
+  "gaps": ["up to 5 key gaps or missing sections"],
+  "dpdpGaps": ["up to 4 DPDPA-specific obligations not addressed"],
+  "suggestions": ["3 to 5 concrete improvement actions"]
+}
+
+Use "placeholder" if the document is a template with unfilled fields. Use "strong" only if the policy is genuinely comprehensive and DPDPA-aligned.`;
+
+  let messageContent;
+  if (extracted.type === "image") {
+    const fmt = extracted.mediaType.split("/")[1];
+    messageContent = [
+      { text: prompt },
+      { image: { format: fmt, source: { bytes: Buffer.from(extracted.base64, "base64") } } }
+    ];
+  } else {
+    messageContent = [{ text: prompt }];
+  }
+
+  const command = new ConverseCommand({
+    modelId: MODEL_ID,
+    messages: [{ role: "user", content: messageContent }],
+    inferenceConfig: { maxTokens: 2048, temperature: 0.2 }
+  });
+
+  const response = await client.send(command);
+  const raw = response.output?.message?.content?.[0]?.text || "";
+  console.log(`[AI] analyzePolicy response preview: ${raw.substring(0, 200)}`);
+
+  try {
+    const jsonMatch = raw.match(/```json\s*([\s\S]*?)\s*```/) || raw.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : raw);
+    const VALID_READINESS = ["strong", "adequate", "incomplete", "placeholder"];
+    return {
+      readiness: VALID_READINESS.includes(parsed.readiness) ? parsed.readiness : "incomplete",
+      summary: parsed.summary || "Analysis complete.",
+      gaps: Array.isArray(parsed.gaps) ? parsed.gaps.slice(0, 6) : [],
+      dpdpGaps: Array.isArray(parsed.dpdpGaps) ? parsed.dpdpGaps.slice(0, 5) : [],
+      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 5) : [],
+    };
+  } catch {
+    return { readiness: "incomplete", summary: raw.substring(0, 200), gaps: [], dpdpGaps: [], suggestions: [] };
+  }
+}
+
 export { extractFileContent };

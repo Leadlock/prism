@@ -25,6 +25,7 @@ import PrivacyPolicy from "./pages/Legal.jsx";
 import TermsOfService from "./pages/LegalTerms.jsx";
 import Support from "./pages/Support.jsx";
 import PolicyOnboarding from "./pages/PolicyOnboarding.jsx";
+import SelfAssessment from "./pages/SelfAssessment.jsx";
 import VaultChat from "./components/VaultChat.jsx";
 import ScrollToTop from "./components/ScrollToTop";
 
@@ -108,6 +109,18 @@ export default function App() {
     }
   }, [branding]);
 
+  // Sync fresh user+company state from server on startup (picks up server-side changes like onboarding reset)
+  useEffect(() => {
+    if (!auth.token) return;
+    apiFetch("/api/auth/me", { token: auth.token }).then(data => {
+      const updatedUser    = { ...auth.user,    ...data.user };
+      const updatedCompany = data.company ? { ...auth.company, ...data.company } : auth.company;
+      localStorage.setItem("user",    JSON.stringify(updatedUser));
+      if (data.company) localStorage.setItem("company", JSON.stringify(updatedCompany));
+      setAuth(prev => ({ ...prev, user: updatedUser, company: updatedCompany }));
+    }).catch(() => {});
+  }, [auth.token]);
+
   // Fetch company settings when authenticated (non-SUPERADMIN)
   useEffect(() => {
     if (auth.token && auth.user?.role !== "SUPERADMIN") {
@@ -175,16 +188,6 @@ export default function App() {
 
   const handleThemeToggle = () => setTheme(t => t === "dark" ? "light" : "dark");
 
-  const authProps = useMemo(() => ({
-    token:          auth.token,
-    user:           auth.user,
-    company:        auth.company,
-    branding,
-    onLogout:       handleLogout,
-    theme,
-    onThemeToggle:  handleThemeToggle
-  }), [auth, theme, branding]);
-
   const isAuthenticated  = Boolean(auth.token);
   const role             = auth.user?.role;
   const isSuperAdmin     = role === "SUPERADMIN";
@@ -192,11 +195,25 @@ export default function App() {
   const isLeadOrAdmin    = role === "ADMIN" || role === "LEAD";
   const isViewer         = role === "VIEWER";
   const isAuditor        = role === "AUDITOR";
-  const showOnboarding   = isAuthenticated && isAdmin && !auth.user?.onboardingCompleted;
+  // isVerified: treat undefined/null as true so existing sessions aren't broken; only gate when explicitly false
+  const isVerified       = auth.company?.isVerified !== false;
+  const showOnboarding   = isAuthenticated && isAdmin && !auth.user?.onboardingCompleted && isVerified;
+
+  const authProps = useMemo(() => ({
+    token:          auth.token,
+    user:           auth.user,
+    company:        auth.company,
+    isVerified,
+    branding,
+    onLogout:       handleLogout,
+    theme,
+    onThemeToggle:  handleThemeToggle
+  }), [auth, theme, branding, isVerified]);
 
   // Where to send an authenticated user who hits "/"
   const defaultRoute = () => {
     if (isSuperAdmin) return "/superadmin";
+    if (!isVerified && !isSuperAdmin && !isAuditor) return "/self-assess";
     if (isAuditor) return "/dashboard";
     if (isViewer)  return "/review";
     return "/tracker";
@@ -214,7 +231,7 @@ export default function App() {
           onComplete={handleOnboardingComplete}
         />
       )}
-      {isAuthenticated && !isSuperAdmin && !isAuditor && (
+      {isAuthenticated && !isSuperAdmin && !isAuditor && isVerified && (
         <VaultChat token={auth.token} />
       )}
       <Routes>
@@ -251,7 +268,7 @@ export default function App() {
         />
         <Route
           path="/register"
-          element={isAuthenticated ? <Navigate to={defaultRoute()} replace /> : <Register />}
+          element={isAuthenticated ? <Navigate to={defaultRoute()} replace /> : <Register onLogin={handleLogin} />}
         />
         <Route
           path="/accept-invite/:token"
@@ -290,12 +307,25 @@ export default function App() {
           }
         />
 
-        {/* Tracker — not for VIEWER, AUDITOR, or SUPERADMIN */}
+        {/* Self-assessment — unverified authenticated users only */}
+        <Route
+          path="/self-assess"
+          element={
+            isAuthenticated && !isSuperAdmin
+              ? (!isVerified
+                  ? <SelfAssessment user={auth.user} onLogout={handleLogout} />
+                  : <Navigate to={defaultRoute()} replace />
+                )
+              : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />
+          }
+        />
+
+        {/* Tracker — not for VIEWER, AUDITOR, SUPERADMIN, or unverified users */}
         <Route
           path="/tracker"
           element={
             isAuthenticated
-              ? (isViewer || isAuditor || isSuperAdmin ? <Navigate to={defaultRoute()} replace /> : <Tracker {...authProps} />)
+              ? (isViewer || isAuditor || isSuperAdmin ? <Navigate to={defaultRoute()} replace /> : !isVerified ? <Navigate to="/self-assess" replace /> : <Tracker {...authProps} />)
               : <Navigate to="/" replace />
           }
         />

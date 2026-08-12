@@ -21,7 +21,7 @@ const requireSuperAdmin = (req, res, next) => {
 // GET /api/superadmin/companies — list all companies with AI status
 router.get("/companies", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
   const result = await query(
-    `SELECT c.id, c.name, c.domain, c.admin_email, c.industry, c.company_size, c.status, c.created_at,
+    `SELECT c.id, c.name, c.domain, c.admin_email, c.industry, c.company_size, c.status, c.is_verified, c.created_at,
             c.plan, c.billing_status, c.trial_ends_at,
             COALESCE(cs.ai_enabled, true) AS ai_enabled,
             c.template_id,
@@ -45,7 +45,9 @@ router.patch("/companies/:id/status", authenticate, requireSuperAdmin, asyncHand
   }
 
   const result = await query(
-    "UPDATE companies SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, domain, status, template_id",
+    `UPDATE companies
+     SET status = $1, is_verified = ($1 = 'approved'), updated_at = NOW()
+     WHERE id = $2 RETURNING id, name, domain, status, template_id`,
     [status, id]
   );
 
@@ -54,6 +56,14 @@ router.patch("/companies/:id/status", authenticate, requireSuperAdmin, asyncHand
   }
 
   const company = result.rows[0];
+
+  // When approving, reset onboarding so dept selection runs on next login
+  if (status === "approved") {
+    await query(
+      "UPDATE users SET onboarding_completed = FALSE, updated_at = NOW() WHERE company_id = $1 AND role = 'ADMIN'",
+      [id]
+    );
+  }
 
   // Auto-provision template when approving a company that has one assigned
   let templateProvisioned = false;
@@ -97,6 +107,46 @@ router.patch("/companies/:id/status", authenticate, requireSuperAdmin, asyncHand
   }
 
   res.json({ ...company, templateProvisioned });
+}));
+
+// PATCH /api/superadmin/companies/:id/unapprove — revoke verification without changing status
+router.patch("/companies/:id/unapprove", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const result = await query(
+    `UPDATE companies SET is_verified = FALSE, updated_at = NOW() WHERE id = $1 RETURNING id, name, domain, status`,
+    [id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: "Company not found" });
+  }
+
+  res.json({ ...result.rows[0], isVerified: false });
+}));
+
+// PATCH /api/superadmin/companies/:id/start-onboarding — wipe dept data + reset onboarding flag (fresh start)
+router.patch("/companies/:id/start-onboarding", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM questions WHERE company_id = $1 AND quest_id LIKE 'dept-%'", [id]);
+    await client.query("DELETE FROM modules WHERE company_id = $1 AND module_id LIKE 'dept-%'", [id]);
+    await client.query(
+      "UPDATE users SET onboarding_completed = FALSE, updated_at = NOW() WHERE company_id = $1 AND role = 'ADMIN'",
+      [id]
+    );
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  res.json({ started: true });
 }));
 
 // PATCH /api/superadmin/companies/:id/reset-onboarding — re-show policy onboarding for this company's admin(s)

@@ -469,6 +469,43 @@ router.get("/:id/download", authenticate, requireVaultPin, requireReadOnly(VAULT
   res.download(resolved, item.fileName || path.basename(resolved));
 }));
 
+// POST /api/vault/:id/analyze-policy — AI gap analysis for a vault document (onboarding)
+router.post("/:id/analyze-policy", authenticate, requireRole(["ADMIN"]), longRequestTimeout(90000), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const cid = req.user.companyId;
+
+  const settingsResult = await query("SELECT ai_enabled FROM company_settings WHERE company_id = $1", [cid]);
+  const settings = mapRow(settingsResult);
+  if (settings && settings.aiEnabled === false) {
+    return res.status(403).json({ error: "AI features are disabled for your company" });
+  }
+
+  const result = await query(
+    "SELECT title, file_name, file_type, storage_path FROM evidence_vault WHERE id = $1 AND company_id = $2",
+    [id, cid]
+  );
+  const item = mapRow(result);
+  if (!item) return res.status(404).json({ error: "Vault item not found" });
+  if (!item.storagePath) return res.status(400).json({ error: "No file available to analyse" });
+
+  const uploadRoot = path.resolve(process.env.UPLOAD_DIR || "./uploads");
+  const resolved = path.resolve(item.storagePath); // nosemgrep
+  const safeRoot = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
+  if (!resolved.startsWith(safeRoot)) return res.status(400).json({ error: "Invalid file path" });
+  if (!fs.existsSync(resolved)) return res.status(400).json({ error: "File not found on disk" });
+
+  const fileExt = path.extname(item.fileName || item.storagePath).replace(".", "").toLowerCase();
+  const { analyzePolicy } = await import("../utils/aiProvider.js");
+
+  const analysis = await analyzePolicy({
+    policyName: req.body.policyName || item.title,
+    filePath: resolved,
+    fileExt,
+  });
+
+  res.json(analysis);
+}));
+
 // POST /api/vault — upload new vault item (multipart); pass questId to auto-link
 router.post("/", authenticate, requireVaultPin, requireRole(VAULT_WRITERS), upload.single("file"), asyncHandler(async (req, res) => {
   const title = sanitiseText(req.body.title, 500);

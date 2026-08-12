@@ -477,6 +477,8 @@ ALTER TABLE evidence_vault ADD COLUMN IF NOT EXISTS locked BOOLEAN NOT NULL DEFA
 ALTER TABLE users          ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS technology_stack JSONB;
 ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS vault_pin_hash TEXT;
+ALTER TABLE companies      ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE companies SET is_verified = TRUE WHERE status IN ('active', 'approved') AND is_verified = FALSE;
 
 -- Normalise priority values and enforce constraint
 UPDATE questions SET priority = 'Medium'

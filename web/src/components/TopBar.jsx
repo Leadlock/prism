@@ -9,6 +9,7 @@ export default function TopBar({
   onNavigate,
   onSaveDraft,
   onSubmitReview,
+  onSaveAndContinue,
   onLogout,
   user,
   company,
@@ -17,10 +18,12 @@ export default function TopBar({
   onThemeToggle,
   onMenuToggle,
   token,
+  isVerified,
 }) {
   const navigate = useNavigate();
   const [actionsOpen, setActionsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [reviewLockedOpen, setReviewLockedOpen] = useState(false);
   const [profileName, setProfileName] = useState(user?.fullName || "");
   const [profileDept, setProfileDept] = useState(user?.department || "");
   const [profileTitle, setProfileTitle] = useState(user?.jobTitle || "");
@@ -83,7 +86,7 @@ export default function TopBar({
           <button className="btn btn-ghost" onClick={() => navigate("/admin")}>Admin</button>
         )}
         {showReview && (
-          <button className="btn btn-ghost" onClick={() => navigate("/review")}>Review</button>
+          <button className="btn btn-ghost" onClick={() => isVerified === false ? setReviewLockedOpen(true) : navigate("/review")}>Review</button>
         )}
         <button className="btn btn-ghost" onClick={() => navigate("/dashboard")}>Dashboard</button>
         {!isViewer && (
@@ -94,9 +97,15 @@ export default function TopBar({
             <button className="btn btn-ghost" onClick={onSaveDraft}>
               Save draft
             </button>
-            <button className="btn btn-primary" onClick={onSubmitReview}>
-              Submit for review
-            </button>
+            {isVerified === false ? (
+              <button className="btn btn-primary" onClick={onSaveAndContinue}>
+                Save &amp; Continue
+              </button>
+            ) : (
+              <button className="btn btn-primary" onClick={onSubmitReview}>
+                Submit for review
+              </button>
+            )}
           </>
         )}
         <button className="btn btn-ghost" onClick={onLogout}>
@@ -111,6 +120,20 @@ export default function TopBar({
       >
         ⋮
       </button>
+
+      {/* Review locked modal */}
+      {reviewLockedOpen && (
+        <div className="modal-overlay" onClick={() => setReviewLockedOpen(false)}>
+          <div className="module-modal" style={{ maxWidth: 420, textAlign: "center" }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 48, marginBottom: 16, marginTop: 8 }}>🔒</div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 10, color: "var(--text)" }}>Review Workflow Locked</h2>
+            <p style={{ fontSize: 14, color: "var(--text2)", lineHeight: 1.6, marginBottom: 20 }}>
+              The review workflow is available after your account is verified by a platform administrator.
+            </p>
+            <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => setReviewLockedOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
 
       {/* Profile modal */}
       {profileOpen && (

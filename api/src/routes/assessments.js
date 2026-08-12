@@ -77,29 +77,31 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), as
     : [];
   const hasEvidenceLink = typeof evidenceLink === "string" && evidenceLink.trim().length > 0;
 
-  if (normalizedAnswer === "IMPLEMENTED" || normalizedAnswer === "YES") {
-    let linkedEvidenceCount = 0;
-    if (normalizedEvidenceIds.length > 0) {
-      const evidenceResult = await query(
-        `SELECT COUNT(*) AS n
-         FROM evidence
-         WHERE company_id = $1
-           AND quest_id = $2
-           AND ($3::text IS NULL OR month = $3)
-           AND id = ANY($4::int[])`,
-        [req.user.companyId, questId || null, month || null, normalizedEvidenceIds]
-      );
-      linkedEvidenceCount = parseInt(evidenceResult.rows[0].n, 10) || 0;
+  if (reviewStatus !== "WIP") {
+    if (normalizedAnswer === "IMPLEMENTED" || normalizedAnswer === "YES") {
+      let linkedEvidenceCount = 0;
+      if (normalizedEvidenceIds.length > 0) {
+        const evidenceResult = await query(
+          `SELECT COUNT(*) AS n
+           FROM evidence
+           WHERE company_id = $1
+             AND quest_id = $2
+             AND ($3::text IS NULL OR month = $3)
+             AND id = ANY($4::int[])`,
+          [req.user.companyId, questId || null, month || null, normalizedEvidenceIds]
+        );
+        linkedEvidenceCount = parseInt(evidenceResult.rows[0].n, 10) || 0;
+      }
+
+      if (!hasEvidenceLink && linkedEvidenceCount === 0) {
+        return res.status(400).json({ error: "Implemented assessments require an evidence upload or evidence link before submission" });
+      }
     }
 
-    if (!hasEvidenceLink && linkedEvidenceCount === 0) {
-      return res.status(400).json({ error: "Implemented assessments require an evidence upload or evidence link before submission" });
-    }
-  }
-
-  if (["NOT_IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "PLANNED", "NO", "WIP"].includes(normalizedAnswer)) {
-    if (!actionDueDate || !actionOwner || !actionNotes) {
-      return res.status(400).json({ error: `${normalizedAnswer.replace(/_/g, " ")} assessments require an action owner, due date, and notes` });
+    if (["NOT_IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "PLANNED", "NO"].includes(normalizedAnswer)) {
+      if (!actionDueDate || !actionOwner || !actionNotes) {
+        return res.status(400).json({ error: `${normalizedAnswer.replace(/_/g, " ")} assessments require an action owner, due date, and notes` });
+      }
     }
   }
 
@@ -152,7 +154,7 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), as
       }
     }
 
-    if (["NOT_IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "PLANNED", "NO", "WIP"].includes(normalizedAnswer)) {
+    if (reviewStatus !== "WIP" && ["NOT_IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "PLANNED", "NO"].includes(normalizedAnswer)) {
       const questionResult = await client.query(
         "SELECT control_area, baseline_question, default_owner FROM questions WHERE quest_id = $1",
         [questId || null]

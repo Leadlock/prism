@@ -190,6 +190,29 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     }
   };
 
+  // --- Unapprove (revoke verification without changing status) ---
+  const handleUnapprove = async (companyId, companyName) => {
+    try {
+      await apiFetch(`/api/superadmin/companies/${companyId}/unapprove`, { token, method: "PATCH" });
+      setCompanies(cs => cs.map(c => c.id === companyId ? { ...c, is_verified: false } : c));
+      if (selectedCompany?.id === companyId) setSelectedCompany(prev => ({ ...prev, is_verified: false }));
+      showToast(`Verification revoked for ${companyName}`, "success");
+    } catch (err) {
+      showToast(err.message || "Unapprove failed", "error");
+    }
+  };
+
+  // --- Start Onboarding (wipe dept data + reset flag) — kept for API use ---
+  const handleStartOnboarding = async (companyId, companyName) => {
+    if (!window.confirm(`This will delete all department modules/questions for "${companyName}" and show the department selection on their next login. Continue?`)) return;
+    try {
+      await apiFetch(`/api/superadmin/companies/${companyId}/start-onboarding`, { token, method: "PATCH" });
+      showToast(`Onboarding started fresh for ${companyName}`, "success");
+    } catch (err) {
+      showToast(err.message || "Failed to start onboarding", "error");
+    }
+  };
+
   // --- AI toggle (optimistic) ---
   const handleResetOnboarding = async (companyId, companyName) => {
     try {
@@ -917,6 +940,9 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
                       {c.status !== "approved" && (
                         <button className="btn" style={{ padding: "4px 8px", fontSize: "11px", background: "rgba(34,197,94,0.15)", color: "var(--green)", border: "1px solid rgba(34,197,94,0.3)" }} onClick={(e) => { e.stopPropagation(); handleStatusChange(c.id, "approved"); }}>Approve</button>
                       )}
+                      {c.is_verified && (
+                        <button className="btn" style={{ padding: "4px 8px", fontSize: "11px", background: "rgba(245,158,11,0.15)", color: "var(--amber)", border: "1px solid rgba(245,158,11,0.3)" }} onClick={(e) => { e.stopPropagation(); handleUnapprove(c.id, c.name); }}>Unapprove</button>
+                      )}
                       {c.status !== "suspended" && (
                         <button className="btn" style={{ padding: "4px 8px", fontSize: "11px", background: "rgba(245,158,11,0.15)", color: "var(--amber)", border: "1px solid rgba(245,158,11,0.3)" }} onClick={(e) => { e.stopPropagation(); handleStatusChange(c.id, "suspended"); }}>Suspend</button>
                       )}
@@ -1010,18 +1036,21 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
         </div>
 
         {/* Account Tools */}
-        <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px 20px", marginBottom: "20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)", marginBottom: "2px" }}>Policy Onboarding</div>
-            <div style={{ fontSize: "11px", color: "var(--text3)" }}>Re-shows the policy document upload wizard on the admin's next login</div>
+        <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px 20px", marginBottom: "20px" }}>
+          <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)", marginBottom: "12px" }}>Onboarding Controls</div>
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            <div style={{ background: "var(--bg4)", borderRadius: "6px", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text)" }}>↺ Reset Onboarding</div>
+              <div style={{ fontSize: "11px", color: "var(--text3)", lineHeight: 1.5 }}>Prompts the company admin to complete the full onboarding flow — tech stack questions and uploading the 19 required vault documents — on their next login.</div>
+              <button
+                className="btn"
+                style={{ padding: "5px 12px", fontSize: "11px", background: "var(--bg)", color: "var(--text2)", border: "1px solid var(--border)", whiteSpace: "nowrap", alignSelf: "flex-start" }}
+                onClick={() => handleResetOnboarding(c.id, c.name)}
+              >
+                Reset Onboarding
+              </button>
+            </div>
           </div>
-          <button
-            className="btn"
-            style={{ padding: "6px 14px", fontSize: "12px", background: "var(--bg4)", color: "var(--text2)", border: "1px solid var(--border)", whiteSpace: "nowrap" }}
-            onClick={() => handleResetOnboarding(c.id, c.name)}
-          >
-            ↺ Reset Onboarding
-          </button>
         </div>
 
         {/* Modules list */}

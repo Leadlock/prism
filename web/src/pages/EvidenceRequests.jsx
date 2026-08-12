@@ -72,7 +72,7 @@ function vaultFileIcon(type) {
 }
 
 // ── Main Component ────────────────────────────────────────────────────
-export default function EvidenceRequests({ token, user, onLogout, theme, onThemeToggle }) {
+export default function EvidenceRequests({ token, user, onLogout, theme, onThemeToggle, isVerified }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -748,7 +748,7 @@ export default function EvidenceRequests({ token, user, onLogout, theme, onTheme
             <div className="module-modal-content" style={{ padding: 0 }}>
               {/* Tab bar */}
               <div style={{ display: "flex", borderBottom: "1px solid var(--border2)" }}>
-                {[{ key: "vault", label: "Select from Vault" }, { key: "upload", label: "Upload New File" }].map(t => (
+                {[{ key: "vault", label: "Select from Vault" }, ...(isVerified !== false ? [{ key: "upload", label: "Upload New File" }] : [])].map(t => (
                   <button
                     key={t.key}
                     onClick={() => setFulfillTab(t.key)}

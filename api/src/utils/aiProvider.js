@@ -43,6 +43,14 @@ export async function chatWithDocuments(args) {
   return m.chatWithDocuments(args);
 }
 
+export async function analyzePolicy(args) {
+  const m = await loadProvider();
+  if (typeof m.analyzePolicy !== "function") {
+    throw new Error(`AI provider "${PROVIDER}" does not support analyzePolicy`);
+  }
+  return m.analyzePolicy(args);
+}
+
 export async function suggestEvidence(args) {
   const m = await loadProvider();
   if (typeof m.suggestEvidence === "function") {
