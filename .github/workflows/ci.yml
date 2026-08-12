@@ -17,11 +17,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: web/package.json
 
       - name: Install dependencies
         working-directory: web
-        run: npm ci
+        run: npm install
 
       - name: Build
         working-directory: web
@@ -37,11 +37,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: api/package-lock.json
+          cache-dependency-path: api/package.json
 
       - name: Install dependencies
         working-directory: api
-        run: npm ci
+        run: npm install
 
   schema:
     name: DB — schema validation
@@ -76,11 +76,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: api/package-lock.json
+          cache-dependency-path: api/package.json
 
       - name: Install dependencies
         working-directory: api
-        run: npm ci
+        run: npm install
 
       - name: Run unit tests
         working-directory: api
@@ -96,11 +96,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: web/package.json
 
       - name: Install dependencies
         working-directory: web
-        run: npm ci
+        run: npm install
 
       - name: Install Playwright browsers
         working-directory: web
@@ -142,11 +142,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: api/package-lock.json
+          cache-dependency-path: api/package.json
 
       - name: Install dependencies
         working-directory: api
-        run: npm ci
+        run: npm install
 
       - name: Run integration tests
         working-directory: api
