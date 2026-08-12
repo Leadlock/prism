@@ -21,7 +21,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: web
-        run: npm ci
+        run: npm install
 
       - name: Build
         working-directory: web
@@ -100,7 +100,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: web
-        run: npm ci
+        run: npm install
 
       - name: Install Playwright browsers
         working-directory: web
