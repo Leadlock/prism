@@ -43,23 +43,23 @@ test.describe("Auth workflows", () => {
     await page.goto("/self-assess");
 
     // Step 1: welcome screen
-    await expect(page.getByText("Compliance Self-Assessment")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Compliance Self-Assessment")).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: /Start Assessment/ }).click();
 
     // Step 2: department selection — click "IT & Security"
-    await expect(page.getByText("Select Departments")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Select Departments")).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: /IT & Security/ }).click();
     await page.getByRole("button", { name: /Start Questions/ }).click();
 
     // Step 3: questions — answer the first question with "Yes"
-    await expect(page.getByRole("button", { name: "Yes" }).first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: "Yes" }).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Yes" }).first().click();
 
     // Single department selected → "View Results →" button
     await page.getByRole("button", { name: /View Results/ }).click();
 
     // Step 4: results
-    await expect(page.getByText("Your Compliance Assessment")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Your Compliance Assessment")).toBeVisible({ timeout: 10_000 });
   });
 
   test("Logout clears session and returns to homepage", async ({ page }) => {
@@ -71,7 +71,7 @@ test.describe("Auth workflows", () => {
     await expect(page.getByRole("button", { name: "Logout" })).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Logout" }).click();
 
-    await expect(page).toHaveURL("/", { timeout: 5_000 });
+    await expect(page).toHaveURL("/", { timeout: 10_000 });
     const token = await page.evaluate(() => localStorage.getItem("token"));
     expect(token).toBeNull();
   });

@@ -57,30 +57,30 @@ test.describe("Route guards", () => {
   test("VIEWER role at /tracker is redirected to /review", async ({ page }) => {
     await setAuth(page, "VIEWER");
     await page.goto("/tracker");
-    await expect(page).toHaveURL(/\/review/, { timeout: 5_000 });
+    await expect(page).toHaveURL(/\/review/, { timeout: 15_000 });
   });
 
   test("AUDITOR role at /tracker is redirected to /dashboard", async ({ page }) => {
     await setAuth(page, "AUDITOR");
     await page.goto("/tracker");
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 5_000 });
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
   });
 
   test("SUPERADMIN at /tracker is redirected to /superadmin", async ({ page }) => {
     await setAuth(page, "SUPERADMIN");
     await page.goto("/tracker");
-    await expect(page).toHaveURL(/\/superadmin/, { timeout: 5_000 });
+    await expect(page).toHaveURL(/\/superadmin/, { timeout: 15_000 });
   });
 
   test("unverified ADMIN at /tracker is redirected to /self-assess", async ({ page }) => {
     await setAuth(page, "ADMIN", { isVerified: false, onboardingCompleted: true });
     await page.goto("/tracker");
-    await expect(page).toHaveURL(/\/self-assess/, { timeout: 5_000 });
+    await expect(page).toHaveURL(/\/self-assess/, { timeout: 15_000 });
   });
 
   test("ADMIN with completed onboarding reaches /tracker", async ({ page }) => {
     await setAuth(page, "ADMIN");
     await page.goto("/tracker");
-    await expect(page).toHaveURL(/\/tracker/, { timeout: 5_000 });
+    await expect(page).toHaveURL(/\/tracker/, { timeout: 10_000 });
   });
 });

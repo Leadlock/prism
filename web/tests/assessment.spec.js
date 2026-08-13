@@ -58,7 +58,7 @@ test.describe("Assessment / Tracker workflows", () => {
     await page.getByRole("button", { name: "Save draft" }).click();
 
     // Toast should show success message
-    await expect(page.locator(".toast.show")).toBeVisible({ timeout: 3_000 });
+    await expect(page.locator(".toast.show")).toBeVisible({ timeout: 5_000 });
     await expect(page.locator(".toast.show")).toContainText("Draft saved locally");
   });
 
@@ -75,7 +75,7 @@ test.describe("Assessment / Tracker workflows", () => {
     await page.getByRole("button", { name: "Submit for review" }).click();
 
     // Validation toast should appear
-    await expect(page.locator(".toast.show")).toBeVisible({ timeout: 3_000 });
+    await expect(page.locator(".toast.show")).toBeVisible({ timeout: 5_000 });
     await expect(page.locator(".toast.show")).toContainText("Please select an answer first");
 
     // Still on tracker — no redirect

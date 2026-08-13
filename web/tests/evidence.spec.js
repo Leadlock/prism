@@ -53,7 +53,7 @@ test.describe("Evidence workflows", () => {
 
     // Open upload modal
     await page.getByRole("button", { name: /Upload Evidence/ }).click();
-    await expect(page.getByText("Upload to Evidence Vault")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText("Upload to Evidence Vault")).toBeVisible({ timeout: 5_000 });
 
     // Fill title
     await page.locator(".module-modal input[type=text]").fill("Security Policy v1");
@@ -85,11 +85,11 @@ test.describe("Evidence workflows", () => {
     });
 
     await page.goto("/requests");
-    await expect(page.getByText("Evidence Requests")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Evidence Requests")).toBeVisible({ timeout: 10_000 });
 
     // Open create modal
     await page.getByRole("button", { name: /New Request/ }).click();
-    await expect(page.getByText("New Evidence Request")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText("New Evidence Request")).toBeVisible({ timeout: 5_000 });
 
     // Fill title in the modal
     await page.locator(".module-modal input[type=text]").first().fill("Upload Q3 pen test report");

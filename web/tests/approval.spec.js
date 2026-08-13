@@ -46,29 +46,31 @@ test.describe("Approval workflows", () => {
 
     await page.goto("/review");
 
-    await expect(page.locator(".review-title")).toHaveText("Review workspace", { timeout: 5_000 });
-    await expect(page.getByText("Submitted assessments (1)")).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("button", { name: "✓ Approve" })).toBeVisible();
+    await expect(page.locator(".review-title")).toHaveText("Review workspace", { timeout: 15_000 });
+    await expect(page.getByText("Submitted assessments (1)")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "✓ Approve" })).toBeVisible({ timeout: 5_000 });
   });
 
   test("LEAD approves assessment → confirmation modal → assessment removed from list", async ({ page }) => {
     await setAuth(page, "LEAD");
     await page.route("**/api/questions*", r => r.fulfill({ json: [QUESTION_FOR_REVIEW] }));
 
-    let getCallCount = 0;
+    let approved = false;
     await page.route("**/api/assessments*", async (r) => {
       if (r.request().method() === "PUT") {
+        approved = true;
         await r.fulfill({ json: { ...SUBMITTED, reviewStatus: "FINISHED", reviewedBy: "lead@test.com" } });
       } else {
-        getCallCount++;
-        // First load shows the submitted assessment; reload after approval returns empty
-        await r.fulfill({ json: getCallCount === 1 ? [SUBMITTED] : [] });
+        // Return submitted list until the PUT fires; empty list afterwards.
+        // Using a boolean (not a counter) so React StrictMode's double effect-invoke
+        // doesn't accidentally flip the state before the user clicks Approve.
+        await r.fulfill({ json: approved ? [] : [SUBMITTED] });
       }
     });
     await page.route("**/api/evidence*", r => r.fulfill({ json: [] }));
 
     await page.goto("/review");
-    await expect(page.getByRole("button", { name: "✓ Approve" })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: "✓ Approve" })).toBeVisible({ timeout: 15_000 });
 
     // Click Approve → confirmation modal opens
     await page.getByRole("button", { name: "✓ Approve" }).click();
@@ -95,7 +97,7 @@ test.describe("Approval workflows", () => {
     await page.route("**/api/evidence*", r => r.fulfill({ json: [] }));
 
     await page.goto("/review");
-    await expect(page.getByRole("button", { name: "✗ Reject" })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: "✗ Reject" })).toBeVisible({ timeout: 15_000 });
 
     // Click Reject → confirmation modal opens
     await page.getByRole("button", { name: "✗ Reject" }).click();

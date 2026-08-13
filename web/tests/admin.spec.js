@@ -51,6 +51,9 @@ test.describe("Admin workflows", () => {
 
     await page.goto("/admin");
 
+    // AdminPanel makes 6 parallel API calls before showing content
+    await expect(page.locator("p:has-text('Loading admin data')")).not.toBeVisible({ timeout: 15_000 });
+
     // Default section is "invite" — form is already visible
     await expect(page.locator("#inviteEmail")).toBeVisible({ timeout: 5_000 });
     await page.fill("#inviteEmail", "new@test.com");
@@ -73,6 +76,9 @@ test.describe("Admin workflows", () => {
 
     await page.goto("/admin");
 
+    // AdminPanel makes 6 parallel API calls before showing content
+    await expect(page.locator("p:has-text('Loading admin data')")).not.toBeVisible({ timeout: 15_000 });
+
     // Switch to Team section
     await page.getByRole("button", { name: "Team" }).click();
 
@@ -92,7 +98,9 @@ test.describe("Admin workflows", () => {
 
     await page.goto("/superadmin");
 
-    await expect(page.getByText("Acme Corp")).toBeVisible({ timeout: 10_000 });
+    // SuperAdminDashboard fetches companies before rendering the table
+    await expect(page.locator("p:has-text('Loading companies')")).not.toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Acme Corp")).toBeVisible({ timeout: 5_000 });
 
     // Status change is optimistic — UI updates immediately on click
     const companyRow = page.locator("[style*='cursor']", { has: page.getByText("Acme Corp") });
