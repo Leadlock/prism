@@ -96,21 +96,21 @@ export default function QuestionCard({ question, assessment, response, onSetResp
   const needsActionDetails = ["NOT_IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "PLANNED"].includes(response.answer);
   const needsEvidence = response.answer === "IMPLEMENTED";
   const isNA = response.answer === "NOT_APPLICABLE";
+  const isImplementedAnswer = assessment?.answer === "IMPLEMENTED" || assessment?.answer === "YES";
 
   const gates = needsActionDetails
     ? [
         { label: `Answer = ${ANSWER_OPTIONS.find(a => a.value === response.answer)?.label || response.answer}`, pass: true },
-        { label: "Maturity level", pass: !!response.maturity },
         { label: "Owner set", pass: !!response.actionOwner },
         { label: "Due date set", pass: !!response.actionDueDate },
         { label: "Notes provided", pass: !!response.actionNotes },
-        { label: reviewerPassed ? "Review completed" : "Reviewer WIP", pass: reviewerPassed }
+        { label: reviewerPassed ? "Quest completed" : "Pending save", pass: reviewerPassed }
       ]
     : isNA
     ? [
         { label: "Answer = Not Applicable", pass: true },
-        { label: "Justification provided", pass: !!response.comment },
-        { label: reviewerPassed ? "Review completed" : "Reviewer WIP", pass: reviewerPassed }
+        { label: "Explanation provided", pass: !!response.comment },
+        { label: reviewerPassed ? "Quest completed" : "Pending save", pass: reviewerPassed }
       ]
     : [
         { label: "Answer = Implemented", pass: response.answer === "IMPLEMENTED" },
@@ -123,14 +123,19 @@ export default function QuestionCard({ question, assessment, response, onSetResp
     ? MATURITY[response.maturity - 1].desc
     : "Select a maturity level above to see the description.";
 
-  // Load org users once when "Implemented" section is visible
+  // Load org users when evidence or action details sections are visible
   useEffect(() => {
-    if (needsEvidence && orgUsers === null && token) {
+    if ((needsEvidence || needsActionDetails) && orgUsers === null && token) {
       apiFetch("/api/requests/users", { token })
         .then(data => setOrgUsers(data || []))
         .catch(() => setOrgUsers([]));
     }
-  }, [needsEvidence, token]);
+  }, [needsEvidence, needsActionDetails, token]);
+
+  // Sync vault attachment state so Tracker's submit check can see it
+  useEffect(() => {
+    onSetResponse("vaultLinked", vaultItems.length > 0);
+  }, [vaultItems]);
 
   // Load vault items and suggestions when evidence section opens
   useEffect(() => {
@@ -259,8 +264,40 @@ export default function QuestionCard({ question, assessment, response, onSetResp
   // Show read-only when submitted-for-review (pending) or fully approved
   const showReadOnly = (reviewerPassed || submittedForReview) && !isEditing;
 
+  const rejectedByReviewer = reviewStatus === "WIP" && !!(assessment?.reviewerNotes || assessment?.reviewer_notes);
+  const rejectedByAuditor = !!(assessment?.auditorNotes || assessment?.auditor_notes);
+
   return (
     <div className="quest-card">
+      {(rejectedByReviewer || rejectedByAuditor) && (
+        <div style={{
+          margin: "0 0 16px",
+          padding: "12px 16px",
+          background: "rgba(239,68,68,0.08)",
+          border: "1px solid rgba(239,68,68,0.35)",
+          borderRadius: 8,
+          display: "flex",
+          gap: 10,
+          alignItems: "flex-start",
+        }}>
+          <span style={{ fontSize: 16, flexShrink: 0, color: "var(--red, #ef4444)", fontWeight: 700 }}>✗</span>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "var(--red, #ef4444)", marginBottom: 3 }}>
+              {rejectedByAuditor
+                ? `Rejected by ${assessment.auditedBy || assessment.audited_by || "auditor"}`
+                : `Rejected by ${assessment.reviewedBy || assessment.reviewed_by || "reviewer"}`}
+            </div>
+            <div style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.5 }}>
+              {rejectedByAuditor
+                ? (assessment.auditorNotes || assessment.auditor_notes)
+                : (assessment.reviewerNotes || assessment.reviewer_notes)}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>
+              Review the feedback above and resubmit.
+            </div>
+          </div>
+        </div>
+      )}
       <div className="card-meta">
         <span className="pill pill-module">{question.moduleId} - {question.moduleName}</span>
         <span className="pill pill-iso">{question.isoReference}</span>
@@ -312,19 +349,44 @@ export default function QuestionCard({ question, assessment, response, onSetResp
         <p className="evidence-req">Required evidence: {question.requiredEvidence}</p>
       </div>
 
+
       {showReadOnly ? (
         <div className="assessment-info-card">
           <div className="assessment-info-title">
-            {reviewerPassed ? "✓ Review completed" : "⏳ Submitted — awaiting review"}
+            {reviewerPassed && isImplementedAnswer ? "✓ Review completed" : reviewerPassed ? "✓ Quest completed" : "⏳ Submitted — awaiting review"}
           </div>
           <div className="assessment-info-row">
             <div className="assessment-info-label">Answer:</div>
             <div className="assessment-info-value"><strong>{assessment.answer}</strong></div>
           </div>
-          <div className="assessment-info-row">
-            <div className="assessment-info-label">Maturity Level:</div>
-            <div className="assessment-info-value"><strong>{assessment.currentLevel}</strong></div>
-          </div>
+          {isImplementedAnswer && (
+            <div className="assessment-info-row">
+              <div className="assessment-info-label">Maturity Level:</div>
+              <div className="assessment-info-value"><strong>{assessment.currentLevel}</strong></div>
+            </div>
+          )}
+          {!isImplementedAnswer && assessment.answer !== "NOT_APPLICABLE" && (assessment.actionOwner || assessment.actionDueDate) && (
+            <>
+              {assessment.actionOwner && (
+                <div className="assessment-info-row">
+                  <div className="assessment-info-label">Responsible person:</div>
+                  <div className="assessment-info-value">{assessment.actionOwner}</div>
+                </div>
+              )}
+              {assessment.actionDueDate && (
+                <div className="assessment-info-row">
+                  <div className="assessment-info-label">Due date:</div>
+                  <div className="assessment-info-value">{String(assessment.actionDueDate).slice(0, 10)}</div>
+                </div>
+              )}
+              {assessment.actionNotes && (
+                <div className="assessment-info-row">
+                  <div className="assessment-info-label">Action notes:</div>
+                  <div className="assessment-info-value" style={{ whiteSpace: "pre-wrap" }}>{assessment.actionNotes}</div>
+                </div>
+              )}
+            </>
+          )}
           {assessment.evidenceLink && (
             <div className="assessment-info-row">
               <div className="assessment-info-label">Evidence Link:</div>
@@ -417,17 +479,26 @@ export default function QuestionCard({ question, assessment, response, onSetResp
               <div className="section-label">Action details</div>
               <div className="action-fields">
                 <label>
-                  Responsible person (email)
-                  <input
-                    type="email"
-                    value={response.actionOwner || ""}
-                    onChange={(e) => onSetResponse("actionOwner", e.target.value)}
-                    placeholder={orgDomain ? `name@${orgDomain}` : "email@company.com"}
-                  />
-                  {response.actionOwner && orgDomain && !isOrgEmail(response.actionOwner) && (
-                    <span style={{ fontSize: 11, color: "var(--red)", marginTop: 2, display: "block" }}>
-                      Must be a @{orgDomain} address
-                    </span>
+                  Responsible person
+                  {orgUsers && orgUsers.length > 0 ? (
+                    <select
+                      value={response.actionOwner || ""}
+                      onChange={(e) => onSetResponse("actionOwner", e.target.value)}
+                    >
+                      <option value="">Select a person…</option>
+                      {orgUsers.map(u => (
+                        <option key={u.id} value={u.email}>
+                          {u.fullName || u.full_name ? `${u.fullName || u.full_name} (${u.email})` : u.email}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="email"
+                      value={response.actionOwner || ""}
+                      onChange={(e) => onSetResponse("actionOwner", e.target.value)}
+                      placeholder={orgDomain ? `name@${orgDomain}` : "email@company.com"}
+                    />
                   )}
                 </label>
                 <label>
@@ -445,15 +516,18 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                 value={response.actionNotes || ""}
                 onChange={(e) => onSetResponse("actionNotes", e.target.value)}
               ></textarea>
-              <button
-                className="btn-save-action"
-                onClick={() => {
-                  if (onSaveActionDetails) onSaveActionDetails();
-                }}
-                disabled={!response.actionDueDate || !response.actionOwner}
-              >
-                Save action details
-              </button>
+            </div>
+          )}
+
+          {isNA && (
+            <div className="action-requirements">
+              <div className="section-label">Explanation</div>
+              <textarea
+                className="comments-textarea"
+                placeholder="Why does this control not apply? Provide a brief justification..."
+                value={response.comment || ""}
+                onChange={(e) => onSetResponse("comment", e.target.value)}
+              ></textarea>
             </div>
           )}
 
@@ -623,6 +697,10 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                     <button className="add-link-btn" onClick={async () => {
                       const link = response.link?.trim();
                       if (!link) return;
+                      if (!/^https?:\/\/.+\..+/.test(link)) {
+                        alert("Please enter a valid URL starting with http:// or https://");
+                        return;
+                      }
                       try {
                         const created = await apiFetch("/api/evidence", { token, method: "POST", body: JSON.stringify({ month, moduleId: question.moduleId, questId: question.questId, evidenceLink: link, evidenceName: `Link: ${link.substring(0, 50)}` }) });
                         const files = [...(response.files || []), { id: created.id, name: created.evidenceName || created.evidence_name, link: created.evidenceLink || created.evidence_link }];
@@ -676,7 +754,7 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                           )}
                         </div>
                         <span style={{ fontSize: 10, color: "var(--text3)", flexShrink: 0 }}>Vault</span>
-                        {isVerified !== false && (
+                        {isVerified !== false && !reviewerPassed && (
                           <button
                             title="Detach from this question"
                             onClick={() => handleVaultDetach(item.id)}

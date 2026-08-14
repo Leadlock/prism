@@ -228,8 +228,24 @@ CREATE TABLE IF NOT EXISTS invitations (
   token TEXT NOT NULL UNIQUE,
   expires_at TIMESTAMPTZ NOT NULL,
   accepted_at TIMESTAMPTZ,
+  department TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE invitations ADD COLUMN IF NOT EXISTS department TEXT;
+
+-- ===== Self-Assessment Submissions =====
+CREATE TABLE IF NOT EXISTS self_assessment_submissions (
+  id SERIAL PRIMARY KEY,
+  company_id INT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  user_id INT REFERENCES users(id) ON DELETE SET NULL,
+  user_email TEXT NOT NULL,
+  department TEXT NOT NULL,
+  answers JSONB NOT NULL DEFAULT '{}',
+  submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS self_assess_submissions_unique
+  ON self_assessment_submissions (company_id, user_email, department);
+ALTER TABLE self_assessment_submissions ADD COLUMN IF NOT EXISTS answers JSONB NOT NULL DEFAULT '{}';
 CREATE INDEX IF NOT EXISTS invitations_company_id_idx ON invitations(company_id);
 CREATE INDEX IF NOT EXISTS invitations_token_idx ON invitations(token);
 

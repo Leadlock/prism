@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch, apiUpload } from "../api/client.js";
+import { apiFetch, apiUpload, clearCooldown, getCooldownInfo } from "../api/client.js";
 import NotificationBell from "../components/NotificationBell.jsx";
 
 function formatBytes(n) {
@@ -71,6 +71,10 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
   const [pinVerifying, setPinVerifying] = useState(false);
+  const [cooldownPinModal, setCooldownPinModal] = useState(false);
+  const [cooldownPinInput, setCooldownPinInput] = useState("");
+  const [cooldownPinError, setCooldownPinError] = useState("");
+  const [cooldownPinVerifying, setCooldownPinVerifying] = useState(false);
   // Admin PIN management
   const [showSetPin, setShowSetPin] = useState(false);
   const [newPin, setNewPin] = useState("");
@@ -131,7 +135,10 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
         setPinSet(d.pinSet);
         if (!d.pinSet || isAdmin) setVaultUnlocked(true);
       })
-      .catch(() => setVaultUnlocked(true))
+      .catch(e => {
+        if (e.code === "COOLDOWN") setError(e.message);
+        else setVaultUnlocked(true);
+      })
       .finally(() => setPinStatusLoaded(true));
   }, []);
 
@@ -151,6 +158,37 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
       setPinError(e.message || "Incorrect PIN");
     } finally {
       setPinVerifying(false);
+    }
+  };
+
+  const handleCooldownPinVerify = async () => {
+    if (cooldownPinInput.length !== 6) { setCooldownPinError("Enter your 6-digit vault PIN"); return; }
+    setCooldownPinVerifying(true);
+    setCooldownPinError("");
+    try {
+      // Use raw fetch — apiFetch would block this call while cooldown is active
+      const apiBase = import.meta.env.VITE_API_URL || "";
+      const res = await fetch(`${apiBase}/api/vault/pin/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ pin: cooldownPinInput }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Incorrect PIN");
+      }
+      const data = await res.json();
+      setVaultToken(data.token);
+      setVaultUnlocked(true);
+      clearCooldown();
+      setError("");
+      setCooldownPinModal(false);
+      setCooldownPinInput("");
+      load();
+    } catch (e) {
+      setCooldownPinError(e.message || "Incorrect PIN");
+    } finally {
+      setCooldownPinVerifying(false);
     }
   };
 
@@ -306,6 +344,11 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
         fileSize: newVer.fileSize,
         storagePath: newVer.storagePath,
       }));
+      setItems(prev => prev.map(i =>
+        i.id === selectedDetail.id
+          ? { ...i, fileName: newVer.fileName, fileType: newVer.fileType, fileSize: newVer.fileSize }
+          : i
+      ));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -391,7 +434,8 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
         setError("This evidence is locked — it cannot be deleted because a reviewer has approved a linked control.");
       } else if (e.message?.includes("linked to")) {
         const match = e.message.match(/(\d+) question/);
-        setDeleteConfirm({ item, linkedCount: match ? parseInt(match[1]) : 1 });
+        const n = match ? parseInt(match[1]) : 1;
+        setError(`Cannot delete — this evidence is linked to ${n} question${n !== 1 ? "s" : ""}. Unlink it from questions in the Tracker before deleting.`);
       } else {
         setError(e.message);
       }
@@ -553,9 +597,12 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
 
       <div className="review-content">
         {error && (
-          <div style={{ padding: "10px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid var(--red)", borderRadius: 8, color: "var(--red)", marginBottom: 16, fontSize: 13 }}>
-            {error}
-            <button onClick={() => setError("")} style={{ marginLeft: 12, background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 14 }}>×</button>
+          <div style={{ padding: "10px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid var(--red)", borderRadius: 8, color: "var(--red)", marginBottom: 16, fontSize: 13, display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ flex: 1 }}>{error}</span>
+            {getCooldownInfo().active && (
+              <button onClick={() => { setCooldownPinInput(""); setCooldownPinError(""); setCooldownPinModal(true); }} style={{ background: "none", border: "1px solid var(--red)", borderRadius: 4, color: "var(--red)", cursor: "pointer", fontSize: 12, padding: "2px 8px" }}>Reset &amp; retry</button>
+            )}
+            <button onClick={() => setError("")} style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 14 }}>×</button>
           </div>
         )}
 
@@ -1089,6 +1136,41 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
                   {removingPin ? "Removing…" : "Remove PIN (open access)"}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cooldown PIN verification modal */}
+      {cooldownPinModal && (
+        <div className="modal-overlay" onClick={() => setCooldownPinModal(false)}>
+          <div className="module-modal" style={{ maxWidth: 360, textAlign: "center" }} onClick={e => e.stopPropagation()}>
+            <div className="module-modal-header">
+              <div className="module-modal-title">Vault PIN required</div>
+              <button className="modal-close" onClick={() => setCooldownPinModal(false)}>×</button>
+            </div>
+            <div className="module-modal-content" style={{ padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ fontSize: 13, color: "var(--text2)" }}>
+                Enter your vault PIN to reset the cooldown and regain access.
+              </div>
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                value={cooldownPinInput}
+                onChange={e => { setCooldownPinInput(e.target.value.replace(/\D/g, "").slice(0, 6)); setCooldownPinError(""); }}
+                onKeyDown={e => e.key === "Enter" && handleCooldownPinVerify()}
+                placeholder="••••••"
+                autoFocus
+                style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: `1px solid ${cooldownPinError ? "var(--red)" : "var(--border2)"}`, background: "var(--bg3)", color: "var(--text)", fontSize: 22, textAlign: "center", letterSpacing: 8, boxSizing: "border-box" }}
+              />
+              {cooldownPinError && <div style={{ fontSize: 12, color: "var(--red)" }}>✗ {cooldownPinError}</div>}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleCooldownPinVerify} disabled={cooldownPinVerifying}>
+                  {cooldownPinVerifying ? "Verifying…" : "Unlock & reset"}
+                </button>
+                <button className="btn btn-ghost" onClick={() => setCooldownPinModal(false)}>Cancel</button>
+              </div>
             </div>
           </div>
         </div>

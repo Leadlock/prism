@@ -18,6 +18,8 @@ const WIDGET_DEFS = [
   { id: "evidence-vault",     cls: "dash-card" },
   { id: "score-eligible",     cls: "dash-card" },
   { id: "notes-coverage",     cls: "dash-card" },
+  { id: "recently-reviewed",  cls: "dash-card dash-card-wide" },
+  { id: "rejected-controls",  cls: "dash-card dash-card-wide" },
 ];
 const DEFAULT_WIDGET_ORDER = WIDGET_DEFS.map(w => w.id);
 
@@ -39,6 +41,10 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
   });
   const [dashPriorityFilter, setDashPriorityFilter] = useState("");
   const [dashTagFilter, setDashTagFilter] = useState("");
+  const [dashOwnerFilter, setDashOwnerFilter] = useState("");
+  const [dashStatusFilter, setDashStatusFilter] = useState("");
+  const [availableTags, setAvailableTags] = useState([]);
+  const [availableOwners, setAvailableOwners] = useState([]);
 
   // Widget drag-and-drop order (persisted to localStorage)
   const [widgetOrder, setWidgetOrder] = useState(() => {
@@ -52,6 +58,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
   });
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
+  const [dashMenuOpen, setDashMenuOpen] = useState(false);
 
   const saveOrder = (next) => {
     setWidgetOrder(next);
@@ -82,17 +89,35 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
     return options;
   };
 
+  // Load filter options (tags, owners) from the sheet once on mount
+  useEffect(() => {
+    apiFetch("/api/questions", { token })
+      .then(qs => {
+        const tags = new Set();
+        const owners = new Set();
+        for (const q of qs || []) {
+          if (q.tags) q.tags.split(",").forEach(t => { const s = t.trim(); if (s) tags.add(s); });
+          if (q.defaultOwner || q.default_owner) owners.add(q.defaultOwner || q.default_owner);
+        }
+        setAvailableTags([...tags].sort());
+        setAvailableOwners([...owners].sort());
+      })
+      .catch(() => {});
+  }, [token]);
+
   useEffect(() => {
     let active = true;
     setLoading(true);
     let url = `/api/dashboard?month=${selectedMonth}`;
     if (dashPriorityFilter) url += `&priority=${encodeURIComponent(dashPriorityFilter)}`;
     if (dashTagFilter) url += `&tag=${encodeURIComponent(dashTagFilter)}`;
+    if (dashOwnerFilter) url += `&owner=${encodeURIComponent(dashOwnerFilter)}`;
+    if (dashStatusFilter) url += `&status=${encodeURIComponent(dashStatusFilter)}`;
     apiFetch(url, { token })
       .then(data => { if (active) { setStats(data); setLoading(false); } })
       .catch(err => { if (active) { setError(err.message); setLoading(false); } });
     return () => { active = false; };
-  }, [token, selectedMonth, dashPriorityFilter, dashTagFilter]);
+  }, [token, selectedMonth, dashPriorityFilter, dashTagFilter, dashOwnerFilter, dashStatusFilter]);
 
   const isAdmin       = user?.role === "ADMIN";
   const isLeadOrAdmin = user?.role === "ADMIN" || user?.role === "LEAD";
@@ -168,7 +193,6 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
       const dashData = await apiFetch(`/api/dashboard?month=${selectedMonth}`, { token });
       setStats(dashData);
     } catch (err) {
-      alert(`Error: ${err.message}`);
       setError(err.message);
     }
   };
@@ -321,9 +345,11 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
             <DonutChart
               size={130}
               segments={[
-                { label: "YES", value: stats.answerDistribution.find(a => a.answer === "YES")?.count || 0, color: "var(--green)" },
-                { label: "NO",  value: stats.answerDistribution.find(a => a.answer === "NO")?.count  || 0, color: "var(--red)" },
-                { label: "WIP", value: stats.answerDistribution.find(a => a.answer === "WIP")?.count || 0, color: "var(--amber)" }
+                { label: "Implemented",        value: stats.answerDistribution.find(a => a.answer === "IMPLEMENTED")?.count || 0,           color: "var(--green)" },
+                { label: "Not Implemented",    value: stats.answerDistribution.find(a => a.answer === "NOT_IMPLEMENTED")?.count || 0,       color: "var(--red)" },
+                { label: "Partial",            value: stats.answerDistribution.find(a => a.answer === "PARTIALLY_IMPLEMENTED")?.count || 0, color: "var(--amber)" },
+                { label: "Planned",            value: stats.answerDistribution.find(a => a.answer === "PLANNED")?.count || 0,               color: "var(--blue, #3b82f6)" },
+                { label: "Not Applicable",     value: stats.answerDistribution.find(a => a.answer === "NOT_APPLICABLE")?.count || 0,        color: "var(--text3)" }
               ]}
             />
             <div style={{ marginTop: 12, fontSize: 11, color: "var(--text3)", textAlign: "center" }}>
@@ -473,6 +499,135 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
           </>
         );
 
+      case "recently-reviewed": {
+        const items = stats.recentlyReviewed || [];
+        if (items.length === 0) return null;
+        const fmtTime = (iso) => {
+          if (!iso) return "";
+          const diff = Date.now() - new Date(iso).getTime();
+          const mins = Math.floor(diff / 60000);
+          if (mins < 60) return `${mins}m ago`;
+          const hrs = Math.floor(mins / 60);
+          if (hrs < 24) return `${hrs}h ago`;
+          return `${Math.floor(hrs / 24)}d ago`;
+        };
+        return (
+          <>
+            <div className="dash-card-title">Recent Reviews</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+              {items.map(item => {
+                const approved = item.reviewStatus === "FINISHED";
+                return (
+                  <div key={item.id} style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "7px 10px", borderRadius: 7,
+                    background: approved ? "rgba(34,197,94,0.06)" : "rgba(245,158,11,0.06)",
+                    border: `1px solid ${approved ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)"}`,
+                  }}>
+                    <span style={{ fontSize: 13, flexShrink: 0, color: approved ? "var(--green)" : "var(--amber)" }}>
+                      {approved ? "✓" : "✗"}
+                    </span>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--accent2)", flexShrink: 0, fontWeight: 700 }}>
+                      {item.questId}
+                    </span>
+                    <span style={{ fontSize: 12, color: "var(--text2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.controlArea || item.moduleId}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--text3)", flexShrink: 0, whiteSpace: "nowrap" }}>
+                      {item.reviewedBy?.split("@")[0]}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--text3)", flexShrink: 0, whiteSpace: "nowrap" }}>
+                      {fmtTime(item.reviewedAt)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        );
+      }
+
+      case "rejected-controls": {
+        const items = stats.rejectedControls || [];
+        const fmtTime = (iso) => {
+          if (!iso) return "";
+          const diff = Date.now() - new Date(iso).getTime();
+          const mins = Math.floor(diff / 60000);
+          if (mins < 60) return `${mins}m ago`;
+          const hrs = Math.floor(mins / 60);
+          if (hrs < 24) return `${hrs}h ago`;
+          return `${Math.floor(hrs / 24)}d ago`;
+        };
+        return (
+          <>
+            <div className="dash-card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              Rejected Controls
+              {items.length > 0 && (
+                <span style={{
+                  background: "var(--red, #ef4444)", color: "#fff",
+                  borderRadius: 10, minWidth: 20, height: 20, padding: "0 6px",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 700, flexShrink: 0,
+                }}>{items.length}</span>
+              )}
+            </div>
+            {items.length === 0 ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, color: "var(--green)" }}>
+                <span style={{ fontSize: 16 }}>✓</span>
+                <span style={{ fontSize: 13 }}>No rejected controls</span>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                {items.map(item => {
+                  const byAuditor = item.auditorNotes && item.auditorNotes.trim();
+                  const rejectorEmail = byAuditor ? item.auditedBy : item.reviewedBy;
+                  const rejectorLabel = byAuditor ? "Auditor" : "Reviewer";
+                  const reason = byAuditor ? item.auditorNotes : item.reviewerNotes;
+                  const rejectedAt = byAuditor ? item.auditedAt : item.reviewedAt;
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        padding: "10px 12px", borderRadius: 8,
+                        background: "rgba(239,68,68,0.05)",
+                        border: "1px solid rgba(239,68,68,0.18)",
+                        cursor: "pointer",
+                      }}
+                      onClick={(e) => { e.stopPropagation(); navigate(`/tracker?quest=${encodeURIComponent(item.questId)}`); }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: reason ? 5 : 0 }}>
+                        <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--red, #ef4444)", fontWeight: 700, flexShrink: 0 }}>
+                          ✗ {item.questId}
+                        </span>
+                        <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                          {item.controlArea}
+                        </span>
+                        <span style={{ fontSize: 10, color: "var(--text3)", flexShrink: 0, background: "var(--bg4)", padding: "2px 6px", borderRadius: 4 }}>
+                          {rejectorLabel}
+                        </span>
+                        {rejectedAt && (
+                          <span style={{ fontSize: 10, color: "var(--text3)", flexShrink: 0, whiteSpace: "nowrap" }}>
+                            {fmtTime(rejectedAt)}
+                          </span>
+                        )}
+                      </div>
+                      {reason && (
+                        <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>
+                          <span style={{ color: "var(--text3)", fontSize: 11 }}>
+                            {rejectorEmail?.split("@")[0] || rejectorLabel}:{" "}
+                          </span>
+                          {reason}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        );
+      }
+
       default:
         return null;
     }
@@ -488,68 +643,105 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
           {company?.name && <div className="dash-sub" style={{ fontSize: 14, color: "var(--text2)" }}>{company.name}</div>}
         </div>
         <div className="dash-header-actions">
-          <select
-            className="month-selector"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-          >
+          {/* Month */}
+          <select className="month-selector" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
             {generateMonthOptions().map(month => (
               <option key={month} value={month}>
                 {new Date(month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
               </option>
             ))}
           </select>
-          <select
-            className="month-selector"
-            value={dashPriorityFilter}
-            onChange={(e) => setDashPriorityFilter(e.target.value)}
-          >
+          {/* Filters */}
+          <select className="month-selector" value={dashStatusFilter} onChange={(e) => setDashStatusFilter(e.target.value)}>
+            <option value="">All Statuses</option>
+            <option value="IMPLEMENTED">Implemented</option>
+            <option value="PARTIALLY_IMPLEMENTED">Partially Implemented</option>
+            <option value="PLANNED">Planned</option>
+            <option value="NOT_IMPLEMENTED">Not Implemented</option>
+            <option value="NOT_APPLICABLE">Not Applicable</option>
+          </select>
+          <select className="month-selector" value={dashPriorityFilter} onChange={(e) => setDashPriorityFilter(e.target.value)}>
             <option value="">All Priorities</option>
             <option value="Critical">Critical</option>
             <option value="High">High</option>
             <option value="Medium">Medium</option>
             <option value="Low">Low</option>
           </select>
-          <select
-            className="month-selector"
-            value={dashTagFilter}
-            onChange={(e) => setDashTagFilter(e.target.value)}
-          >
-            <option value="">All Tags</option>
-            <option value="ISO27001">ISO27001</option>
-            <option value="SOC2">SOC2</option>
-            <option value="NIST">NIST</option>
-            <option value="GDPR">GDPR</option>
-            <option value="DPDPA">DPDPA</option>
-            <option value="PCI-DSS">PCI-DSS</option>
-            <option value="Technical">Technical</option>
-            <option value="Organisational">Organisational</option>
-            <option value="Legal">Legal</option>
-            <option value="Operational">Operational</option>
-          </select>
-          <NotificationBell token={token} />
-          <button className="btn btn-ghost theme-toggle" onClick={onThemeToggle} title="Toggle theme">
-            {theme === "dark" ? "☀" : "☾"}
-          </button>
-          <button
-            className="btn btn-ghost"
-            onClick={resetLayout}
-            title="Reset widget layout"
-            style={{ fontSize: 12, padding: "4px 10px" }}
-          >
-            ⊞ Reset Layout
-          </button>
-          {isAdmin && <button className="btn btn-ghost" onClick={() => navigate("/admin")}>Admin</button>}
-          {isAdmin && isVerified !== false && <button className="btn btn-ghost" onClick={() => navigate("/auditors")}>Auditors</button>}
-          {isLeadOrAdmin && (
-            <button className="btn btn-ghost" onClick={() => isVerified === false ? setReviewLockedOpen(true) : navigate("/review")}>Review</button>
+          {availableOwners.length > 0 && (
+            <select className="month-selector" value={dashOwnerFilter} onChange={(e) => setDashOwnerFilter(e.target.value)}>
+              <option value="">All Owners</option>
+              {availableOwners.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
           )}
+          {availableTags.length > 0 && (
+            <select className="month-selector" value={dashTagFilter} onChange={(e) => setDashTagFilter(e.target.value)}>
+              <option value="">All Tags</option>
+              {availableTags.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          )}
+          {/* Core actions */}
+          <NotificationBell token={token} />
           {!isAuditor && <button className="btn btn-ghost" onClick={() => navigate("/tracker")}>Tracker</button>}
           {stats && <ExportMenu stats={stats} company={company} />}
-          <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
+          {/* ⋮ overflow menu */}
+          <div style={{ position: "relative" }}>
+            <button
+              className="btn btn-ghost"
+              style={{ padding: "6px 10px", fontSize: 18, lineHeight: 1 }}
+              onClick={() => setDashMenuOpen(v => !v)}
+              title="More"
+            >⋮</button>
+            {dashMenuOpen && (
+              <>
+                <div style={{ position: "fixed", inset: 0, zIndex: 1999 }} onClick={() => setDashMenuOpen(false)} />
+                <div style={{
+                  position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 2000,
+                  background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 10,
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.18)", minWidth: 160, padding: "6px 0",
+                }}>
+                  {isAdmin && <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); navigate("/admin"); }}>Admin</button>}
+                  {isAdmin && isVerified !== false && <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); navigate("/auditors"); }}>Auditors</button>}
+                  {isLeadOrAdmin && <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); isVerified === false ? setReviewLockedOpen(true) : navigate("/review"); }}>Review</button>}
+                  <div style={{ height: 1, background: "var(--border2)", margin: "4px 0" }} />
+                  <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); resetLayout(); }}>⊞ Reset Layout</button>
+                  <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); onThemeToggle(); }}>{theme === "dark" ? "☀ Light mode" : "☾ Dark mode"}</button>
+                  <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13, color: "var(--red, #ef4444)" }} onClick={() => { setDashMenuOpen(false); onLogout(); }}>Logout</button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
+      {(dashPriorityFilter || dashTagFilter || dashOwnerFilter || dashStatusFilter) && !loading && (
+        <div style={{
+          margin: "0 28px 16px",
+          padding: "8px 14px",
+          background: "rgba(99,102,241,0.08)",
+          border: "1px solid rgba(99,102,241,0.25)",
+          borderRadius: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          fontSize: 13,
+          color: "var(--text2)",
+        }}>
+          <span style={{ color: "var(--accent)", fontWeight: 600 }}>Filtered:</span>
+          {dashStatusFilter && <span>Status: <strong>{dashStatusFilter.replace(/_/g, " ")}</strong></span>}
+          {dashPriorityFilter && <span>Priority: <strong>{dashPriorityFilter}</strong></span>}
+          {dashOwnerFilter && <span>Owner: <strong>{dashOwnerFilter}</strong></span>}
+          {dashTagFilter && <span>Tag: <strong>{dashTagFilter}</strong></span>}
+          {stats?.overall?.total === 0 && (
+            <span style={{ color: "var(--red, #ef4444)", marginLeft: 4 }}>— no questions match this filter</span>
+          )}
+          <button
+            onClick={() => { setDashTagFilter(""); setDashPriorityFilter(""); setDashOwnerFilter(""); setDashStatusFilter(""); }}
+            style={{ marginLeft: "auto", background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 13 }}
+          >
+            ✕ Clear filters
+          </button>
+        </div>
+      )}
       {error && <div className="error-text" style={{ padding: "0 28px 16px" }}>{error}</div>}
 
       {loading ? (

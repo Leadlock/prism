@@ -8,6 +8,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { DEFAULT_LIST_ITEMS } from "../utils/defaultLists.js";
 import { writeAuditLog } from "../utils/auditLog.js";
 import { sendEmail } from "../utils/email.js";
+import { buildEmailHtml } from "../utils/emailTemplate.js";
 import { authenticate } from "../middleware/auth.js";
 import { DEPT_QUESTIONS, DEPT_MODULE_META, getGenericDeptQuestions } from "../utils/departmentQuestions.js";
 
@@ -226,11 +227,61 @@ router.post("/login", loginLimiter, asyncHandler(async (req, res) => {
   });
 }));
 
+// GET /api/auth/invitation/:token — public, returns safe metadata about an invitation
+router.get("/invitation/:token", asyncHandler(async (req, res) => {
+  const { token } = req.params;
+  if (!token) return res.status(400).json({ error: "Token required" });
+
+  const invitationResult = await query(
+    `SELECT i.email, i.role, i.expires_at, i.accepted_at, i.department,
+            c.name AS company_name,
+            u.email AS invitor_email, u.full_name AS invitor_name
+     FROM invitations i
+     JOIN companies c ON c.id = i.company_id
+     LEFT JOIN users u ON u.company_id = i.company_id AND u.role = 'ADMIN'
+     WHERE i.token = $1
+     LIMIT 1`,
+    [token]
+  );
+
+  if (invitationResult.rows.length === 0) {
+    return res.status(404).json({ error: "Invitation not found" });
+  }
+
+  const row = invitationResult.rows[0];
+  if (row.accepted_at) return res.status(400).json({ error: "Invitation already accepted" });
+  if (new Date(row.expires_at) < new Date()) return res.status(400).json({ error: "Invitation has expired" });
+
+  res.json({
+    inviteeEmail: row.email,
+    role: row.role,
+    companyName: row.company_name,
+    invitorEmail: row.invitor_email,
+    invitorName: row.invitor_name,
+    department: row.department || null,
+  });
+}));
+
 router.post("/accept-invitation", asyncHandler(async (req, res) => {
   const { token, password } = req.body;
-  
+
   if (!token || !password) {
     return res.status(400).json({ error: "Token and password required" });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: "Password must be at least 8 characters long" });
+  }
+  if (!/[A-Z]/.test(password)) {
+    return res.status(400).json({ error: "Password must contain at least one uppercase letter" });
+  }
+  if (!/[a-z]/.test(password)) {
+    return res.status(400).json({ error: "Password must contain at least one lowercase letter" });
+  }
+  if (!/[0-9]/.test(password)) {
+    return res.status(400).json({ error: "Password must contain at least one number" });
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return res.status(400).json({ error: "Password must contain at least one special character" });
   }
   
   const invitationResult = await query("SELECT * FROM invitations WHERE token = $1", [token]);
@@ -247,16 +298,21 @@ router.post("/accept-invitation", asyncHandler(async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    const userResult = await client.query(
-      "INSERT INTO users (email, password_hash, role, company_id) VALUES ($1, $2, $3, $4) RETURNING id, email, role, company_id",
-      [invitation.email, passwordHash, invitation.role, invitation.companyId]
-    );
+    const userResult = invitation.department
+      ? await client.query(
+          "INSERT INTO users (email, password_hash, role, company_id, department) VALUES ($1, $2, $3, $4, $5) RETURNING id, email, role, company_id, department",
+          [invitation.email, passwordHash, invitation.role, invitation.companyId, invitation.department]
+        )
+      : await client.query(
+          "INSERT INTO users (email, password_hash, role, company_id) VALUES ($1, $2, $3, $4) RETURNING id, email, role, company_id",
+          [invitation.email, passwordHash, invitation.role, invitation.companyId]
+        );
     user = mapRow(userResult);
 
     await client.query("UPDATE invitations SET accepted_at = NOW() WHERE id = $1", [invitation.id]);
 
     const companyResult = await client.query(
-      "SELECT id, name, domain FROM companies WHERE id = $1",
+      "SELECT id, name, domain, is_verified FROM companies WHERE id = $1",
       [invitation.companyId]
     );
     company = mapRow(companyResult);
@@ -278,7 +334,8 @@ router.post("/accept-invitation", asyncHandler(async (req, res) => {
   res.json({
     token: authToken,
     user: { id: user.id, email: user.email, role: user.role, companyId: user.companyId },
-    company: { id: company.id, name: company.name, domain: company.domain }
+    company: { id: company.id, name: company.name, domain: company.domain, isVerified: company.isVerified ?? false },
+    department: invitation.department || null,
   });
 }));
 
@@ -319,15 +376,14 @@ router.post("/forgot-password", asyncHandler(async (req, res) => {
   sendEmail({
     to: user.email,
     subject: "PRISM — Password Reset Code",
-    text: [
-      `Your password reset code is: ${otp}`,
-      "",
-      "This code expires in 10 minutes.",
-      "",
-      "If you did not request this, please ignore this email.",
-      "",
-      "— PRISM Compliance Platform"
-    ].join("\n")
+    text: `Your password reset code is: ${otp}\n\nThis code expires in 10 minutes.\n\nIf you did not request this, please ignore this email.\n\n— PRISM Compliance Platform`,
+    html: buildEmailHtml({
+      heading: "Password Reset",
+      preheader: `Your PRISM password reset code is: ${otp}`,
+      body: "You requested a password reset for your PRISM account. Use the code below to continue. If you did not request this, you can safely ignore this email.",
+      highlight: { label: "Your verification code", value: otp },
+      note: "This code expires in 10 minutes and can only be used once.",
+    }),
   }).catch(err => {
     console.error("Failed to send OTP email:", err.message);
   });

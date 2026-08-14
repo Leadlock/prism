@@ -56,7 +56,8 @@ test.describe("Approval workflows", () => {
     await page.route("**/api/questions*", r => r.fulfill({ json: [QUESTION_FOR_REVIEW] }));
 
     let approved = false;
-    await page.route("**/api/assessments*", async (r) => {
+    // Use URL predicate to match both /api/assessments (GET) and /api/assessments/:id (PUT)
+    await page.route(url => url.pathname.startsWith("/api/assessments"), async (r) => {
       if (r.request().method() === "PUT") {
         approved = true;
         await r.fulfill({ json: { ...SUBMITTED, reviewStatus: "FINISHED", reviewedBy: "lead@test.com" } });
@@ -81,7 +82,7 @@ test.describe("Approval workflows", () => {
 
     // Modal closes and the list refreshes to empty
     await expect(page.getByText("Approve assessment")).not.toBeVisible({ timeout: 5_000 });
-    await expect(page.locator("p.muted")).toContainText("No assessments awaiting review", { timeout: 5_000 });
+    await expect(page.getByText(/No assessments awaiting review/)).toBeVisible({ timeout: 5_000 });
   });
 
   test("LEAD rejects assessment → sends back for rework", async ({ page }) => {

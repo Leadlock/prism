@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { sendEmail } from "../utils/email.js";
+import { buildEmailHtml } from "../utils/emailTemplate.js";
 
 const router = Router();
 const CONTACT_TO = process.env.CONTACT_EMAIL || "ab@neozaar.com";
@@ -71,87 +72,18 @@ router.post("/support", rateLimit, async (req, res) => {
     trimmedMessage,
   ].join("\n");
 
-  const escapedMessage = trimmedMessage.replace(/</g, '&lt;').replace(/>/g, '&gt;'); // nosemgrep: raw-html-format
-  // Confirmation email to the user
-  const confirmationHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-</head>
-<body style="margin:0;padding:0;background:#0f1923;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f1923;padding:40px 20px;">
-    <tr>
-      <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
-          <!-- Header -->
-          <tr>
-            <td align="center" style="padding:0 0 32px;">
-              <h1 style="margin:0;font-size:24px;font-weight:700;color:#60b8ff;">PRISM</h1>
-            </td>
-          </tr>
-          <!-- Main Card -->
-          <tr>
-            <td style="background:#1a2736;border-radius:12px;padding:40px 36px;border:1px solid #2a3a4a;">
-              <!-- Check icon -->
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td align="center" style="padding:0 0 24px;">
-                    <div style="width:56px;height:56px;border-radius:50%;background:rgba(76,168,160,0.15);line-height:56px;text-align:center;font-size:24px;color:#4ca8a0;">✓</div>
-                  </td>
-                </tr>
-              </table>
-              <h2 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#f0f8ff;text-align:center;">We've Received Your Request</h2>
-              <p style="margin:0 0 24px;font-size:14px;color:#8fa3b8;text-align:center;line-height:1.6;">
-                Hi ${trimmedName}, thank you for reaching out. Our support team will review your message and get back to you within 24 hours.
-              </p>
-              <!-- Divider -->
-              <hr style="border:none;border-top:1px solid #2a3a4a;margin:24px 0;" />
-              <!-- Message summary -->
-              <p style="margin:0 0 8px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#8fa3b8;">Your Message</p>
-              <div style="background:#0f1923;border-radius:8px;padding:16px;margin:0 0 24px;">
-                <p style="margin:0;font-size:14px;color:#c8d8e8;line-height:1.6;white-space:pre-wrap;">${escapedMessage}</p>  // nosemgrep
-              </div>
-              <!-- What to expect -->
-              <p style="margin:0 0 8px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#8fa3b8;">What Happens Next</p>
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td style="padding:8px 0;font-size:14px;color:#c8d8e8;">
-                    <span style="color:#4ca8a0;font-weight:600;">1.</span> Our team reviews your request
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:8px 0;font-size:14px;color:#c8d8e8;">
-                    <span style="color:#4ca8a0;font-weight:600;">2.</span> We'll respond via email within 24 hours
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:8px 0;font-size:14px;color:#c8d8e8;">
-                    <span style="color:#4ca8a0;font-weight:600;">3.</span> For urgent issues, email us directly at support@askthechamp.com
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <!-- Footer -->
-          <tr>
-            <td align="center" style="padding:32px 0 0;">
-              <p style="margin:0;font-size:12px;color:#5a6f82;line-height:1.6;">
-                This is an automated confirmation from PRISM.<br />
-                Please do not reply to this email.
-              </p>
-              <p style="margin:12px 0 0;font-size:12px;color:#5a6f82;">
-                &copy; ${new Date().getFullYear()} PRISM &mdash; prism.askthechamp.com
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+  const confirmationHtml = buildEmailHtml({
+    heading: "We've Received Your Request",
+    preheader: `Hi ${trimmedName}, we've received your support request and will respond within 24 hours.`,
+    body: [
+      `Hi ${trimmedName}, thank you for reaching out to PRISM Support. Our team will review your message and get back to you within 24 hours.`,
+      "For urgent issues, email us directly at support@askthechamp.com",
+    ],
+    details: [
+      { label: "Your Message", value: trimmedMessage },
+    ],
+    note: "1. Our team reviews your request  ·  2. We respond within 24 hours  ·  3. Issue resolved ✓",
+  });
 
   const confirmationText = `Hi ${trimmedName},\n\nThank you for reaching out to PRISM Support. We've received your request and our team will get back to you within 24 hours.\n\nYour message:\n${trimmedMessage}\n\nFor urgent issues, email us directly at support@askthechamp.com\n\n— PRISM Support Team`;
 

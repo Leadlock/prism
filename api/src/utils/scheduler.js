@@ -1,5 +1,6 @@
 import { query } from "../db/index.js";
 import { sendEmail } from "./email.js";
+import { buildEmailHtml } from "./emailTemplate.js";
 import { writeAuditLog } from "./auditLog.js";
 
 // ─── Recurrence helpers ───────────────────────────────────────────────────────
@@ -71,6 +72,16 @@ async function processReminders() {
         ? `Reminder: ${reminder.message.substring(0, 60)}`
         : `Compliance reminder for ${reminder.quest_id || "action #" + reminder.action_id}`;
 
+      const detailRows = [
+        { label: "Company", value: reminder.company_name },
+        reminder.quest_id  ? { label: "Question",  value: reminder.quest_id }                                                          : null,
+        reminder.action_id ? { label: "Action ID", value: String(reminder.action_id) }                                                  : null,
+        { label: "Type",      value: reminder.reminder_type },
+        { label: "Scheduled", value: new Date(reminder.remind_at).toISOString().slice(0, 16).replace("T", " ") + " UTC" },
+      ].filter(Boolean);
+
+      const webUrl = (process.env.WEB_URL || "https://prism.askthechamp.com").replace(/\/$/, "");
+
       const text = [
         `Company: ${reminder.company_name}`,
         reminder.quest_id ? `Question: ${reminder.quest_id}` : null,
@@ -83,8 +94,16 @@ async function processReminders() {
         "Please review and take action in PRISM."
       ].filter(Boolean).join("\n");
 
+      const html = buildEmailHtml({
+        heading: "Compliance Reminder",
+        preheader: reminder.message || `Compliance reminder for ${reminder.quest_id || "action #" + reminder.action_id}`,
+        body: reminder.message || "You have a scheduled compliance reminder that requires your attention.",
+        details: detailRows,
+        cta: { text: "Open PRISM", url: webUrl },
+      });
+
       try {
-        await sendEmail({ to: recipient, subject, text });
+        await sendEmail({ to: recipient, subject, text, html });
       } catch (emailErr) {
         console.error(`[scheduler] failed to send reminder ${reminder.id}:`, emailErr.message); // nosemgrep
         continue;
@@ -170,7 +189,26 @@ async function sendActionReminders() {
         action.notes ? `Notes: ${action.notes}` : "Please review and update this action in PRISM."
       ].join("\n");
 
-      await sendEmail({ to: recipient, subject, text });
+      const webUrl = (process.env.WEB_URL || "https://prism.askthechamp.com").replace(/\/$/, "");
+      const isOverdue = offset === 0;
+      const html = buildEmailHtml({
+        heading: isOverdue ? "Action Overdue" : `Action Reminder — Due in ${offset} Day${offset === 1 ? "" : "s"}`,
+        preheader: `${action.defeated_quest || action.quest_id || "Compliance action"} is ${timing}`,
+        body: isOverdue
+          ? "The following compliance action is overdue and requires immediate attention."
+          : `The following compliance action is coming up soon. Please review and update its status before the due date.`,
+        details: [
+          { label: "Company",  value: action.company_name },
+          { label: "Action",   value: action.defeated_quest || action.quest_id || `#${action.id}` },
+          { label: "Owner",    value: action.owner || "Unassigned" },
+          { label: "Due Date", value: dueDate },
+          { label: "Status",   value: action.status || "OPEN", isStatus: true },
+          action.notes ? { label: "Notes", value: action.notes } : null,
+        ].filter(Boolean),
+        cta: { text: "Review in PRISM", url: webUrl },
+      });
+
+      await sendEmail({ to: recipient, subject, text, html });
       await query(
         "UPDATE actions SET reminder_sent_offsets = array_append(reminder_sent_offsets, $1), updated_at = NOW() WHERE id = $2",
         [offset, action.id]
@@ -216,8 +254,23 @@ async function processRecurrence() {
         "This quest is due for reassessment. Please log in to PRISM and complete the assessment."
       ].join("\n");
 
+      const webUrl = (process.env.WEB_URL || "https://prism.askthechamp.com").replace(/\/$/, "");
+      const html = buildEmailHtml({
+        heading: "Assessment Due for Reassessment",
+        preheader: `${quest.quest_id} — ${quest.control_area || quest.module_id} is due for its ${quest.recurrence_interval} review`,
+        body: "This compliance assessment is due for reassessment. Please log in to PRISM and complete the assessment to maintain your compliance posture.",
+        details: [
+          { label: "Company",    value: quest.company_name },
+          { label: "Question",   value: `${quest.quest_id}${quest.control_area ? ` — ${quest.control_area}` : ""}` },
+          { label: "Module",     value: quest.module_id },
+          { label: "Recurrence", value: quest.recurrence_interval },
+          { label: "Due Date",   value: new Date(quest.next_due_date).toISOString().slice(0, 10) },
+        ],
+        cta: { text: "Complete Assessment", url: webUrl },
+      });
+
       try {
-        await sendEmail({ to: recipient, subject, text });
+        await sendEmail({ to: recipient, subject, text, html });
       } catch (emailErr) {
         console.error(`[scheduler] failed to send recurrence email for ${quest.quest_id}:`, emailErr.message); // nosemgrep
       }

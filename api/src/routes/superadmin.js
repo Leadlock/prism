@@ -879,4 +879,31 @@ router.put("/companies/:id/questions/:questId/dependencies", authenticate, requi
   res.json({ questId, dependsOn: uniqueDeps });
 }));
 
+router.get("/companies/:id/users", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const result = await query(
+    `SELECT id, full_name, email, role, created_at
+     FROM users
+     WHERE company_id = $1
+     ORDER BY
+       CASE role
+         WHEN 'ADMIN'       THEN 1
+         WHEN 'LEAD'        THEN 2
+         WHEN 'CONTRIBUTOR' THEN 3
+         WHEN 'VIEWER'      THEN 4
+         WHEN 'AUDITOR'     THEN 5
+         ELSE 6
+       END,
+       COALESCE(full_name, email) ASC`,
+    [id]
+  );
+  res.json(result.rows.map(r => ({
+    id: r.id,
+    fullName: r.full_name,
+    email: r.email,
+    role: r.role,
+    createdAt: r.created_at,
+  })));
+}));
+
 export default router;

@@ -90,6 +90,9 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
   const [deleteQuestionConfirm, setDeleteQuestionConfirm] = useState(null);
   const [companyQuestions, setCompanyQuestions] = useState([]);
 
+  // --- Users tab state ---
+  const [companyUsers, setCompanyUsers] = useState([]);
+
   // --- Branding tab state ---
   const [brandCompanyId, setBrandCompanyId] = useState("");
   const [brandColor, setBrandColor] = useState("");
@@ -144,7 +147,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
   // --- Company status change (optimistic) ---
   const handleStatusChange = async (companyId, newStatus) => {
     const prev = [...companies];
-    setCompanies(cs => cs.map(c => c.id === companyId ? { ...c, status: newStatus } : c));
+    setCompanies(cs => cs.map(c => c.id === companyId ? { ...c, status: newStatus, is_verified: newStatus === "approved" } : c));
     try {
       await apiFetch(`/api/superadmin/companies/${companyId}/status`, {
         token,
@@ -343,6 +346,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     setSelectedCompany(company);
     setCompanyModules([]);
     setCompanyQuestions([]);
+    setCompanyUsers([]);
     setCompanyImportFile(null);
     setCompanyImportResult(null);
     setDeleteModulesConfirm(false);
@@ -351,16 +355,18 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     setQuestionError(null);
     setLoadingModules(true);
     try {
-      const data = await apiFetch(`/api/superadmin/companies/${company.id}/modules`, { token });
-      setCompanyModules(data || []);
+      const [modulesData, questionsData, usersData] = await Promise.all([
+        apiFetch(`/api/superadmin/companies/${company.id}/modules`, { token }),
+        apiFetch(`/api/superadmin/companies/${company.id}/questions`, { token }),
+        apiFetch(`/api/superadmin/companies/${company.id}/users`, { token }),
+      ]);
+      setCompanyModules(modulesData || []);
+      setCompanyQuestions(questionsData || []);
+      setCompanyUsers(usersData || []);
     } catch {
       setCompanyModules([]);
-    }
-    try {
-      const data = await apiFetch(`/api/superadmin/companies/${company.id}/questions`, { token });
-      setCompanyQuestions(data || []);
-    } catch {
       setCompanyQuestions([]);
+      setCompanyUsers([]);
     }
     setLoadingModules(false);
   };
@@ -937,7 +943,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
                   </td>
                   <td style={tdStyle}>
                     <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
-                      {c.status !== "approved" && (
+                      {(c.status !== "approved" || !c.is_verified) && (
                         <button className="btn" style={{ padding: "4px 8px", fontSize: "11px", background: "rgba(34,197,94,0.15)", color: "var(--green)", border: "1px solid rgba(34,197,94,0.3)" }} onClick={(e) => { e.stopPropagation(); handleStatusChange(c.id, "approved"); }}>Approve</button>
                       )}
                       {c.is_verified && (
@@ -985,6 +991,76 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
               {c.status}
             </span>
           </div>
+        </div>
+
+        {/* Users */}
+        <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px", marginBottom: "20px" }}>
+          <h4 style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)", margin: "0 0 14px" }}>
+            Users ({companyUsers.length})
+          </h4>
+          {companyUsers.length === 0 ? (
+            <p style={{ fontSize: "13px", color: "var(--text3)" }}>No users found.</p>
+          ) : (() => {
+            const roleOrder = ["ADMIN", "LEAD", "CONTRIBUTOR", "VIEWER", "AUDITOR"];
+            const roleColors = {
+              ADMIN:       { bg: "rgba(99,102,241,0.12)",  color: "var(--accent2)",   border: "rgba(99,102,241,0.3)" },
+              LEAD:        { bg: "rgba(20,184,166,0.1)",   color: "var(--teal)",       border: "rgba(20,184,166,0.3)" },
+              CONTRIBUTOR: { bg: "rgba(245,158,11,0.1)",   color: "var(--amber)",      border: "rgba(245,158,11,0.3)" },
+              VIEWER:      { bg: "rgba(107,114,128,0.1)",  color: "var(--text3)",      border: "rgba(107,114,128,0.3)" },
+              AUDITOR:     { bg: "rgba(239,68,68,0.08)",   color: "var(--red,#ef4444)", border: "rgba(239,68,68,0.25)" },
+            };
+            const roleCounts = {};
+            for (const u of companyUsers) roleCounts[u.role] = (roleCounts[u.role] || 0) + 1;
+
+            return (
+              <>
+                {/* Role summary chips */}
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
+                  {roleOrder.filter(r => roleCounts[r]).map(r => {
+                    const rc = roleColors[r] || roleColors.VIEWER;
+                    return (
+                      <span key={r} style={{ fontSize: "11px", fontWeight: 600, padding: "4px 10px", borderRadius: "12px", background: rc.bg, color: rc.color, border: `1px solid ${rc.border}` }}>
+                        {r}: {roleCounts[r]}
+                      </span>
+                    );
+                  })}
+                </div>
+
+                {/* User list */}
+                <div style={{ maxHeight: "220px", overflowY: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Name</th>
+                        <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Email</th>
+                        <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Role</th>
+                        <th style={{ ...thStyle, fontSize: "10px", padding: "6px 8px" }}>Joined</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {companyUsers.map(u => {
+                        const rc = roleColors[u.role] || roleColors.VIEWER;
+                        return (
+                          <tr key={u.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td style={{ padding: "6px 8px", color: "var(--text)" }}>{u.fullName || <span style={{ color: "var(--text3)", fontStyle: "italic" }}>—</span>}</td>
+                            <td style={{ padding: "6px 8px", color: "var(--text2)", fontFamily: "var(--mono)", fontSize: "11px" }}>{u.email}</td>
+                            <td style={{ padding: "6px 8px" }}>
+                              <span style={{ fontSize: "10px", fontWeight: 600, padding: "2px 7px", borderRadius: "10px", background: rc.bg, color: rc.color, border: `1px solid ${rc.border}` }}>
+                                {u.role}
+                              </span>
+                            </td>
+                            <td style={{ padding: "6px 8px", color: "var(--text3)", fontSize: "11px" }}>
+                              {u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         {/* Billing */}

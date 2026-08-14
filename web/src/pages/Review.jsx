@@ -29,8 +29,18 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
         const key = `${a.questId || a.quest_id}__${a.month || ""}`;
         if (!seen.has(key) || a.id > seen.get(key).id) seen.set(key, a);
       }
-      setAssessments([...seen.values()]);
-      setEvidence(ev || []);
+      const deduped = [...seen.values()];
+      setAssessments(deduped);
+
+      // Load vault evidence linked to the submitted quests
+      const questIds = [...new Set(deduped.map(a => a.questId || a.quest_id).filter(Boolean))];
+      let vaultLinks = [];
+      if (questIds.length > 0) {
+        try {
+          vaultLinks = await apiFetch(`/api/vault/quest-links?questIds=${questIds.join(",")}`, { token });
+        } catch { /* vault may be PIN-locked; skip */ }
+      }
+      setEvidence([...(ev || []), ...(vaultLinks || []).map(v => ({ ...v, _fromVault: true }))]);
       setError("");
       setRetryError(null);
     } catch (e) {
@@ -132,7 +142,7 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
               {assessments.map(a => {
                 const questId = qid(a);
                 const q = questions.find(q => q.questId === questId || q.quest_id === questId) || {};
-                const evItems = evidence.filter(e => (e.questId || e.quest_id) === questId);
+                const evItems = evidence.filter(e => (e.questId || e.quest_id) === questId && (!a.month || e.month === a.month || e.month == null));
 
                 return (
                   <div key={a.id} className="list-item">
@@ -194,35 +204,34 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
                             <p className="muted">No evidence uploaded.</p>
                           ) : (
                             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-                              {evItems.map(e => (
-                                <div key={e.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 12px", background: "var(--bg4)", borderRadius: 6 }}>
-                                  <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 12, color: "var(--text)", fontWeight: 500 }}>
-                                      {e.evidenceName || e.evidence_name}
+                              {evItems.map(e => {
+                                const name = e.title || e.evidenceName || e.evidence_name;
+                                const link = e.evidenceLink || e.evidence_link;
+                                const hasFile = !e._fromVault && (e.filePath || e.file_path);
+                                return (
+                                  <div key={`${e._fromVault ? "v" : "e"}-${e.id}`} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 12px", background: "var(--bg4)", borderRadius: 6 }}>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: 12, color: "var(--text)", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                                        {name}
+                                        {e._fromVault && <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "var(--accent)", border: "1px solid rgba(99,102,241,0.2)", fontWeight: 600 }}>Vault</span>}
+                                      </div>
+                                      <div className="muted" style={{ marginTop: 2 }}>
+                                        {e.uploadedBy || e.uploaded_by}
+                                      </div>
                                     </div>
-                                    <div className="muted" style={{ marginTop: 2 }}>
-                                      Uploaded by: {e.uploadedBy || e.uploaded_by}
-                                    </div>
+                                    {hasFile ? (
+                                      <button
+                                        className="btn-compact"
+                                        onClick={() => downloadEvidence(e.id, name)}
+                                      >
+                                        Download
+                                      </button>
+                                    ) : link ? (
+                                      <a href={link} target="_blank" rel="noopener noreferrer" className="link">View</a>
+                                    ) : null}
                                   </div>
-                                  {(e.filePath || e.file_path) ? (
-                                    <button
-                                      className="btn-compact"
-                                      onClick={() => downloadEvidence(e.id, e.evidenceName || e.evidence_name)}
-                                    >
-                                      Download
-                                    </button>
-                                  ) : (e.evidenceLink || e.evidence_link) ? (
-                                    <a
-                                      href={e.evidenceLink || e.evidence_link}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="link"
-                                    >
-                                      View
-                                    </a>
-                                  ) : null}
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>

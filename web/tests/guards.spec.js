@@ -19,7 +19,7 @@ async function setAuth(page, role, { onboardingCompleted = true, isVerified = tr
     json: { logoUrl: null, primaryColor: null, aiEnabled: true },
   }));
   await page.route("**/api/auth/me", r => r.fulfill({ json: { user, company } }));
-  await page.route("**/api/**", r => r.fulfill({ json: [] }));
+  await page.route(url => url.pathname.startsWith("/api/"), r => r.fulfill({ json: [] }));
 
   // addInitScript runs before React initializes on every subsequent navigation
   await page.addInitScript(({ u, c, consent }) => {

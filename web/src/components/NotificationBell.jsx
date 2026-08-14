@@ -21,10 +21,12 @@ export default function NotificationBell({ token }) {
 
   const load = useCallback(async () => {
     if (!token) return;
+    setLoading(true);
     try {
       const data = await apiFetch("/api/notifications", { token });
       setNotifications(data || []);
     } catch { /* silent */ }
+    finally { setLoading(false); }
   }, [token]);
 
   useEffect(() => {
@@ -103,7 +105,11 @@ export default function NotificationBell({ token }) {
             )}
           </div>
 
-          {notifications.length === 0 ? (
+          {loading ? (
+            <div style={{ padding: "24px 14px", textAlign: "center", color: "var(--text3)", fontSize: 13 }}>
+              Loading…
+            </div>
+          ) : notifications.length === 0 ? (
             <div style={{ padding: "24px 14px", textAlign: "center", color: "var(--text3)", fontSize: 13 }}>
               No notifications yet.
             </div>
@@ -122,7 +128,7 @@ export default function NotificationBell({ token }) {
               >
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                   <span style={{ fontSize: 16, flexShrink: 0 }}>
-                    {n.entityType === "vault_version" ? "📎" : "📋"}
+                    {n.entityType === "vault_version" ? "📎" : n.entityType === "rejection" ? "⚠️" : "📋"}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: n.isRead ? 400 : 600, fontSize: 12, color: "var(--text)", marginBottom: 2 }}>

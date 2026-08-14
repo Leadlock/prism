@@ -596,7 +596,7 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
                       <span>Actions</span>
                     </div>
                     {users.map((u) => {
-                      const isSelf = user && u.id === user.userId;
+                      const isSelf = user && u.id === user.id;
                       return (
                         <div key={u.id} className="admin-row">
                           <span>{u.email}</span>

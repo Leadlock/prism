@@ -12,22 +12,35 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
     await writeAuditLog({ userId: req.user.userId, companyId: req.user.companyId, email: req.user.email, action: "READ", resource: "dashboard", ip: req.ip });
   }
   const cid = req.user.companyId;
-  const { month, priority, tag } = req.query;
-  const hasFilter = !!(priority || tag);
+  const { month, priority, tag, owner, status } = req.query;
+  const hasFilter = !!(priority || tag || owner || status);
 
-  // Step 1: Get filtered quest IDs when priority/tag filters are active
+  // Step 1: Get filtered quest IDs when filters are active
   let filteredQuestIds = null;
   if (hasFilter) {
-    let filterSql = "SELECT quest_id FROM questions WHERE company_id = $1";
+    let filterSql = "SELECT q.quest_id FROM questions q WHERE q.company_id = $1";
     const filterParams = [cid];
     let idx = 2;
     if (priority) {
-      filterSql += ` AND priority = $${idx++}`;
+      filterSql += ` AND q.priority = $${idx++}`;
       filterParams.push(priority);
     }
     if (tag) {
-      filterSql += ` AND tags ILIKE '%' || $${idx++} || '%'`;
+      filterSql += ` AND q.tags ILIKE '%' || $${idx++} || '%'`;
       filterParams.push(tag);
+    }
+    if (owner) {
+      filterSql += ` AND q.default_owner ILIKE $${idx++}`;
+      filterParams.push(owner);
+    }
+    if (status) {
+      // Filter by latest assessment answer for this company
+      filterSql += ` AND EXISTS (
+        SELECT 1 FROM assessments a
+        WHERE a.quest_id = q.quest_id AND a.company_id = $1
+          AND UPPER(a.answer) = $${idx++}
+      )`;
+      filterParams.push(status.toUpperCase());
     }
     const filterResult = await query(filterSql, filterParams);
     filteredQuestIds = filterResult.rows.map(r => r.quest_id);
@@ -131,37 +144,54 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
           monthParams
         ),
 
-    // Evidence coverage
+    // Evidence coverage — counts a question as covered if it has evidence OR a vault link
     hasFilter
       ? query(
           month
             ? `SELECT q.module_id,
-                COUNT(DISTINCT e.quest_id) AS covered,
+                COUNT(DISTINCT q.quest_id) FILTER (WHERE (
+                  EXISTS (SELECT 1 FROM evidence e WHERE e.quest_id = q.quest_id AND e.company_id = $1 AND e.month = $2)
+                  OR EXISTS (SELECT 1 FROM question_evidence qe WHERE qe.quest_id = q.quest_id AND qe.company_id = $1)
+                )) AS covered,
                 COUNT(DISTINCT q.quest_id) AS total
               FROM questions q
-              LEFT JOIN evidence e ON e.quest_id = q.quest_id AND e.company_id = $1 AND e.month = $2
               WHERE q.company_id = $1 AND q.quest_id = ANY($3)
               GROUP BY q.module_id
               ORDER BY q.module_id`
             : `SELECT q.module_id,
-                COUNT(DISTINCT e.quest_id) AS covered,
+                COUNT(DISTINCT q.quest_id) FILTER (WHERE (
+                  EXISTS (SELECT 1 FROM evidence e WHERE e.quest_id = q.quest_id AND e.company_id = $1)
+                  OR EXISTS (SELECT 1 FROM question_evidence qe WHERE qe.quest_id = q.quest_id AND qe.company_id = $1)
+                )) AS covered,
                 COUNT(DISTINCT q.quest_id) AS total
               FROM questions q
-              LEFT JOIN evidence e ON e.quest_id = q.quest_id AND e.company_id = $1
               WHERE q.company_id = $1 AND q.quest_id = ANY($2)
               GROUP BY q.module_id
               ORDER BY q.module_id`,
           assessParams
         )
       : query(
-          `SELECT q.module_id,
-            COUNT(DISTINCT e.quest_id) AS covered,
-            COUNT(DISTINCT q.quest_id) AS total
-          FROM questions q
-          LEFT JOIN evidence e ON e.quest_id = q.quest_id AND e.company_id = $1 ${month ? 'AND e.month = $2' : ''}
-          WHERE q.company_id = $1
-          GROUP BY q.module_id
-          ORDER BY q.module_id`,
+          month
+            ? `SELECT q.module_id,
+                COUNT(DISTINCT q.quest_id) FILTER (WHERE (
+                  EXISTS (SELECT 1 FROM evidence e WHERE e.quest_id = q.quest_id AND e.company_id = $1 AND e.month = $2)
+                  OR EXISTS (SELECT 1 FROM question_evidence qe WHERE qe.quest_id = q.quest_id AND qe.company_id = $1)
+                )) AS covered,
+                COUNT(DISTINCT q.quest_id) AS total
+              FROM questions q
+              WHERE q.company_id = $1
+              GROUP BY q.module_id
+              ORDER BY q.module_id`
+            : `SELECT q.module_id,
+                COUNT(DISTINCT q.quest_id) FILTER (WHERE (
+                  EXISTS (SELECT 1 FROM evidence e WHERE e.quest_id = q.quest_id AND e.company_id = $1)
+                  OR EXISTS (SELECT 1 FROM question_evidence qe WHERE qe.quest_id = q.quest_id AND qe.company_id = $1)
+                )) AS covered,
+                COUNT(DISTINCT q.quest_id) AS total
+              FROM questions q
+              WHERE q.company_id = $1
+              GROUP BY q.module_id
+              ORDER BY q.module_id`,
           monthParams
         ),
 
@@ -288,6 +318,44 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
     )
   ]);
 
+  const [recentlyReviewed, rejectedControls] = await Promise.all([
+    query(
+      `SELECT a.id, a.quest_id, a.module_id, a.review_status,
+              a.reviewed_by, a.reviewed_at, a.reviewer_notes,
+              a.audited_by, a.audited_at, a.auditor_notes,
+              COALESCE(q.control_area, a.control_area) AS control_area
+       FROM assessments a
+       LEFT JOIN questions q ON q.quest_id = a.quest_id AND q.company_id = a.company_id
+       WHERE a.company_id = $1
+         AND a.review_status IN ('FINISHED', 'WIP')
+         AND a.reviewed_at IS NOT NULL
+       ORDER BY a.reviewed_at DESC
+       LIMIT 10`,
+      [cid]
+    ),
+    query(
+      `SELECT a.id, a.quest_id, a.module_id,
+              a.reviewer_notes, a.auditor_notes,
+              a.reviewed_by, a.reviewed_at,
+              a.audited_by, a.audited_at,
+              COALESCE(q.control_area, a.control_area) AS control_area
+       FROM assessments a
+       LEFT JOIN questions q ON q.quest_id = a.quest_id AND q.company_id = a.company_id
+       WHERE a.company_id = $1
+         AND a.review_status = 'WIP'
+         AND (
+           (a.reviewer_notes IS NOT NULL AND a.reviewer_notes <> '')
+           OR (a.auditor_notes IS NOT NULL AND a.auditor_notes <> '')
+         )
+       ORDER BY GREATEST(
+         COALESCE(a.reviewed_at, '2000-01-01'::timestamptz),
+         COALESCE(a.audited_at, '2000-01-01'::timestamptz)
+       ) DESC
+       LIMIT 50`,
+      [cid]
+    )
+  ]);
+
   res.json({
     overall: {
       total: hasFilter ? filteredQuestIds.length : parseInt(totalQ.rows[0].n),
@@ -336,7 +404,32 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
     scoreEligible: {
       count: parseInt(scoreEligible.rows[0]?.n) || 0,
       total: hasFilter ? filteredQuestIds.length : parseInt(totalQ.rows[0].n)
-    }
+    },
+    recentlyReviewed: recentlyReviewed.rows.map(r => ({
+      id: r.id,
+      questId: r.quest_id,
+      moduleId: r.module_id,
+      reviewStatus: r.review_status,
+      controlArea: r.control_area,
+      reviewedBy: r.reviewed_by,
+      reviewedAt: r.reviewed_at,
+      reviewerNotes: r.reviewer_notes,
+      auditedBy: r.audited_by,
+      auditedAt: r.audited_at,
+      auditorNotes: r.auditor_notes,
+    })),
+    rejectedControls: rejectedControls.rows.map(r => ({
+      id: r.id,
+      questId: r.quest_id,
+      moduleId: r.module_id,
+      controlArea: r.control_area,
+      reviewerNotes: r.reviewer_notes,
+      auditorNotes: r.auditor_notes,
+      reviewedBy: r.reviewed_by,
+      reviewedAt: r.reviewed_at,
+      auditedBy: r.audited_by,
+      auditedAt: r.audited_at,
+    })),
   });
 }));
 

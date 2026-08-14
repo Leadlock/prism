@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import Sidebar from "../components/Sidebar.jsx";
 import TopBar from "../components/TopBar.jsx";
@@ -6,7 +7,7 @@ import QuestionCard from "../components/QuestionCard.jsx";
 import Toast from "../components/Toast.jsx";
 import RetryBanner from "../components/RetryBanner.jsx";
 
-export default function Tracker({ token, onLogout, user, company, branding, theme, onThemeToggle, isVerified }) {
+export default function Tracker({ token, onLogout, user, company, branding, theme, onThemeToggle, isVerified, onProfileUpdate }) {
   const [modules, setModules] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [assessments, setAssessments] = useState([]);
@@ -30,6 +31,12 @@ export default function Tracker({ token, onLogout, user, company, branding, them
   const [reminders, setReminders] = useState([]);
   const [retryError, setRetryError] = useState(null);
   const [lastFailedAction, setLastFailedAction] = useState(null);
+
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const questParam = searchParams.get("quest");
+    if (questParam) setSearchTerm(questParam);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -125,7 +132,7 @@ export default function Tracker({ token, onLogout, user, company, branding, them
       .filter(a =>
         (a.questId === questId || a.quest_id === questId) &&
         (a.reviewStatus === "FINISHED" || a.review_status === "FINISHED") &&
-        (a.month || a.month) <= month
+        (a.month || "") <= month
       )
       .sort((a, b) => (b.month || "").localeCompare(a.month || ""));
 
@@ -276,21 +283,26 @@ export default function Tracker({ token, onLogout, user, company, branding, them
       actionNotes: ""
     };
     
-    // Load existing evidence for this question if not already in draft
-    if (draft.files.length === 0) {
-      const existingEvidence = evidence.filter(e => 
+    // Pre-populate files from server-side evidence only when the user has no draft yet.
+    // Skipped when responses[questId] exists so that explicitly cleared files stay cleared.
+    const hasDraft = questId in responses;
+    if (!hasDraft && draft.files.length === 0) {
+      const existingEvidence = evidence.filter(e =>
         (e.questId === questId || e.quest_id === questId) &&
         (e.month === month || String(e.month) === String(month))
       );
       if (existingEvidence.length > 0) {
-        draft.files = existingEvidence.map(e => ({
-          id: e.id,
-          name: e.evidenceName || e.evidence_name,
-          link: e.evidenceLink || e.evidence_link
-        }));
+        return {
+          ...draft,
+          files: existingEvidence.map(e => ({
+            id: e.id,
+            name: e.evidenceName || e.evidence_name,
+            link: e.evidenceLink || e.evidence_link
+          }))
+        };
       }
     }
-    
+
     return draft;
   };
 
@@ -325,12 +337,12 @@ export default function Tracker({ token, onLogout, user, company, branding, them
       showToast("Please select an answer first");
       return;
     }
-    if (!resp.maturity) {
+    if (resp.answer === "IMPLEMENTED" && !resp.maturity) {
       showToast("Please select a maturity level");
       return;
     }
-    if (resp.answer === "IMPLEMENTED" && !resp.link && !(resp.files && resp.files.length > 0)) {
-      showToast("Implemented requires an evidence upload or evidence link");
+    if (resp.answer === "IMPLEMENTED" && !resp.link && !(resp.files && resp.files.length > 0) && !resp.vaultLinked) {
+      showToast("Implemented requires an evidence upload, link, or vault attachment");
       return;
     }
     if (["NOT_IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "PLANNED"].includes(resp.answer) && (!resp.actionDueDate || !resp.actionOwner || !resp.actionNotes)) {
@@ -342,10 +354,12 @@ export default function Tracker({ token, onLogout, user, company, branding, them
       return;
     }
 
+    const isImplemented = resp.answer === "IMPLEMENTED";
+
     try {
-      const evidenceIds = (resp.files || [])
-        .map(file => (file && typeof file === "object" ? file.id : null))
-        .filter(Boolean);
+      const evidenceIds = isImplemented
+        ? (resp.files || []).map(file => (file && typeof file === "object" ? file.id : null)).filter(Boolean)
+        : [];
 
       const created = await apiFetch("/api/assessments", {
         token,
@@ -356,11 +370,11 @@ export default function Tracker({ token, onLogout, user, company, branding, them
           month,
           answer: resp.answer,
           currentLevel: resp.maturity,
-          level3Plus: resp.answer === "IMPLEMENTED" && resp.maturity >= 3,
-          evidenceLink: resp.link,
+          level3Plus: isImplemented && resp.maturity >= 3,
+          evidenceLink: isImplemented ? resp.link : undefined,
           owner: quest.defaultOwner,
-          reviewStatus: "Submitted",
-          scoreEligible: resp.answer === "IMPLEMENTED" && resp.maturity >= 3 && (resp.link || (resp.files && resp.files.length > 0)),
+          reviewStatus: isImplemented ? "Submitted" : "FINISHED",
+          scoreEligible: isImplemented && resp.maturity >= 3 && (resp.link || (resp.files && resp.files.length > 0) || resp.vaultLinked),
           comments: resp.comment,
           evidenceIds,
           actionOwner: resp.actionOwner,
@@ -369,8 +383,8 @@ export default function Tracker({ token, onLogout, user, company, branding, them
         })
       });
 
-      // The API links submitted evidence; this fallback keeps older API versions compatible.
-      if (resp.files && resp.files.length > 0) {
+      // Link uploaded evidence files to the assessment (IMPLEMENTED only)
+      if (isImplemented && resp.files && resp.files.length > 0) {
         for (const f of resp.files) {
           const evidenceId = f && f.id ? f.id : null;
           if (evidenceId) {
@@ -383,7 +397,7 @@ export default function Tracker({ token, onLogout, user, company, branding, them
         }
       }
 
-      showToast("Submitted for review ✓", "success");
+      showToast(isImplemented ? "Submitted for review ✓" : "Saved ✓", "success");
       // clear local draft for this question so old data isn't resubmitted
       setResponses(prev => {
         const copy = { ...prev };
@@ -500,6 +514,8 @@ export default function Tracker({ token, onLogout, user, company, branding, them
           onMenuToggle={() => setTrackerSidebarOpen((v) => !v)}
           token={token}
           isVerified={isVerified}
+          currentAnswer={currentQuest ? getResponse(currentQuest.questId).answer : null}
+          onProfileUpdate={onProfileUpdate}
         />
         <div className="card-area">
           {retryError && (

@@ -64,11 +64,8 @@ services:
       CLAMAV_PORT: 3310
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
       SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
-      PRISM_BASE_URL: /test
-      DPDP_CORS_ORIGINS: ${CORS_ORIGIN}
     volumes:
       - api_uploads:/app/uploads
-      - prism_data:/app/prism_dpdp/data
       - prism_exports:/app/exports
       - ./api:/app
       - /app/node_modules
@@ -79,7 +76,6 @@ services:
         condition: service_healthy
     ports:
       - "${API_PORT}:4000"
-      - "8080:8080"
 
   web:
     build: ./web
@@ -97,5 +93,4 @@ volumes:
   clamav_data:
   db_data:
   api_uploads:
-  prism_data:
   prism_exports:

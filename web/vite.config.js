@@ -9,11 +9,6 @@ export default defineConfig({
     watch: process.env.PLAYWRIGHT ? false : { usePolling: true, interval: 500 },
     allowedHosts: process.env.PLAYWRIGHT ? undefined : ["prism.askthechamp.com"],
     proxy: process.env.PLAYWRIGHT ? {} : {
-      "/test": {
-        target: "http://api:8080",
-        rewrite: (path) => path.replace(/^\/test/, ""),
-        changeOrigin: true,
-      },
       "/api": {
         target: "http://api:4000",
         changeOrigin: true,

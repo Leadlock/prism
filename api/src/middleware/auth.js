@@ -34,6 +34,7 @@ export const authenticate = async (req, res, next) => {
     const result = await query(
       `SELECT u.id, u.email, u.role, u.company_id,
               c.name AS company_name, c.domain AS company_domain, c.status AS company_status,
+              c.is_verified AS company_is_verified,
               c.plan AS company_plan, c.billing_status AS billing_status,
               c.trial_ends_at AS trial_ends_at
        FROM users u
@@ -49,6 +50,9 @@ export const authenticate = async (req, res, next) => {
     }
     if (user.companyStatus === "suspended") {
       return res.status(403).json({ error: "Your company account has been suspended. Please contact the platform administrator.", code: "COMPANY_SUSPENDED" });
+    }
+    if (user.companyStatus === "approved" && !user.companyIsVerified) {
+      return res.status(403).json({ error: "Your company verification has been revoked. Please contact the platform administrator.", code: "COMPANY_NOT_VERIFIED" });
     }
 
     if (user.billingStatus === "trial" && user.trialEndsAt && new Date(user.trialEndsAt) < new Date()) {

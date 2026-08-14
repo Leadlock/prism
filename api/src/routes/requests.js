@@ -7,6 +7,7 @@ import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/roles.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { sendEmail } from "../utils/email.js";
+import { buildEmailHtml } from "../utils/emailTemplate.js";
 
 const router = Router();
 
@@ -173,7 +174,19 @@ router.post("/", authenticate, requireRole(WRITERS), asyncHandler(async (req, re
           description ? `Description: ${description.trim()}` : "",
           ``,
           `Please log in to PRISM to view and fulfil this request.`
-        ].filter(l => l !== undefined).join("\n")
+        ].filter(l => l !== undefined).join("\n"),
+        html: buildEmailHtml({
+          heading: "Evidence Request Assigned to You",
+          preheader: `You've been assigned: ${title.trim()}`,
+          body: `Hi ${name}, you have been assigned an evidence request in PRISM. Please review the details below and upload the required evidence.`,
+          details: [
+            { label: "Title",    value: title.trim() },
+            { label: "Priority", value: priority || "Medium" },
+            { label: "Due Date", value: dueDate || "No due date" },
+            description?.trim() ? { label: "Description", value: description.trim() } : null,
+          ].filter(Boolean),
+          cta: { text: "View Request in PRISM", url: process.env.WEB_URL || "https://prism.askthechamp.com" },
+        }),
       }).catch(() => {});
     }
   }
@@ -242,7 +255,16 @@ router.put("/:id", authenticate, requireRole(WRITERS), asyncHandler(async (req, 
       sendEmail({
         to: email,
         subject: `Evidence Request assigned to you — ${reqTitle}`,
-        text: `Hi ${name},\n\nYou have been assigned an evidence request in PRISM: "${reqTitle}".\n\nPlease log in to PRISM to view and fulfil this request.`
+        text: `Hi ${name},\n\nYou have been assigned an evidence request in PRISM: "${reqTitle}".\n\nPlease log in to PRISM to view and fulfil this request.`,
+        html: buildEmailHtml({
+          heading: "Evidence Request Assigned to You",
+          preheader: `You've been assigned: ${reqTitle}`,
+          body: `Hi ${name}, you have been assigned an evidence request in PRISM. Please review the details below and upload the required evidence.`,
+          details: [
+            { label: "Title", value: reqTitle },
+          ],
+          cta: { text: "View Request in PRISM", url: process.env.WEB_URL || "https://prism.askthechamp.com" },
+        }),
       }).catch(() => {});
     }
   }
@@ -315,7 +337,18 @@ router.post("/:id/fulfill", authenticate, requireRole(WRITERS), asyncHandler(asy
       sendEmail({
         to: email,
         subject: `Evidence Request fulfilled — ${er.title}`,
-        text: `Hi ${name},\n\n${fulfillerName} has submitted evidence for your request "${er.title}" in PRISM.\n\nStatus: ${newStatus}\n\nPlease log in to PRISM to review the submitted evidence.`
+        text: `Hi ${name},\n\n${fulfillerName} has submitted evidence for your request "${er.title}" in PRISM.\n\nStatus: ${newStatus}\n\nPlease log in to PRISM to review the submitted evidence.`,
+        html: buildEmailHtml({
+          heading: "Evidence Request Fulfilled",
+          preheader: `${fulfillerName} submitted evidence for: ${er.title}`,
+          body: `Hi ${name}, ${fulfillerName} has submitted evidence for your request in PRISM. Please review the submitted evidence below.`,
+          details: [
+            { label: "Request", value: er.title },
+            { label: "Fulfilled by", value: fulfillerName },
+            { label: "Status", value: newStatus, isStatus: true },
+          ],
+          cta: { text: "Review Evidence in PRISM", url: process.env.WEB_URL || "https://prism.askthechamp.com" },
+        }),
       }).catch(() => {});
     }
   }

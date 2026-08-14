@@ -28,10 +28,11 @@ router.get("/unread-count", authenticate, asyncHandler(async (req, res) => {
 
 // POST /api/notifications/:id/read — mark one notification as read
 router.post("/:id/read", authenticate, asyncHandler(async (req, res) => {
-  await query(
+  const result = await query(
     "UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2 AND company_id = $3",
     [parseInt(req.params.id), req.user.userId, req.user.companyId]
   );
+  if (result.rowCount === 0) return res.status(404).json({ error: "Notification not found" });
   res.status(204).send();
 }));
 

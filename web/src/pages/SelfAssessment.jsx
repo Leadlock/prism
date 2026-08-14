@@ -1,5 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import Logo from "../components/Logo";
+import { apiFetch } from "../api/client.js";
 import { DEPT_META, DEPT_QUESTIONS, ANSWER_OPTIONS, DEFAULT_DEPTS } from "../utils/deptSelfAssessQuestions.js";
 
 const STORAGE_KEY = (userId) => `prism_selfassess_${userId || "guest"}`;
@@ -132,7 +134,116 @@ function DeptSelectStep({ selected, onToggle, onCustomAdd, customDept, setCustom
   );
 }
 
-function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, deptIndex, totalDepts }) {
+function CollaboratorInput({ dept, collaborators, onChange, orgDomain, token, userRole }) {
+  const current = collaborators[dept] || [];
+  const [input, setInput] = useState("");
+  const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState([]);
+  const [inviteLinks, setInviteLinks] = useState({});
+  const [copied, setCopied] = useState(null);
+  const canInvite = userRole === "ADMIN" || userRole === "LEAD";
+
+  const sendInvite = async () => {
+    const email = input.trim().toLowerCase();
+    if (!email) return;
+    if (orgDomain && !email.endsWith("@" + orgDomain)) {
+      setError(`Must be a @${orgDomain} address`);
+      return;
+    }
+    if (current.includes(email) || sent.includes(email)) { setError("Already invited"); return; }
+    setSending(true);
+    setError("");
+    try {
+      const data = await apiFetch("/api/users/invite", { token, method: "POST", body: JSON.stringify({ email, role: "CONTRIBUTOR", department: dept }) });
+      onChange(dept, [...current, email]);
+      setSent(prev => [...prev, email]);
+      if (data.inviteLink) setInviteLinks(prev => ({ ...prev, [email]: data.inviteLink }));
+      setInput("");
+    } catch (e) {
+      setError(e.message || "Failed to send invite");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const copyLink = (email, link) => {
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(email);
+      setTimeout(() => setCopied(null), 2000);
+    });
+  };
+
+  const remove = (email) => onChange(dept, current.filter(e => e !== email));
+
+  return (
+    <div style={{ marginTop: 20, padding: "14px 16px", background: "var(--bg2)", borderRadius: 10, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        Collaborators
+      </div>
+      {current.map(email => (
+        <div key={email} style={{ marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--bg3)", borderRadius: 6, padding: "6px 10px" }}>
+            <span style={{ fontSize: 13, flex: 1, color: "var(--text)" }}>{email}</span>
+            {sent.includes(email) && <span style={{ fontSize: 11, color: "var(--green, #22c55e)" }}>✓ Invite sent</span>}
+            <button
+              onClick={() => remove(email)}
+              style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 16, lineHeight: 1 }}
+            >×</button>
+          </div>
+          {inviteLinks[email] && (
+            <div style={{ marginTop: 4, display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                readOnly
+                value={inviteLinks[email]}
+                style={{
+                  flex: 1, padding: "5px 8px", borderRadius: 5, fontSize: 11,
+                  border: "1px solid var(--border2)", background: "var(--bg)", color: "var(--text3)",
+                  fontFamily: "monospace",
+                }}
+                onFocus={e => e.target.select()}
+              />
+              <button
+                className="btn btn-ghost"
+                style={{ fontSize: 11, padding: "4px 10px", whiteSpace: "nowrap" }}
+                onClick={() => copyLink(email, inviteLinks[email])}
+              >
+                {copied === email ? "Copied!" : "Copy link"}
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+      {canInvite && (
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <input
+            type="email"
+            value={input}
+            onChange={e => { setInput(e.target.value); setError(""); }}
+            onKeyDown={e => e.key === "Enter" && sendInvite()}
+            placeholder={orgDomain ? `name@${orgDomain}` : "colleague@company.com"}
+            style={{
+              flex: 1, padding: "7px 10px", borderRadius: 6,
+              border: `1px solid ${error ? "var(--red, #ef4444)" : "var(--border2)"}`,
+              background: "var(--bg)", color: "var(--text)", fontSize: 12,
+            }}
+          />
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: "6px 12px" }} onClick={sendInvite} disabled={!input.trim() || sending}>
+            {sending ? "Sending…" : "Invite"}
+          </button>
+        </div>
+      )}
+      {error && <div style={{ fontSize: 11, color: "var(--red, #ef4444)", marginTop: 4 }}>✗ {error}</div>}
+      {current.length > 0 && (
+        <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 8, fontStyle: "italic" }}>
+          Invited colleagues will receive a link to join the workspace and access this self-assessment.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, deptIndex, totalDepts, collaborators, onCollaboratorsChange, orgDomain, token, userRole }) {
   const meta = DEPT_META[dept] || { label: dept, icon: "🏢" };
   const answered = questions.filter(q => answers[q.id]).length;
   const progress = Math.round((answered / questions.length) * 100);
@@ -151,6 +262,16 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
       <div style={{ height: 4, background: "var(--bg4)", borderRadius: 2, marginBottom: 24 }}>
         <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent)", borderRadius: 2, transition: "width 0.3s" }} />
       </div>
+
+      <CollaboratorInput
+        dept={dept}
+        collaborators={collaborators}
+        onChange={onCollaboratorsChange}
+        orgDomain={orgDomain}
+        token={token}
+        userRole={userRole}
+      />
+
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
         {questions.map((q, i) => {
           const selected = answers[q.id];
@@ -193,8 +314,9 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
           );
         })}
       </div>
-      <div style={{ display: "flex", gap: 12 }}>
-        <button className="btn btn-ghost" onClick={onBack}>← Back</button>
+
+      <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
+        {onBack && <button className="btn btn-ghost" onClick={onBack}>← Back</button>}
         <button className="btn btn-primary" onClick={onNext}>
           {deptIndex < totalDepts - 1 ? "Next Department →" : "View Results →"}
         </button>
@@ -203,7 +325,7 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
   );
 }
 
-function ResultsStep({ selectedDepts, answers, onRetake, onLogout }) {
+function ResultsStep({ selectedDepts, answers, onRetake, onLogout, onViewReport, submitting }) {
   const { byDept, overall } = useMemo(() => calcScore(answers, selectedDepts), [answers, selectedDepts]);
   const overallLabel = scoreLabel(overall);
 
@@ -277,9 +399,183 @@ function ResultsStep({ selectedDepts, answers, onRetake, onLogout }) {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 10 }}>
-        <button className="btn btn-ghost" onClick={onRetake}>↺ Retake Assessment</button>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        {onRetake && <button className="btn btn-ghost" onClick={onRetake}>↺ Retake</button>}
+        {onViewReport && (
+          <button className="btn btn-primary" onClick={onViewReport} disabled={submitting}>
+            {submitting ? "Saving…" : "📊 Team Report"}
+          </button>
+        )}
         <button className="btn btn-ghost" onClick={onLogout}>Sign out</button>
+      </div>
+    </div>
+  );
+}
+
+function ReportStep({ token, onBack }) {
+  const [submissions, setSubmissions] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/self-assessment", { token })
+      .then(data => setSubmissions(data || []))
+      .catch(err => setError(err.message || "Failed to load report"));
+  }, [token]);
+
+  if (error) return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
+      <button className="btn btn-ghost" style={{ marginBottom: 16 }} onClick={onBack}>← Back</button>
+      <p style={{ color: "var(--red, #ef4444)" }}>{error}</p>
+    </div>
+  );
+
+  if (!submissions) return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "48px 24px", textAlign: "center", color: "var(--text3)" }}>
+      <div className="loading-spinner" style={{ margin: "0 auto 12px" }} />
+      Loading team report…
+    </div>
+  );
+
+  if (submissions.length === 0) return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
+      <button className="btn btn-ghost" style={{ marginBottom: 16 }} onClick={onBack}>← Back</button>
+      <p style={{ color: "var(--text3)", fontSize: 14 }}>No submissions yet. Invite colleagues and ask them to complete their department assessment.</p>
+    </div>
+  );
+
+  // Group by department
+  const byDept = {};
+  for (const s of submissions) {
+    if (!byDept[s.department]) byDept[s.department] = [];
+    byDept[s.department].push(s);
+  }
+
+  // For each dept, compute per-submission score and aggregate
+  const deptSummaries = Object.entries(byDept).map(([dept, subs]) => {
+    const qs = DEPT_QUESTIONS[dept] || [];
+    const meta = DEPT_META[dept] || { label: dept, icon: "🏢" };
+
+    const scoredSubs = subs.map(s => {
+      const { byDept: bd } = calcScore(s.answers, [dept]);
+      return { ...s, score: bd[dept] };
+    });
+
+    // Aggregate: average score across all submitters
+    const scores = scoredSubs.map(s => s.score).filter(v => v !== null);
+    const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+
+    // Gap questions: answered NO by at least one person
+    const gaps = qs.filter(q =>
+      subs.some(s => s.answers[q.id] === "NO")
+    );
+    const partials = qs.filter(q =>
+      subs.some(s => s.answers[q.id] === "PARTIAL") && !gaps.find(g => g.id === q.id)
+    );
+
+    return { dept, meta, scoredSubs, avgScore, gaps, partials };
+  }).sort((a, b) => (a.avgScore ?? 101) - (b.avgScore ?? 101));
+
+  // Overall score: average of dept averages
+  const validScores = deptSummaries.map(d => d.avgScore).filter(v => v !== null);
+  const overallScore = validScores.length ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : null;
+  const overallLabel = scoreLabel(overallScore);
+
+  return (
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 24px" }}>
+      <button className="btn btn-ghost" style={{ marginBottom: 20, fontSize: 13 }} onClick={onBack}>← Back to Results</button>
+
+      <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Team Self-Assessment Report</h2>
+      <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 24 }}>
+        {submissions.length} submission{submissions.length !== 1 ? "s" : ""} across {Object.keys(byDept).length} department{Object.keys(byDept).length !== 1 ? "s" : ""}
+      </p>
+
+      {/* Overall score */}
+      <div style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 12, padding: "20px 24px", marginBottom: 24, display: "flex", alignItems: "center", gap: 20 }}>
+        <div style={{ width: 72, height: 72, borderRadius: "50%", flexShrink: 0, border: `4px solid ${overallLabel.color}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: overallLabel.color }}>{overallScore !== null ? `${overallScore}%` : "—"}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>
+            Overall: <span style={{ color: overallLabel.color }}>{overallLabel.label}</span>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text3)" }}>
+            Average across {deptSummaries.filter(d => d.avgScore !== null).length} scored department{deptSummaries.filter(d => d.avgScore !== null).length !== 1 ? "s" : ""}
+          </div>
+        </div>
+      </div>
+
+      {/* Per-department cards */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {deptSummaries.map(({ dept, meta, scoredSubs, avgScore, gaps, partials }) => {
+          const { label, color } = scoreLabel(avgScore);
+          return (
+            <div key={dept} style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 10, overflow: "hidden" }}>
+              {/* Dept header */}
+              <div style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 12, borderBottom: "1px solid var(--border2)" }}>
+                <span style={{ fontSize: 22 }}>{meta.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{meta.label || dept}</div>
+                  <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>
+                    {scoredSubs.length} contributor{scoredSubs.length !== 1 ? "s" : ""}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, color }}>{avgScore !== null ? `${avgScore}%` : "—"}</div>
+                  <div style={{ fontSize: 11, color }}>{label}</div>
+                </div>
+              </div>
+
+              {/* Score bar */}
+              <div style={{ height: 4, background: "var(--bg4)" }}>
+                <div style={{ height: "100%", width: `${avgScore ?? 0}%`, background: color, transition: "width 0.5s" }} />
+              </div>
+
+              {/* Submitters */}
+              <div style={{ padding: "10px 18px", borderBottom: gaps.length || partials.length ? "1px solid var(--border2)" : "none" }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Submitted by</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {scoredSubs.map(s => {
+                    const { label: sl, color: sc } = scoreLabel(s.score);
+                    return (
+                      <div key={s.userEmail} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--bg3)", borderRadius: 6, padding: "4px 10px", fontSize: 12 }}>
+                        <span style={{ color: "var(--text)" }}>{s.userName}</span>
+                        {s.score !== null && (
+                          <span style={{ color: sc, fontWeight: 700, fontSize: 11 }}>{s.score}%</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Gaps */}
+              {(gaps.length > 0 || partials.length > 0) && (
+                <div style={{ padding: "10px 18px" }}>
+                  {gaps.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>✗ Gaps ({gaps.length})</div>
+                      <ul style={{ margin: 0, paddingLeft: 16, marginBottom: partials.length ? 10 : 0 }}>
+                        {gaps.map(q => (
+                          <li key={q.id} style={{ fontSize: 12, color: "var(--text2)", marginBottom: 3, lineHeight: 1.4 }}>{q.text}</li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  {partials.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#f59e0b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>⚠ Partial ({partials.length})</div>
+                      <ul style={{ margin: 0, paddingLeft: 16 }}>
+                        {partials.map(q => (
+                          <li key={q.id} style={{ fontSize: 12, color: "var(--text2)", marginBottom: 3, lineHeight: 1.4 }}>{q.text}</li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -287,20 +583,89 @@ function ResultsStep({ selectedDepts, answers, onRetake, onLogout }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export default function SelfAssessment({ user, onLogout }) {
-  const saved = loadSaved(user?.id);
+export default function SelfAssessment({ user, token, onLogout }) {
+  const [searchParams] = useSearchParams();
+  const lockedDept = searchParams.get("dept") || null;
 
-  const [step, setStep] = useState(saved?.step ?? "welcome");
-  const [selectedDepts, setSelectedDepts] = useState(saved?.selectedDepts ?? []);
+  const saved = lockedDept ? null : loadSaved(user?.id);
+
+  const [step, setStep] = useState(() => {
+    if (lockedDept) return "questions";
+    return saved?.step ?? "welcome";
+  });
+  const [selectedDepts, setSelectedDepts] = useState(() => {
+    if (lockedDept) return [lockedDept];
+    return saved?.selectedDepts ?? [];
+  });
   const [customDept, setCustomDept] = useState("");
   const [deptIndex, setDeptIndex] = useState(saved?.deptIndex ?? 0);
   const [answers, setAnswers] = useState(saved?.answers ?? {});
+  const [collaborators, setCollaborators] = useState(saved?.collaborators ?? {});
+  const [savedFeedback, setSavedFeedback] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submitAnswersToBackend = async (depts, answers) => {
+    if (!token) return;
+    setSubmitting(true);
+    try {
+      await Promise.all(
+        depts.map(dept =>
+          apiFetch("/api/self-assessment", {
+            token,
+            method: "POST",
+            body: JSON.stringify({ department: dept, answers }),
+          }).catch(() => {})
+        )
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const orgDomain = user?.email ? user.email.split("@")[1] : null;
 
   const persist = (patch) => {
-    const next = { step, selectedDepts, deptIndex, answers, ...patch };
+    const next = { step, selectedDepts, deptIndex, answers, collaborators, ...patch };
     saveToDisk(user?.id, next);
     return next;
   };
+
+  const handleSaveProgress = () => {
+    persist({});
+    setSavedFeedback(true);
+    setTimeout(() => setSavedFeedback(false), 2000);
+  };
+
+  const goToPreviousStep = useCallback(() => {
+    if (step === "questions") {
+      if (deptIndex === 0) {
+        setStep("depts");
+        persist({ step: "depts" });
+      } else {
+        const prev = deptIndex - 1;
+        setDeptIndex(prev);
+        persist({ deptIndex: prev });
+      }
+    } else if (step === "results") {
+      setStep("questions");
+      persist({ step: "questions" });
+    } else if (step === "depts") {
+      setStep("welcome");
+      persist({ step: "welcome" });
+    }
+  }, [step, deptIndex]);
+
+  // Intercept browser back button to navigate through steps
+  useEffect(() => {
+    if (step === "welcome") return;
+    window.history.pushState(null, "", window.location.href);
+    const handler = () => {
+      window.history.pushState(null, "", window.location.href);
+      goToPreviousStep();
+    };
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, [step, deptIndex, goToPreviousStep]);
 
   const toggleDept = (dept) => {
     setSelectedDepts(prev =>
@@ -319,6 +684,12 @@ export default function SelfAssessment({ user, onLogout }) {
     const next = { ...answers, [qId]: value };
     setAnswers(next);
     persist({ answers: next });
+  };
+
+  const handleCollaboratorsChange = (dept, emails) => {
+    const next = { ...collaborators, [dept]: emails };
+    setCollaborators(next);
+    persist({ collaborators: next });
   };
 
   const currentDept = selectedDepts[deptIndex];
@@ -359,12 +730,21 @@ export default function SelfAssessment({ user, onLogout }) {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <span style={{ fontSize: 13, color: "var(--text3)" }}>{user?.email}</span>
+          {step !== "welcome" && step !== "results" && (
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize: 12, color: savedFeedback ? "var(--green, #22c55e)" : undefined, borderColor: savedFeedback ? "var(--green, #22c55e)" : undefined }}
+              onClick={handleSaveProgress}
+            >
+              {savedFeedback ? "✓ Saved" : "Save Progress"}
+            </button>
+          )}
           <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={onLogout}>Sign out</button>
         </div>
       </div>
 
       {/* Step progress bar */}
-      {step !== "welcome" && (
+      {step !== "welcome" && step !== "report" && (
         <div style={{ padding: "0 28px" }}>
           <div style={{ display: "flex", gap: 4, padding: "12px 0", maxWidth: 680, margin: "0 auto" }}>
             {["depts", ...selectedDepts, "results"].map((s, i) => {
@@ -382,10 +762,23 @@ export default function SelfAssessment({ user, onLogout }) {
 
       {/* Step content */}
       <div style={{ paddingTop: 12 }}>
-        {step === "welcome" && (
+        {lockedDept && step === "questions" && (
+          <div style={{
+            maxWidth: 680, margin: "0 auto 0", padding: "10px 24px 0",
+            fontSize: 13, color: "var(--text2)",
+            display: "flex", alignItems: "center", gap: 8,
+          }}>
+            <span style={{ fontWeight: 600, color: "var(--accent)" }}>
+              {(DEPT_META[lockedDept] || {}).icon || "🏢"} {(DEPT_META[lockedDept] || {}).label || lockedDept}
+            </span>
+            <span style={{ color: "var(--text3)" }}>— you've been invited to assess this department</span>
+          </div>
+        )}
+
+        {!lockedDept && step === "welcome" && (
           <WelcomeStep onStart={() => goToStep("depts")} />
         )}
-        {step === "depts" && (
+        {!lockedDept && step === "depts" && (
           <DeptSelectStep
             selected={selectedDepts}
             onToggle={toggleDept}
@@ -404,7 +797,12 @@ export default function SelfAssessment({ user, onLogout }) {
             onAnswer={answer}
             deptIndex={deptIndex}
             totalDepts={selectedDepts.length}
-            onBack={() => {
+            collaborators={collaborators}
+            onCollaboratorsChange={handleCollaboratorsChange}
+            orgDomain={orgDomain}
+            token={token}
+            userRole={user?.role}
+            onBack={lockedDept ? null : () => {
               if (deptIndex === 0) { goToStep("depts"); }
               else { const prev = deptIndex - 1; setDeptIndex(prev); persist({ deptIndex: prev }); }
             }}
@@ -414,6 +812,7 @@ export default function SelfAssessment({ user, onLogout }) {
                 setDeptIndex(next);
                 persist({ deptIndex: next });
               } else {
+                submitAnswersToBackend(selectedDepts, answers);
                 goToStep("results");
               }
             }}
@@ -423,7 +822,7 @@ export default function SelfAssessment({ user, onLogout }) {
           <ResultsStep
             selectedDepts={selectedDepts}
             answers={answers}
-            onRetake={() => {
+            onRetake={lockedDept ? null : () => {
               setStep("welcome");
               setSelectedDepts([]);
               setDeptIndex(0);
@@ -431,7 +830,12 @@ export default function SelfAssessment({ user, onLogout }) {
               saveToDisk(user?.id, null);
             }}
             onLogout={onLogout}
+            onViewReport={user?.role === "ADMIN" || user?.role === "LEAD" ? () => setStep("report") : null}
+            submitting={submitting}
           />
+        )}
+        {step === "report" && (
+          <ReportStep token={token} onBack={() => setStep("results")} />
         )}
       </div>
     </div>

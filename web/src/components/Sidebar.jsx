@@ -42,6 +42,7 @@ export default function Sidebar({
       .filter(a =>
         (a.questId === questId || a.quest_id === questId) &&
         (a.reviewStatus === "FINISHED" || a.review_status === "FINISHED") &&
+        (a.answer === "IMPLEMENTED" || a.answer === "YES") &&
         (a.month || "") <= month
       )
       .sort((a, b) => (b.month || "").localeCompare(a.month || ""));
@@ -80,7 +81,15 @@ export default function Sidebar({
     // Check this month's assessment
     if (assessments && assessments.length) {
       const a = assessments.find(x => (x.questId === questId || x.quest_id === questId));
-      if (a && (a.reviewStatus || a.review_status) === 'FINISHED') return 'dot-implemented';
+      if (a && (a.reviewStatus || a.review_status) === 'FINISHED') {
+        const ans = a.answer;
+        if (ans === "NOT_IMPLEMENTED") return 'dot-notimpl';
+        if (ans === "PARTIALLY_IMPLEMENTED") return 'dot-partial';
+        if (ans === "PLANNED") return 'dot-planned';
+        if (ans === "NOT_APPLICABLE") return 'dot-na';
+        return 'dot-implemented';
+      }
+      if (a && (a.reviewStatus || a.review_status) === 'Submitted') return 'dot-partial';
     }
     // Check carry-forward
     const carried = getCarriedAssessment(questId);

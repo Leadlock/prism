@@ -19,8 +19,9 @@ test.describe("Auth workflows", () => {
   });
 
   test("Register new company → redirected to /self-assess when unverified", async ({ page }) => {
+    // Catch-all must be registered FIRST (Playwright LIFO: last registered = highest priority)
+    await page.route(url => url.pathname.startsWith("/api/"), r => r.fulfill({ json: [] }));
     await page.route("**/api/auth/register", r => r.fulfill({ status: 201, json: REG_RESPONSE }));
-    await page.route("**/api/**", r => r.fulfill({ json: [] }));
 
     await page.goto("/register");
     await page.fill("#companyName", "Acme Corp");
@@ -43,7 +44,7 @@ test.describe("Auth workflows", () => {
     await page.goto("/self-assess");
 
     // Step 1: welcome screen
-    await expect(page.getByText("Compliance Self-Assessment")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: "Compliance Self-Assessment" })).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: /Start Assessment/ }).click();
 
     // Step 2: department selection — click "IT & Security"
@@ -62,7 +63,7 @@ test.describe("Auth workflows", () => {
     await expect(page.getByText("Your Compliance Assessment")).toBeVisible({ timeout: 10_000 });
   });
 
-  test("Logout clears session and returns to homepage", async ({ page }) => {
+  test("Logout shows confirmation modal then clears session", async ({ page }) => {
     await setAuth(page, "ADMIN");
     await page.route("**/api/questions*", r => r.fulfill({ json: [] }));
     await page.route("**/api/assessments*", r => r.fulfill({ json: [] }));
@@ -71,8 +72,34 @@ test.describe("Auth workflows", () => {
     await expect(page.getByRole("button", { name: "Logout" })).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Logout" }).click();
 
+    // Confirmation modal should appear — not immediately logged out
+    await expect(page.getByText("Sign out?")).toBeVisible({ timeout: 3_000 });
+    await expect(page).toHaveURL(/\/tracker/);
+
+    // Confirm sign-out in the modal
+    await page.getByRole("button", { name: "Sign out" }).click();
+
     await expect(page).toHaveURL("/", { timeout: 10_000 });
     const token = await page.evaluate(() => localStorage.getItem("token"));
     expect(token).toBeNull();
+  });
+
+  test("Logout modal cancel keeps session active", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    await page.route("**/api/questions*", r => r.fulfill({ json: [] }));
+    await page.route("**/api/assessments*", r => r.fulfill({ json: [] }));
+    await page.goto("/tracker");
+
+    await expect(page.getByRole("button", { name: "Logout" })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: "Logout" }).click();
+
+    await expect(page.getByText("Sign out?")).toBeVisible({ timeout: 3_000 });
+    await page.getByRole("button", { name: "Cancel" }).click();
+
+    // Modal dismissed — still on tracker, token still present
+    await expect(page.getByText("Sign out?")).not.toBeVisible();
+    await expect(page).toHaveURL(/\/tracker/);
+    const token = await page.evaluate(() => localStorage.getItem("token"));
+    expect(token).toBe("mock-token");
   });
 });

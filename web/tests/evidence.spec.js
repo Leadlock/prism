@@ -85,7 +85,7 @@ test.describe("Evidence workflows", () => {
     });
 
     await page.goto("/requests");
-    await expect(page.getByText("Evidence Requests")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Evidence Requests", { exact: true })).toBeVisible({ timeout: 10_000 });
 
     // Open create modal
     await page.getByRole("button", { name: /New Request/ }).click();
@@ -98,6 +98,6 @@ test.describe("Evidence workflows", () => {
     await page.getByRole("button", { name: "Create Request" }).click();
 
     // Item appears in the list (state update is immediate — no GET refetch)
-    await expect(page.getByText("Upload Q3 pen test report")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Upload Q3 pen test report").first()).toBeVisible({ timeout: 5_000 });
   });
 });

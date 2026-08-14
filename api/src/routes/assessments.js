@@ -7,6 +7,7 @@ import { requireRole, requireReadOnly } from "../middleware/roles.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { writeAuditLog } from "../utils/auditLog.js";
 import { sanitiseFields } from "../utils/sanitise.js";
+import { notifyReviewers } from "../utils/notifyReviewers.js";
 
 const router = Router();
 
@@ -39,7 +40,14 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
   }
 
   const result = await query(
-    `SELECT * FROM assessments WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC`,
+    `SELECT a.*, act.owner AS action_owner, act.due_date AS action_due_date, act.notes AS action_notes
+     FROM assessments a
+     LEFT JOIN LATERAL (
+       SELECT owner, due_date, notes FROM actions
+       WHERE quest_id = a.quest_id AND company_id = a.company_id AND month = a.month
+       ORDER BY created_at DESC LIMIT 1
+     ) act ON true
+     WHERE ${conditions.map(c => `a.${c}`).join(" AND ")} ORDER BY a.created_at DESC`,
     values
   );
   res.json(mapRows(result));
@@ -93,7 +101,13 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), as
         linkedEvidenceCount = parseInt(evidenceResult.rows[0].n, 10) || 0;
       }
 
-      if (!hasEvidenceLink && linkedEvidenceCount === 0) {
+      const vaultResult = await query(
+        `SELECT COUNT(*) AS n FROM question_evidence WHERE company_id = $1 AND quest_id = $2`,
+        [req.user.companyId, questId || null]
+      );
+      const vaultLinkedCount = parseInt(vaultResult.rows[0].n, 10) || 0;
+
+      if (!hasEvidenceLink && linkedEvidenceCount === 0 && vaultLinkedCount === 0) {
         return res.status(400).json({ error: "Implemented assessments require an evidence upload or evidence link before submission" });
       }
     }
@@ -220,6 +234,17 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), as
     }
 
     await client.query("COMMIT");
+
+    // Notify reviewers only for IMPLEMENTED submissions (non-IMPLEMENTED answers are auto-FINISHED, no review needed)
+    if (reviewStatus !== "WIP" && (normalizedAnswer === "IMPLEMENTED" || normalizedAnswer === "YES")) {
+      notifyReviewers(req.user.companyId, {
+        title: `Assessment submitted: ${questId || controlArea || "control"}`,
+        body: `Submitted by ${submittedBy}`,
+        entityType: "assessment",
+        entityId: assessment.id
+      });
+    }
+
     res.status(201).json(assessment);
   } catch (error) {
     await client.query("ROLLBACK");
@@ -357,7 +382,7 @@ router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR", "A
           [assessment.questId]
         );
         const question = questionResult.rows[0] || {};
-        
+
         await client.query(
           `INSERT INTO actions
            (action_id, month, module_id, quest_id, company_id, defeated_quest, current_level, target_level,
@@ -383,9 +408,48 @@ router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR", "A
           [actionId, req.user.companyId]
         );
       }
+
+      // Notify the user who submitted this assessment about the rejection
+      if (assessment.submittedBy) {
+        const submitterResult = await client.query(
+          "SELECT id FROM users WHERE email = $1 AND company_id = $2 LIMIT 1",
+          [assessment.submittedBy, req.user.companyId]
+        );
+        if (submitterResult.rows.length > 0) {
+          const submitterId = submitterResult.rows[0].id;
+          const rejectionReason = rawBody.auditorNotes || "No reason provided";
+          const title = `Assessment rejected: ${assessment.questId || assessment.controlArea || "control"}`;
+          const body = `Rejected by ${req.user.email}. Reason: ${rejectionReason}`;
+          await client.query(
+            `INSERT INTO notifications (user_id, company_id, title, body, entity_type, entity_id)
+             VALUES ($1, $2, $3, $4, 'rejection', $5)`,
+            [submitterId, req.user.companyId, title, body, assessment.id]
+          );
+        }
+      }
     }
 
     await client.query("COMMIT");
+
+    // Notify submitter when their assessment is approved
+    if (req.body.reviewStatus === "FINISHED" && assessment.submittedBy) {
+      query(
+        "SELECT id FROM users WHERE email = $1 AND company_id = $2 LIMIT 1",
+        [assessment.submittedBy, req.user.companyId]
+      ).then(r => {
+        if (r.rows.length > 0) {
+          const submitterId = r.rows[0].id;
+          return query(
+            `INSERT INTO notifications (user_id, company_id, title, body, entity_type, entity_id) VALUES ($1, $2, $3, $4, 'approval', $5)`,
+            [submitterId, req.user.companyId,
+             `Assessment approved: ${assessment.questId || assessment.controlArea || "control"}`,
+             `Approved by ${req.user.email}`,
+             assessment.id]
+          );
+        }
+      }).catch(err => console.error("[notify] approval notification failed:", err.message));
+    }
+
     res.json(assessment);
   } catch (error) {
     await client.query("ROLLBACK");

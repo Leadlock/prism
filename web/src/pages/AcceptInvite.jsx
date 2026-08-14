@@ -1,9 +1,16 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, lazy, Suspense, useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import Logo from "../components/Logo";
 
 const LoginHero = lazy(() => import("../components/LoginHero"));
+
+const ROLE_LABELS = {
+  ADMIN: "Admin",
+  LEAD: "Lead",
+  CONTRIBUTOR: "Contributor",
+  VIEWER: "Viewer",
+};
 
 export default function AcceptInvite({ onLogin }) {
   const navigate = useNavigate();
@@ -13,6 +20,15 @@ export default function AcceptInvite({ onLogin }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [inviteInfo, setInviteInfo] = useState(null);
+  const [inviteInfoError, setInviteInfoError] = useState("");
+
+  useEffect(() => {
+    if (!token) return;
+    apiFetch(`/api/auth/invitation/${token}`)
+      .then(data => setInviteInfo(data))
+      .catch(err => setInviteInfoError(err.message || "Could not load invitation details"));
+  }, [token]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -36,7 +52,11 @@ export default function AcceptInvite({ onLogin }) {
         body: JSON.stringify({ token, password })
       });
       onLogin(data);
-      navigate("/tracker");
+      if (data.company?.isVerified === false) {
+        navigate(data.department ? `/self-assess?dept=${encodeURIComponent(data.department)}` : "/self-assess");
+      } else {
+        navigate("/tracker");
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -54,6 +74,44 @@ export default function AcceptInvite({ onLogin }) {
           </div>
           <h1 className="login-heading">Accept Invitation</h1>
           <p className="login-subtitle">Set your password to join the workspace</p>
+
+          {inviteInfo && (
+            <div style={{
+              background: "var(--bg2, #f8f9fa)", border: "1px solid var(--border, #e5e7eb)",
+              borderRadius: 10, padding: "14px 16px", marginBottom: 20, fontSize: 13,
+            }}>
+              <div style={{ marginBottom: 8, fontWeight: 600, color: "var(--text, #111)", fontSize: 14 }}>
+                You were invited to join <span style={{ color: "var(--accent, #2563eb)" }}>{inviteInfo.companyName}</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5, color: "var(--text2, #555)" }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <span style={{ fontWeight: 600, minWidth: 90 }}>Your email:</span>
+                  <span>{inviteInfo.inviteeEmail}</span>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <span style={{ fontWeight: 600, minWidth: 90 }}>Your role:</span>
+                  <span style={{
+                    display: "inline-block", padding: "1px 8px", borderRadius: 12,
+                    background: "rgba(99,102,241,0.1)", color: "var(--accent, #2563eb)",
+                    fontWeight: 600, fontSize: 12,
+                  }}>{ROLE_LABELS[inviteInfo.role] || inviteInfo.role}</span>
+                </div>
+                {inviteInfo.invitorEmail && (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <span style={{ fontWeight: 600, minWidth: 90 }}>Invited by:</span>
+                    <span>
+                      {inviteInfo.invitorName ? `${inviteInfo.invitorName} (${inviteInfo.invitorEmail})` : inviteInfo.invitorEmail}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {inviteInfoError && (
+            <div style={{ fontSize: 13, color: "var(--text2, #555)", marginBottom: 16, fontStyle: "italic" }}>
+              {inviteInfoError}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit}>
             <div className="form-group">

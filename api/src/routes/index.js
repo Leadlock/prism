@@ -19,6 +19,7 @@ import vaultRoutes from "./vault.js";
 import requestRoutes from "./requests.js";
 import notificationRoutes from "./notifications.js";
 import marketplaceRoutes from "./marketplace.js";
+import selfAssessmentRoutes from "./selfAssessment.js";
 
 const router = Router();
 
@@ -42,6 +43,7 @@ router.use("/vault", vaultRoutes);
 router.use("/requests", requestRoutes);
 router.use("/notifications", notificationRoutes);
 router.use("/marketplace", marketplaceRoutes);
+router.use("/self-assessment", selfAssessmentRoutes);
 
 // Alias /api/prefs/version for the consent version endpoint — avoids ad-blocker filter lists
 // that block URLs matching "consent" or "cookie"

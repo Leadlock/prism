@@ -17,7 +17,6 @@ import QuestionDetail from "./pages/QuestionDetail.jsx";
 import EvidenceVault from "./pages/EvidenceVault.jsx";
 import EvidenceRequests from "./pages/EvidenceRequests.jsx";
 import Homepage from "./pages/Homepage.jsx";
-import PrismTest from "./pages/PrismTest.jsx";
 import DPDPAssess from "./pages/DPDPAssess.jsx";
 import ISO27001Assess from "./pages/ISO27001Assess.jsx";
 import GDPRAssess from "./pages/GDPRAssess.jsx";
@@ -159,7 +158,12 @@ export default function App() {
     setAuth(prev => ({ ...prev, user: updatedUser }));
   };
 
-  const handleLogout = () => {
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  const handleLogout = () => setShowLogoutConfirm(true);
+
+  const confirmLogout = () => {
+    setShowLogoutConfirm(false);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     localStorage.removeItem("company");
@@ -199,15 +203,22 @@ export default function App() {
   const isVerified       = auth.company?.isVerified !== false;
   const showOnboarding   = isAuthenticated && isAdmin && !auth.user?.onboardingCompleted && isVerified;
 
+  const handleProfileUpdate = (patch) => {
+    const updated = { ...auth.user, ...patch };
+    localStorage.setItem("user", JSON.stringify(updated));
+    setAuth(prev => ({ ...prev, user: updated }));
+  };
+
   const authProps = useMemo(() => ({
-    token:          auth.token,
-    user:           auth.user,
-    company:        auth.company,
+    token:           auth.token,
+    user:            auth.user,
+    company:         auth.company,
     isVerified,
     branding,
-    onLogout:       handleLogout,
+    onLogout:        handleLogout,
     theme,
-    onThemeToggle:  handleThemeToggle
+    onThemeToggle:   handleThemeToggle,
+    onProfileUpdate: handleProfileUpdate,
   }), [auth, theme, branding, isVerified]);
 
   // Where to send an authenticated user who hits "/"
@@ -223,7 +234,48 @@ export default function App() {
     <BrowserRouter>
       <ScrollToTop />
       <AnalyticsAndConsent />
-      {blockedMessage && <BlockedScreen message={blockedMessage} onDismiss={handleLogout} />}
+      {blockedMessage && <BlockedScreen message={blockedMessage} onDismiss={confirmLogout} />}
+      {showLogoutConfirm && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(0,0,0,0.5)", backdropFilter: "blur(3px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+        }}>
+          <div style={{
+            background: "var(--bg2, #fff)", borderRadius: 12, padding: "32px 28px",
+            maxWidth: 380, width: "100%", textAlign: "center",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+          }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>👋</div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: "var(--text, #111)" }}>Sign out?</h2>
+            <p style={{ fontSize: 14, color: "var(--text2, #555)", marginBottom: 24, lineHeight: 1.5 }}>
+              You'll need to sign in again to access your workspace.
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <button
+                onClick={confirmLogout}
+                style={{
+                  padding: "10px 24px", borderRadius: 8,
+                  background: "var(--accent, #2563eb)", color: "#fff",
+                  fontWeight: 600, fontSize: 14, border: "none", cursor: "pointer",
+                }}
+              >
+                Sign out
+              </button>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  padding: "10px 24px", borderRadius: 8,
+                  border: "1px solid var(--border, #ddd)", background: "transparent",
+                  color: "var(--text2, #555)", fontWeight: 600, fontSize: 14, cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showOnboarding && (
         <PolicyOnboarding
           token={auth.token}
@@ -251,7 +303,6 @@ export default function App() {
         <Route path="/support" element={<Support />} />
 
         {/* PRISM DPDP module — public */}
-        <Route path="/test" element={<PrismTest />} />
 
         {/* Public assessment pages */}
         <Route path="/assess/dpdp" element={<DPDPAssess />} />
@@ -313,7 +364,7 @@ export default function App() {
           element={
             isAuthenticated && !isSuperAdmin
               ? (!isVerified
-                  ? <SelfAssessment user={auth.user} onLogout={handleLogout} />
+                  ? <SelfAssessment user={auth.user} token={auth.token} onLogout={handleLogout} />
                   : <Navigate to={defaultRoute()} replace />
                 )
               : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />

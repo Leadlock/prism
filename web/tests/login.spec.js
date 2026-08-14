@@ -27,7 +27,7 @@ async function mockAmbient(page) {
     },
   }));
   // Catch-all for any other API calls the Tracker / Review page may fire
-  await page.route("**/api/**", r => r.fulfill({ json: [] }));
+  await page.route(url => url.pathname.startsWith("/api/"), r => r.fulfill({ json: [] }));
 }
 
 test.describe("Login page", () => {

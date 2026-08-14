@@ -17,9 +17,9 @@ router.get("/", authenticate, requireRole(["ADMIN"]), asyncHandler(async (req, r
 }));
 
 router.post("/invite", authenticate, requireRole(["ADMIN"]), asyncHandler(async (req, res) => {
-  const { email, role } = req.body;
+  const { email, role, department } = req.body;
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
-  
+
   if (!normalizedEmail || !role) {
     return res.status(400).json({ error: "Email and role required" });
   }
@@ -44,9 +44,10 @@ router.post("/invite", authenticate, requireRole(["ADMIN"]), asyncHandler(async 
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   
+  const dept = typeof department === "string" ? department.trim() || null : null;
   const invitationResult = await query(
-    "INSERT INTO invitations (email, company_id, role, token, expires_at) VALUES ($1, $2, $3, $4, $5) RETURNING id, email, role, token, expires_at, created_at",
-    [normalizedEmail, req.user.companyId, role, token, expiresAt]
+    "INSERT INTO invitations (email, company_id, role, token, expires_at, department) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, email, role, token, expires_at, department, created_at",
+    [normalizedEmail, req.user.companyId, role, token, expiresAt, dept]
   );
   const invitation = mapRow(invitationResult);
 

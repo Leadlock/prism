@@ -160,7 +160,12 @@ router.get("/", authenticate, requireVaultPin, requireReadOnly(VAULT_READERS), a
   }
 
   const result = await query(
-    `SELECT ev.*, COUNT(qe.id)::INT AS linked_count
+    `SELECT ev.*, COUNT(qe.id)::INT AS linked_count,
+            EXISTS (
+              SELECT 1 FROM question_evidence qe2
+              JOIN assessments a ON a.quest_id = qe2.quest_id AND a.company_id = qe2.company_id AND a.review_status = 'FINISHED'
+              WHERE qe2.vault_id = ev.id
+            ) AS locked
      FROM evidence_vault ev
      ${joinClause}
      LEFT JOIN question_evidence qe ON qe.vault_id = ev.id
@@ -376,6 +381,25 @@ ${docsBlock}${techBlock}`;
   res.json({ reply, sources: usedTitles });
 }));
 
+// GET /api/vault/quest-links?questIds=q1,q2,... — vault items linked to given quests (no PIN required)
+router.get("/quest-links", authenticate, requireReadOnly(VAULT_READERS), asyncHandler(async (req, res) => {
+  const { questIds } = req.query;
+  if (!questIds) return res.json([]);
+  const ids = questIds.split(",").map(s => s.trim()).filter(Boolean);
+  if (ids.length === 0) return res.json([]);
+
+  const placeholders = ids.map((_, i) => `$${i + 2}`).join(", ");
+  const result = await query(
+    `SELECT qe.quest_id, ev.id, ev.title, ev.description, ev.evidence_link, ev.file_name, ev.file_type, ev.uploaded_by, ev.uploaded_at
+     FROM question_evidence qe
+     JOIN evidence_vault ev ON ev.id = qe.vault_id
+     WHERE qe.company_id = $1 AND qe.quest_id IN (${placeholders})
+     ORDER BY ev.uploaded_at DESC`,
+    [req.user.companyId, ...ids]
+  );
+  res.json(mapRows(result));
+}));
+
 // GET /api/vault/:id — single vault item with linked questions
 router.get("/:id", authenticate, requireVaultPin, requireReadOnly(VAULT_READERS), asyncHandler(async (req, res) => {
   const cid = req.user.companyId;
@@ -383,7 +407,12 @@ router.get("/:id", authenticate, requireVaultPin, requireReadOnly(VAULT_READERS)
 
   const [vaultResult, linksResult] = await Promise.all([
     query(
-      `SELECT ev.*, COUNT(qe.id)::INT AS linked_count
+      `SELECT ev.*, COUNT(qe.id)::INT AS linked_count,
+              EXISTS (
+                SELECT 1 FROM question_evidence qe2
+                JOIN assessments a ON a.quest_id = qe2.quest_id AND a.company_id = qe2.company_id AND a.review_status = 'FINISHED'
+                WHERE qe2.vault_id = ev.id
+              ) AS locked
        FROM evidence_vault ev
        LEFT JOIN question_evidence qe ON qe.vault_id = ev.id
        WHERE ev.id = $1 AND ev.company_id = $2
@@ -589,25 +618,33 @@ router.delete("/:id", authenticate, requireVaultPin, requireRole(VAULT_DELETERS)
   const cid = req.user.companyId;
   const id = parseInt(req.params.id);
 
-  // Block delete if item is locked (linked to a reviewer-approved control)
-  const lockResult = await query(
-    "SELECT locked FROM evidence_vault WHERE id = $1 AND company_id = $2",
+  const existsResult = await query(
+    "SELECT id FROM evidence_vault WHERE id = $1 AND company_id = $2",
     [id, cid]
   );
-  const lockItem = mapRow(lockResult);
-  if (!lockItem) return res.status(404).json({ error: "Vault item not found" });
-  if (lockItem.locked) {
+  if (existsResult.rows.length === 0) return res.status(404).json({ error: "Vault item not found" });
+
+  // Block delete only if a *currently* linked question has an approved review —
+  // a stored locked flag would go stale once a link is removed after review.
+  const linkResult = await query(
+    `SELECT COUNT(*)::INT AS n,
+            COUNT(*) FILTER (
+              WHERE EXISTS (
+                SELECT 1 FROM assessments a
+                WHERE a.quest_id = qe.quest_id AND a.company_id = qe.company_id AND a.review_status = 'FINISHED'
+              )
+            )::INT AS reviewed_n
+     FROM question_evidence qe WHERE qe.vault_id = $1 AND qe.company_id = $2`,
+    [id, cid]
+  );
+  const { n: linkedCount, reviewedN: reviewedCount } = mapRow(linkResult);
+
+  if (reviewedCount > 0) {
     return res.status(409).json({
       error: "This evidence is locked because a reviewer has approved a linked control. It cannot be deleted.",
       code: "LOCKED"
     });
   }
-
-  const linkResult = await query(
-    "SELECT COUNT(*)::INT AS n FROM question_evidence WHERE vault_id = $1 AND company_id = $2",
-    [id, cid]
-  );
-  const linkedCount = linkResult.rows[0].n;
 
   if (linkedCount > 0 && req.query.force !== "true") {
     return res.status(409).json({
