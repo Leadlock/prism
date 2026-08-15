@@ -7,6 +7,7 @@ export default function TopBar({
   currentIndex,
   total,
   onNavigate,
+  onBack,
   onSaveDraft,
   onSubmitReview,
   onSaveAndContinue,
@@ -52,26 +53,34 @@ export default function TopBar({
         {branding?.logoUrl && (
           <img src={branding.logoUrl} alt={company?.name || "Company"} className="topbar-logo" />
         )}
-        <button
-          className="nav-btn nav-btn-progress"
-          onClick={() => onNavigate(-1)}
-          disabled={currentIndex === 0}
-        >
-          &#x2039;
-        </button>
-        <div className="progress-track">
-          <div className="progress-fill" style={{ width: `${progress}%` }}></div>
-        </div>
-        <button
-          className="nav-btn nav-btn-progress"
-          onClick={() => onNavigate(1)}
-          disabled={currentIndex === total - 1}
-        >
-          &#x203A;
-        </button>
-        <span className="quest-counter">
-          {currentIndex + 1} of {total}
-        </span>
+        {onBack && !onNavigate ? (
+          <button className="nav-btn nav-btn-progress" onClick={onBack} style={{ fontSize: 14, padding: "4px 10px" }}>
+            ← Back
+          </button>
+        ) : onNavigate ? (
+          <>
+            <button
+              className="nav-btn nav-btn-progress"
+              onClick={() => onNavigate(-1)}
+              disabled={currentIndex === 0}
+            >
+              &#x2039;
+            </button>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+            </div>
+            <button
+              className="nav-btn nav-btn-progress"
+              onClick={() => onNavigate(1)}
+              disabled={currentIndex === total - 1}
+            >
+              &#x203A;
+            </button>
+            <span className="quest-counter">
+              {currentIndex + 1} of {total}
+            </span>
+          </>
+        ) : null}
       </div>
 
       <div className={`topbar-actions ${actionsOpen ? "actions-open" : ""}`}>

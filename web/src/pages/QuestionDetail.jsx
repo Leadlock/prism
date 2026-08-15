@@ -249,7 +249,7 @@ export default function QuestionDetail({ token, user, onLogout, isVerified }) {
       <div className="app-shell">
         <TopBar title="Error" onLogout={onLogout} />
         <div className="error-text">{error || "Question not found"}</div>
-        <button onClick={() => navigate("/tracker")} className="btn-secondary">
+        <button onClick={() => (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate("/tracker")} className="btn-secondary">
           Back to Dashboard
         </button>
       </div>
@@ -263,7 +263,7 @@ export default function QuestionDetail({ token, user, onLogout, isVerified }) {
         subtitle={question.controlArea}
         tags={[question.isoReference, question.frequency]}
         onLogout={onLogout}
-        onBack={() => navigate("/tracker")}
+        onBack={() => (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate("/tracker")}
       />
       <div style={{ padding: '0 28px 28px 28px' }}>
         <button className="btn btn-ghost" onClick={async () => {

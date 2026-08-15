@@ -111,7 +111,7 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
           <button className="btn btn-ghost theme-toggle" onClick={onThemeToggle} title="Toggle theme">
             {theme === "dark" ? "☀" : "☾"}
           </button>
-          <button className="btn btn-ghost" onClick={() => navigate("/tracker")}>← Tracker</button>
+          <button className="btn btn-ghost" onClick={() => (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate("/tracker")}>← Back</button>
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
           <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
         </div>

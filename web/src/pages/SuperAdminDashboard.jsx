@@ -341,8 +341,24 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     }
   };
 
+  // Push a history sentinel when opening a company so browser back closes the detail
+  // instead of exiting the app. sentinelRef tracks whether one is outstanding.
+  const sentinelRef = useRef(false);
+
+  useEffect(() => {
+    if (!selectedCompany) return;
+    const handler = () => {
+      sentinelRef.current = false;
+      setSelectedCompany(null);
+    };
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, [selectedCompany]);
+
   // --- Company detail: fetch modules ---
   const openCompanyDetail = async (company) => {
+    window.history.pushState(null, "", window.location.href);
+    sentinelRef.current = true;
     setSelectedCompany(company);
     setCompanyModules([]);
     setCompanyQuestions([]);
@@ -976,7 +992,13 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     return (
       <div>
         {/* Back button */}
-        <button className="btn btn-ghost" style={{ marginBottom: "16px", fontSize: "13px" }} onClick={() => setSelectedCompany(null)}>
+        <button className="btn btn-ghost" style={{ marginBottom: "16px", fontSize: "13px" }} onClick={() => {
+          if (sentinelRef.current) {
+            window.history.back(); // triggers popstate → closes detail + clears sentinel
+          } else {
+            setSelectedCompany(null);
+          }
+        }}>
           ← Back to Companies
         </button>
 

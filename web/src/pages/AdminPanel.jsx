@@ -525,7 +525,7 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
               {theme === "dark" ? "☀" : "☾"}
             </button>
             <button className="btn btn-ghost" onClick={() => navigate("/auditors")}>Auditors</button>
-            <button className="btn btn-ghost" onClick={() => navigate("/tracker")}>Back to tracker</button>
+            <button className="btn btn-ghost" onClick={() => (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate("/tracker")}>← Back</button>
             <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
           </div>
         </div>

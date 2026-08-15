@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import Logo from "../components/Logo";
 import { apiFetch } from "../api/client.js";
@@ -655,17 +655,30 @@ export default function SelfAssessment({ user, token, onLogout }) {
     }
   }, [step, deptIndex]);
 
-  // Intercept browser back button to navigate through steps
+  // Keep a ref to the latest goToPreviousStep and step so the popstate handler
+  // doesn't go stale when step changes. A single handler registered once on mount
+  // means at most ONE extra sentinel entry in history instead of one per step change.
+  const goToPreviousStepRef = useRef(goToPreviousStep);
+  const stepRef = useRef(step);
+  useEffect(() => { goToPreviousStepRef.current = goToPreviousStep; }, [goToPreviousStep]);
+  useEffect(() => { stepRef.current = step; }, [step]);
+
   useEffect(() => {
-    if (step === "welcome") return;
+    // Push exactly ONE sentinel entry. The handler re-pushes after each back press
+    // to keep intercepting, but since it consumes one and pushes one the history
+    // never accumulates more than two /self-assess entries total.
     window.history.pushState(null, "", window.location.href);
+
     const handler = () => {
+      if (stepRef.current === "welcome") return; // let browser back exit normally from welcome
       window.history.pushState(null, "", window.location.href);
-      goToPreviousStep();
+      goToPreviousStepRef.current();
     };
+
     window.addEventListener("popstate", handler);
     return () => window.removeEventListener("popstate", handler);
-  }, [step, deptIndex, goToPreviousStep]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally runs only on mount
 
   const toggleDept = (dept) => {
     setSelectedDepts(prev =>
