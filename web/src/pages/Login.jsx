@@ -1,11 +1,22 @@
 import { useState, lazy, Suspense } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import Logo from "../components/Logo";
 
 const LoginHero = lazy(() => import("../components/LoginHero"));
 
+function getDefaultRoute(user, company) {
+  const role = user?.role;
+  const isVerified = company?.isVerified !== false;
+  if (role === "SUPERADMIN") return "/superadmin";
+  if (!isVerified && role !== "SUPERADMIN" && role !== "AUDITOR") return "/self-assess";
+  if (role === "AUDITOR") return "/dashboard";
+  if (role === "VIEWER") return "/review";
+  return "/tracker";
+}
+
 export default function Login({ onLogin }) {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -24,6 +35,7 @@ export default function Login({ onLogin }) {
         body: JSON.stringify({ email, password })
       });
       onLogin(data);
+      navigate(getDefaultRoute(data.user, data.company));
     } catch (err) {
       console.error("Login error:", err);
       setError(err.message);

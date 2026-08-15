@@ -130,7 +130,7 @@ export default function Register({ onLogin }) {
       });
 
       if (onLogin) onLogin(data);
-      navigate("/tracker", { replace: true });
+      navigate("/tracker");
     } catch (err) {
       setError(err.message);
     } finally {

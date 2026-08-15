@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { apiFetch, apiUpload } from "../api/client.js";
 import DependencySelect from "../components/DependencySelect.jsx";
 
@@ -37,6 +38,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
 
   // --- Toast ---
   const { toast, showToast } = useToast();
+  const navigate = useNavigate();
 
   // --- Import state ---
   const [importFile, setImportFile] = useState(null);
@@ -341,24 +343,10 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     }
   };
 
-  // Push a history sentinel when opening a company so browser back closes the detail
-  // instead of exiting the app. sentinelRef tracks whether one is outstanding.
-  const sentinelRef = useRef(false);
+  const location = useLocation();
 
-  useEffect(() => {
-    if (!selectedCompany) return;
-    const handler = () => {
-      sentinelRef.current = false;
-      setSelectedCompany(null);
-    };
-    window.addEventListener("popstate", handler);
-    return () => window.removeEventListener("popstate", handler);
-  }, [selectedCompany]);
-
-  // --- Company detail: fetch modules ---
-  const openCompanyDetail = async (company) => {
-    window.history.pushState(null, "", window.location.href);
-    sentinelRef.current = true;
+  // Load company data without touching history (used by both open and forward-restore).
+  const loadCompanyData = useCallback(async (company) => {
     setSelectedCompany(company);
     setCompanyModules([]);
     setCompanyQuestions([]);
@@ -385,6 +373,26 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
       setCompanyUsers([]);
     }
     setLoadingModules(false);
+  }, [token]);
+
+  // Drive selectedCompany from location.state so back AND forward both work.
+  // Back clears companyId from state → closes detail.
+  // Forward restores companyId → reopens detail.
+  useEffect(() => {
+    const companyId = location.state?.companyId;
+    if (!companyId) {
+      setSelectedCompany(null);
+      return;
+    }
+    if (selectedCompany?.id === companyId) return; // already showing
+    const company = companies.find(c => c.id === companyId);
+    if (company) loadCompanyData(company);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state?.companyId, companies]); // selectedCompany and loadCompanyData intentionally omitted to avoid loops
+
+  // --- Company detail: push location state so history back/forward work ---
+  const openCompanyDetail = (company) => {
+    navigate("/superadmin", { state: { companyId: company.id } });
   };
 
   // --- Company detail: import for this company ---
@@ -992,13 +1000,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     return (
       <div>
         {/* Back button */}
-        <button className="btn btn-ghost" style={{ marginBottom: "16px", fontSize: "13px" }} onClick={() => {
-          if (sentinelRef.current) {
-            window.history.back(); // triggers popstate → closes detail + clears sentinel
-          } else {
-            setSelectedCompany(null);
-          }
-        }}>
+        <button className="btn btn-ghost" style={{ marginBottom: "16px", fontSize: "13px" }} onClick={() => navigate(-1)}>
           ← Back to Companies
         </button>
 

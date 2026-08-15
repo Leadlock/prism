@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import Logo from "../components/Logo";
 import { apiFetch } from "../api/client.js";
 import { DEPT_META, DEPT_QUESTIONS, ANSWER_OPTIONS, DEFAULT_DEPTS } from "../utils/deptSelfAssessQuestions.js";
@@ -585,6 +585,8 @@ function ReportStep({ token, onBack }) {
 
 export default function SelfAssessment({ user, token, onLogout }) {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
   const lockedDept = searchParams.get("dept") || null;
 
   const saved = lockedDept ? null : loadSaved(user?.id);
@@ -664,14 +666,14 @@ export default function SelfAssessment({ user, token, onLogout }) {
   useEffect(() => { stepRef.current = step; }, [step]);
 
   useEffect(() => {
-    // Push exactly ONE sentinel entry. The handler re-pushes after each back press
-    // to keep intercepting, but since it consumes one and pushes one the history
-    // never accumulates more than two /self-assess entries total.
-    window.history.pushState(null, "", window.location.href);
+    // Push ONE sentinel via React Router so its internal history idx stays correct.
+    // The handler re-pushes after each back press so there's always a sentinel to catch
+    // the next back, but consume-one/push-one means at most two /self-assess entries total.
+    navigate(location.pathname + location.search, { replace: false });
 
     const handler = () => {
       if (stepRef.current === "welcome") return; // let browser back exit normally from welcome
-      window.history.pushState(null, "", window.location.href);
+      navigate(location.pathname + location.search, { replace: false });
       goToPreviousStepRef.current();
     };
 

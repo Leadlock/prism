@@ -309,22 +309,10 @@ export default function App() {
         <Route path="/assess/iso27001" element={<ISO27001Assess />} />
         <Route path="/assess/gdpr" element={<GDPRAssess />} />
 
-        <Route
-          path="/login"
-          element={isAuthenticated ? <Navigate to={defaultRoute()} replace /> : <Login onLogin={handleLogin} />}
-        />
-        <Route
-          path="/forgot-password"
-          element={isAuthenticated ? <Navigate to={defaultRoute()} replace /> : <ForgotPassword />}
-        />
-        <Route
-          path="/register"
-          element={isAuthenticated ? <Navigate to={defaultRoute()} replace /> : <Register onLogin={handleLogin} />}
-        />
-        <Route
-          path="/accept-invite/:token"
-          element={isAuthenticated ? <Navigate to={defaultRoute()} replace /> : <AcceptInvite onLogin={handleLogin} />}
-        />
+        <Route path="/login" element={<Login onLogin={handleLogin} />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/register" element={<Register onLogin={handleLogin} />} />
+        <Route path="/accept-invite/:token" element={<AcceptInvite onLogin={handleLogin} />} />
 
         {/* Admin-only routes */}
         <Route
