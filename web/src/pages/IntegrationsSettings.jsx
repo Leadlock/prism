@@ -45,11 +45,20 @@ function AddIntegrationWizard({ catalog, token, onClose, onCreated }) {
   const [authType, setAuthType] = useState("iam_role");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Tracks the connection created by a prior (possibly failed) submit attempt,
+  // so a retry after a credentials-step failure reuses it instead of creating
+  // a second, orphaned, credential-less connection.
+  const [createdConnection, setCreatedConnection] = useState(null);
 
   const pickProvider = (p) => {
     setProvider(p);
     setAuthType(p.authType === "access_key" ? "access_key" : "iam_role");
     setStep("configure");
+  };
+
+  const handleClose = () => {
+    setCreatedConnection(null);
+    onClose();
   };
 
   const handleSubmit = async (e) => {
@@ -62,16 +71,21 @@ function AddIntegrationWizard({ catalog, token, onClose, onCreated }) {
         ? { externalId }
         : { accessKeyId, secretAccessKey, sessionToken: sessionToken || undefined };
 
-      const connection = await apiFetch("/api/integrations", {
-        token, method: "POST",
-        body: JSON.stringify({ integrationKey: provider.key, name, config })
-      });
+      let connection = createdConnection;
+      if (!connection) {
+        connection = await apiFetch("/api/integrations", {
+          token, method: "POST",
+          body: JSON.stringify({ integrationKey: provider.key, name, config })
+        });
+        setCreatedConnection(connection);
+      }
 
       const updated = await apiFetch(`/api/integrations/${connection.id}/credentials`, {
         token, method: "POST",
         body: JSON.stringify({ authType, secret })
       });
 
+      setCreatedConnection(null);
       onCreated(updated);
     } catch (err) {
       setError(err.message);
@@ -81,7 +95,7 @@ function AddIntegrationWizard({ catalog, token, onClose, onCreated }) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={handleClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
         <div className="modal-title">Add Integration</div>
 
@@ -99,7 +113,7 @@ function AddIntegrationWizard({ catalog, token, onClose, onCreated }) {
                 {c.name} {c.status !== "active" && <span style={{ color: "var(--text3)", fontSize: 11 }}>({c.status})</span>}
               </button>
             ))}
-            <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={onClose}>Cancel</button>
+            <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={handleClose}>Cancel</button>
           </div>
         )}
 
@@ -200,8 +214,16 @@ export default function IntegrationsSettings({ token, company, onLogout, theme, 
   }, [load]);
 
   const handleCreated = async () => {
+    // The create+credentials steps already succeeded by the time this fires,
+    // so close the wizard regardless of whether the post-create reload
+    // succeeds — but surface a reload failure via the page's error banner
+    // instead of letting it become an unhandled promise rejection.
     setShowWizard(false);
-    await load();
+    try {
+      await load();
+    } catch (e) {
+      setError(e.message);
+    }
   };
 
   if (loading) {

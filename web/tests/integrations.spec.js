@@ -68,6 +68,56 @@ test.describe("Integrations settings", () => {
     await expect(page.getByText(/connected/i)).toBeVisible({ timeout: 10_000 });
   });
 
+  test("retrying after a failed credentials step does not create a duplicate connection", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    await page.route("**/api/integrations/catalog", r => r.fulfill({ json: CATALOG }));
+
+    let createCount = 0;
+    let created = false;
+    await page.route("**/api/integrations", r => {
+      if (r.request().method() === "POST") {
+        createCount += 1;
+        created = true;
+        return r.fulfill({ status: 201, json: { id: 12, integrationKey: "aws", name: "Retry AWS", status: "pending" } });
+      }
+      return r.fulfill({ json: created ? [{ id: 12, integrationKey: "aws", name: "Retry AWS", status: "connected" }] : [] });
+    });
+
+    // First credentials attempt fails (e.g. a bad role ARN); the second, identical
+    // retry succeeds. Only the credentials call should differ between attempts —
+    // the connection-create call must not fire again.
+    let credentialsAttempts = 0;
+    await page.route("**/api/integrations/12/credentials", r => {
+      credentialsAttempts += 1;
+      if (credentialsAttempts === 1) {
+        return r.fulfill({ status: 400, json: { error: "Unable to assume role" } });
+      }
+      return r.fulfill({ json: { id: 12, integrationKey: "aws", name: "Retry AWS", status: "connected" } });
+    });
+
+    await page.goto("/settings/integrations");
+    await page.getByRole("button", { name: "+ Add Integration" }).click();
+    await page.getByRole("button", { name: "Amazon Web Services" }).click();
+
+    await page.getByLabel("Connection name").fill("Retry AWS");
+    await page.getByLabel("Role ARN").fill("arn:aws:iam::123456789012:role/prism-readonly");
+    await page.getByLabel("External ID").fill("prism-ext-id");
+
+    // First attempt — credentials step fails, wizard stays open with an error.
+    await page.getByRole("button", { name: "Connect" }).click();
+    await expect(page.getByText("Unable to assume role")).toBeVisible({ timeout: 10_000 });
+
+    // Retry with the same form state — should reuse the already-created connection.
+    const [createReq] = await Promise.all([
+      page.waitForRequest(req => req.url().includes("/api/integrations/12/credentials")),
+      page.getByRole("button", { name: "Connect" }).click(),
+    ]);
+    expect(createReq).toBeTruthy();
+
+    await expect(page.getByText(/connected/i)).toBeVisible({ timeout: 10_000 });
+    expect(createCount).toBe(1);
+  });
+
   test("non-admin/lead roles cannot reach the page", async ({ page }) => {
     await setAuth(page, "CONTRIBUTOR");
     await page.goto("/settings/integrations");
