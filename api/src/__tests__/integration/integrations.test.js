@@ -181,3 +181,66 @@ describe("DELETE /api/integrations/:id", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("GET /api/integrations/:id/runs", () => {
+  test("lists collection runs for a connection, newest first", async () => {
+    const company = await createCompany({ domain: "runs1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const connRes = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+    const connectionId = connRes.rows[0].id;
+    await query(
+      `INSERT INTO evidence_collection_runs (company_id, connection_id, trigger_type, status, tests_run, tests_passed, tests_failed, started_at, finished_at)
+       VALUES ($1, $2, 'manual', 'success', 7, 7, 0, NOW() - interval '2 hours', NOW() - interval '1 hour 55 minutes')`,
+      [company.id, connectionId]
+    );
+    await query(
+      `INSERT INTO evidence_collection_runs (company_id, connection_id, trigger_type, status, tests_run, tests_passed, tests_failed, started_at, finished_at)
+       VALUES ($1, $2, 'manual', 'partial_failure', 7, 5, 2, NOW() - interval '1 hour', NOW() - interval '55 minutes')`,
+      [company.id, connectionId]
+    );
+
+    const res = await request(app).get(`/api/integrations/${connectionId}/runs`).set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(2);
+    expect(res.body[0].status).toBe("partial_failure");
+    expect(res.body[1].status).toBe("success");
+  });
+
+  test("returns 404 for a connection belonging to a different company", async () => {
+    const companyA = await createCompany({ domain: "runs2a.com" });
+    const companyB = await createCompany({ domain: "runs2b.com" });
+    const connRes = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [companyA.id]
+    );
+    const adminB = await createUser(companyB.id, "ADMIN");
+
+    const res = await request(app).get(`/api/integrations/${connRes.rows[0].id}/runs`).set("Authorization", `Bearer ${adminB.token}`);
+    expect(res.status).toBe(404);
+  });
+
+  test("respects a limit query param", async () => {
+    const company = await createCompany({ domain: "runs3.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const connRes = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+    const connectionId = connRes.rows[0].id;
+    for (let i = 0; i < 3; i++) {
+      await query(
+        `INSERT INTO evidence_collection_runs (company_id, connection_id, trigger_type, status, tests_run, tests_passed, tests_failed, started_at)
+         VALUES ($1, $2, 'manual', 'success', 7, 7, 0, NOW() - ($3 || ' minutes')::interval)`,
+        [company.id, connectionId, String(i)]
+      );
+    }
+
+    const res = await request(app).get(`/api/integrations/${connectionId}/runs?limit=2`).set("Authorization", `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(2);
+  });
+});

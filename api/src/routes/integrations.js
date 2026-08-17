@@ -34,6 +34,22 @@ router.get("/:id", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandle
   res.json(connection);
 }));
 
+router.get("/:id/runs", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  const connectionId = parseInt(req.params.id);
+  const connResult = await query(
+    `SELECT id FROM integration_connections WHERE id = $1 AND company_id = $2`,
+    [connectionId, req.user.companyId]
+  );
+  if (connResult.rows.length === 0) return res.status(404).json({ error: "Connection not found" });
+
+  const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+  const result = await query(
+    `SELECT * FROM evidence_collection_runs WHERE connection_id = $1 AND company_id = $2 ORDER BY started_at DESC LIMIT $3`,
+    [connectionId, req.user.companyId, limit]
+  );
+  res.json(mapRows(result));
+}));
+
 router.post("/", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   const { integrationKey, name, config } = sanitiseFields(req.body, { name: "text" });
   if (!integrationKey || !name) {
