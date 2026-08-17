@@ -394,21 +394,21 @@ export default function App() {
           }
         />
 
-        {/* Integrations Settings — ADMIN, LEAD */}
+        {/* Integrations Settings — ADMIN, LEAD (write), AUDITOR (read-only) */}
         <Route
           path="/settings/integrations"
           element={
-            isAuthenticated && isLeadOrAdmin
+            isAuthenticated && (isLeadOrAdmin || isAuditor)
               ? <IntegrationsSettings {...authProps} />
               : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />
           }
         />
 
-        {/* Connection Detail — ADMIN, LEAD */}
+        {/* Connection Detail — ADMIN, LEAD (write), AUDITOR (read-only) */}
         <Route
           path="/settings/integrations/:id"
           element={
-            isAuthenticated && isLeadOrAdmin
+            isAuthenticated && (isLeadOrAdmin || isAuditor)
               ? <ConnectionDetail {...authProps} />
               : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />
           }

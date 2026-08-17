@@ -11,6 +11,10 @@ const RUNS = [
   { id: 2, status: "partial_failure", triggerType: "manual", testsRun: 7, testsPassed: 5, testsFailed: 2, startedAt: "2026-08-16T10:00:00Z", finishedAt: "2026-08-16T10:01:00Z" },
 ];
 
+const CATALOG = [
+  { id: 1, key: "aws", name: "Amazon Web Services", category: "cloud", authType: "iam_role", status: "active" },
+];
+
 test.describe("Connection detail", () => {
   test.beforeEach(async ({ page }) => {
     await addConsent(page);
@@ -24,6 +28,7 @@ test.describe("Connection detail", () => {
 
   test("shows status, last run, and collection history", async ({ page }) => {
     await setAuth(page, "ADMIN");
+    await page.route("**/api/integrations/catalog", r => r.fulfill({ json: CATALOG }));
     await page.route("**/api/integrations/10", r => r.fulfill({ json: CONNECTION }));
     await page.route("**/api/integrations/10/runs*", r => r.fulfill({ json: RUNS }));
 
@@ -36,6 +41,7 @@ test.describe("Connection detail", () => {
 
   test("Run Now triggers a collection run", async ({ page }) => {
     await setAuth(page, "ADMIN");
+    await page.route("**/api/integrations/catalog", r => r.fulfill({ json: CATALOG }));
     await page.route("**/api/integrations/10", r => r.fulfill({ json: CONNECTION }));
     await page.route("**/api/integrations/10/runs*", r => r.fulfill({ json: RUNS }));
     await page.route("**/api/integrations/10/run", r => r.fulfill({ json: { id: 3, status: "success", testsRun: 7, testsPassed: 7, testsFailed: 0 } }));
@@ -52,6 +58,7 @@ test.describe("Connection detail", () => {
 
   test("Revoke prompts confirmation and calls DELETE", async ({ page }) => {
     await setAuth(page, "ADMIN");
+    await page.route("**/api/integrations/catalog", r => r.fulfill({ json: CATALOG }));
     await page.route("**/api/integrations/10", r => r.fulfill({ json: CONNECTION }));
     await page.route("**/api/integrations/10/runs*", r => r.fulfill({ json: [] }));
 
@@ -64,5 +71,22 @@ test.describe("Connection detail", () => {
       page.getByRole("button", { name: "Revoke" }).click(),
     ]);
     expect(delReq.method()).toBe("DELETE");
+  });
+
+  test("AUDITOR can view connection detail but not Run Now/Rotate/Revoke", async ({ page }) => {
+    await setAuth(page, "AUDITOR");
+    await page.route("**/api/integrations/catalog", r => r.fulfill({ json: CATALOG }));
+    await page.route("**/api/integrations/10", r => r.fulfill({ json: CONNECTION }));
+    await page.route("**/api/integrations/10/runs*", r => r.fulfill({ json: RUNS }));
+
+    await page.goto("/settings/integrations/10");
+
+    await expect(page.getByText("Prod AWS")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("connected")).toBeVisible();
+    await expect(page.getByText("partial_failure")).toBeVisible();
+
+    await expect(page.getByRole("button", { name: "Run Now" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Rotate credentials" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Revoke" })).toHaveCount(0);
   });
 });

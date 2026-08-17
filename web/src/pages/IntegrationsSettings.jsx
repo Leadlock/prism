@@ -191,8 +191,9 @@ function AddIntegrationWizard({ catalog, token, onClose, onCreated }) {
   );
 }
 
-export default function IntegrationsSettings({ token, company, onLogout, theme, onThemeToggle }) {
+export default function IntegrationsSettings({ token, user, company, onLogout, theme, onThemeToggle }) {
   const navigate = useNavigate();
+  const isLeadOrAdmin = user?.role === "ADMIN" || user?.role === "LEAD";
   const [catalog, setCatalog] = useState([]);
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -263,7 +264,9 @@ export default function IntegrationsSettings({ token, company, onLogout, theme, 
         <section className="admin-section">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h2>Connections</h2>
-            <button className="btn btn-primary" onClick={() => setShowWizard(true)}>+ Add Integration</button>
+            {isLeadOrAdmin && (
+              <button className="btn btn-primary" onClick={() => setShowWizard(true)}>+ Add Integration</button>
+            )}
           </div>
           <div className="admin-table">
             <div className="admin-row admin-row-header" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr" }}>

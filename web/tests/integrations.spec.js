@@ -123,4 +123,17 @@ test.describe("Integrations settings", () => {
     await page.goto("/settings/integrations");
     await expect(page).not.toHaveURL(/\/settings\/integrations/);
   });
+
+  test("AUDITOR can view the connection list read-only but not add integrations", async ({ page }) => {
+    await setAuth(page, "AUDITOR");
+    await page.route("**/api/integrations/catalog", r => r.fulfill({ json: CATALOG }));
+    await page.route("**/api/integrations", r => r.fulfill({ json: CONNECTIONS }));
+
+    await page.goto("/settings/integrations");
+
+    await expect(page).toHaveURL(/\/settings\/integrations/);
+    await expect(page.getByText("Amazon Web Services")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Prod AWS")).toBeVisible();
+    await expect(page.getByRole("button", { name: "+ Add Integration" })).toHaveCount(0);
+  });
 });
