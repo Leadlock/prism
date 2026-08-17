@@ -17,6 +17,7 @@ const WIDGET_DEFS = [
   { id: "evidence-requests",  cls: "dash-card" },
   { id: "evidence-vault",     cls: "dash-card" },
   { id: "score-eligible",     cls: "dash-card" },
+  { id: "automated-coverage", cls: "dash-card" },
   { id: "notes-coverage",     cls: "dash-card" },
   { id: "recently-reviewed",  cls: "dash-card dash-card-wide" },
   { id: "rejected-controls",  cls: "dash-card dash-card-wide" },
@@ -470,6 +471,32 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                 <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
                   {stats.scoreEligible.total > 0
                     ? `${Math.round((stats.scoreEligible.count / stats.scoreEligible.total) * 100)}% eligible`
+                    : "No controls yet"}
+                </div>
+              </div>
+            </div>
+          </>
+        );
+
+      case "automated-coverage":
+        if (stats.automatedCoverage === undefined) return null;
+        return (
+          <>
+            <div className="dash-card-title">Automated Coverage</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 8 }}>
+              <DonutChart
+                segments={[
+                  { label: "Automated", value: stats.automatedCoverage.count, color: "var(--accent2)" },
+                  { label: "Other",     value: Math.max(0, stats.automatedCoverage.total - stats.automatedCoverage.count), color: "var(--bg4)" }
+                ]}
+                size={80}
+              />
+              <div>
+                <div className="dash-kpi-val" style={{ color: "var(--accent2)" }}>{stats.automatedCoverage.count}</div>
+                <div className="dash-kpi-label">of {stats.automatedCoverage.total} controls</div>
+                <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
+                  {stats.automatedCoverage.total > 0
+                    ? `${Math.round((stats.automatedCoverage.count / stats.automatedCoverage.total) * 100)}% automated`
                     : "No controls yet"}
                 </div>
               </div>

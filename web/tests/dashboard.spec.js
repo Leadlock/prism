@@ -23,6 +23,7 @@ const MOCK_DASHBOARD = {
     latestModifiedAt: "2025-01-01T00:00:00Z",
   },
   scoreEligible: { count: 8, total: 15 },
+  automatedCoverage: { count: 3, total: 7 },
 };
 
 test.describe("Dashboard workflows", () => {
@@ -83,5 +84,16 @@ test.describe("Dashboard workflows", () => {
     await page.getByRole("button", { name: "Tracker" }).click();
 
     await expect(page).toHaveURL(/\/tracker/, { timeout: 5_000 });
+  });
+
+  test("Dashboard shows Automated Coverage tile", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    await page.route("**/api/dashboard*", r => r.fulfill({ json: MOCK_DASHBOARD }));
+
+    await page.goto("/dashboard");
+
+    await expect(page.locator(".dash-card").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Automated Coverage")).toBeVisible();
+    await expect(page.locator(".dash-kpi-val").filter({ hasText: "3" })).toBeVisible();
   });
 });
