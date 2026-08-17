@@ -64,18 +64,18 @@ router.post("/:id/credentials", authenticate, requireRole(["ADMIN", "LEAD"]), as
   try {
     const testResult = await connector.testConnection({ authType, config: connection.config, secret });
     await query(
-      `UPDATE integration_connections SET status = 'connected', external_account_id = $1, updated_at = NOW() WHERE id = $2`,
-      [testResult.externalAccountId || null, connectionId]
+      `UPDATE integration_connections SET status = 'connected', external_account_id = $1, updated_at = NOW() WHERE id = $2 AND company_id = $3`,
+      [testResult.externalAccountId || null, connectionId, req.user.companyId]
     );
   } catch (err) {
-    await query(`UPDATE integration_connections SET status = 'error', updated_at = NOW() WHERE id = $1`, [connectionId]);
+    await query(`UPDATE integration_connections SET status = 'error', updated_at = NOW() WHERE id = $1 AND company_id = $2`, [connectionId, req.user.companyId]);
     await writeAuditLog({ userId: req.user.userId, companyId: req.user.companyId, action: "CONNECTION_TEST_FAILED", resource: "integration_connections", detail: { connectionId, error: err.message } });
     return res.status(400).json({ error: `Connection test failed: ${err.message}` });
   }
 
   await writeAuditLog({ userId: req.user.userId, companyId: req.user.companyId, action: "CREDENTIAL_STORED", resource: "integration_credentials", detail: { connectionId, authType } });
 
-  const updated = await query(`SELECT * FROM integration_connections WHERE id = $1`, [connectionId]);
+  const updated = await query(`SELECT * FROM integration_connections WHERE id = $1 AND company_id = $2`, [connectionId, req.user.companyId]);
   res.json(mapRow(updated));
 }));
 
