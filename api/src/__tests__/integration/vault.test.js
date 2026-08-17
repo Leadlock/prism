@@ -93,6 +93,36 @@ describe("GET /api/vault", () => {
     // dropped) — so this is `null`, not an absent/undefined key.
     expect(res.body[0].freshnessStatus).toBeNull();
   });
+
+  test("source=automated does not leak automated items from other companies", async () => {
+    // Create company A with an automated item
+    const companyA = await createCompany({ domain: "vaultsrc3a.com" });
+    const adminA = await createUser(companyA.id, "ADMIN");
+
+    const connResA = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [companyA.id]
+    );
+    const vaultResA = await query(
+      `INSERT INTO evidence_vault (company_id, title, description, uploaded_by) VALUES ($1, $2, $3, 'automated') RETURNING *`,
+      [companyA.id, "aws.iam.mfa_enforced — account", "All IAM users have MFA enabled"]
+    );
+    await query(
+      `INSERT INTO automated_evidence_items (company_id, connection_id, evidence_vault_id, test_key, resource_id, payload_hash, status, last_collected_at)
+       VALUES ($1, $2, $3, 'aws.iam.mfa_enforced', 'account', 'deadbeef', 'fresh', NOW())`,
+      [companyA.id, connResA.rows[0].id, vaultResA.rows[0].id]
+    );
+
+    // Create company B and query as its admin
+    const companyB = await createCompany({ domain: "vaultsrc3b.com" });
+    const adminB = await createUser(companyB.id, "ADMIN");
+
+    const res = await request(app).get("/api/vault?source=automated").set("Authorization", `Bearer ${adminB.token}`);
+
+    expect(res.status).toBe(200);
+    // Company B has no vault items at all, even with source=automated filter
+    expect(res.body.length).toBe(0);
+  });
 });
 
 describe("POST /api/vault", () => {
