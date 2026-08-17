@@ -2,6 +2,7 @@ import { describe, test, expect, vi } from "vitest";
 import request from "supertest";
 import app from "../../app.js";
 import { createCompany, createUser } from "../setup/helpers.js";
+import { query } from "../../db/index.js";
 
 vi.mock("../../utils/scanFile.js", () => ({
   scanFile: vi.fn().mockResolvedValue({ safe: true }),
@@ -37,6 +38,60 @@ describe("GET /api/vault", () => {
   test("returns 401 without token", async () => {
     const res = await request(app).get("/api/vault");
     expect(res.status).toBe(401);
+  });
+
+  test("source=automated returns only automated items with freshness status", async () => {
+    const company = await createCompany({ domain: "vaultsrc1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+
+    // A manually-uploaded item (should be excluded)
+    await request(app)
+      .post("/api/vault")
+      .set("Authorization", `Bearer ${admin.token}`)
+      .attach("file", TEXT_FILE, { filename: "manual.txt", contentType: "text/plain" })
+      .field("title", "Manual Upload");
+
+    // An automated item, inserted the same way collectionRunner.js does
+    const connRes = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+    const vaultRes = await query(
+      `INSERT INTO evidence_vault (company_id, title, description, uploaded_by) VALUES ($1, $2, $3, 'automated') RETURNING *`,
+      [company.id, "aws.iam.mfa_enforced — account", "All IAM users have MFA enabled"]
+    );
+    await query(
+      `INSERT INTO automated_evidence_items (company_id, connection_id, evidence_vault_id, test_key, resource_id, payload_hash, status, last_collected_at)
+       VALUES ($1, $2, $3, 'aws.iam.mfa_enforced', 'account', 'deadbeef', 'fresh', NOW())`,
+      [company.id, connRes.rows[0].id, vaultRes.rows[0].id]
+    );
+
+    const res = await request(app).get("/api/vault?source=automated").set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(1);
+    expect(res.body[0].title).toBe("aws.iam.mfa_enforced — account");
+    expect(res.body[0].freshnessStatus).toBe("fresh");
+    expect(res.body[0].testKey).toBe("aws.iam.mfa_enforced");
+  });
+
+  test("without source param, still returns both manual and automated items", async () => {
+    const company = await createCompany({ domain: "vaultsrc2.com" });
+    const admin = await createUser(company.id, "ADMIN");
+
+    await request(app)
+      .post("/api/vault")
+      .set("Authorization", `Bearer ${admin.token}`)
+      .attach("file", TEXT_FILE, { filename: "manual.txt", contentType: "text/plain" })
+      .field("title", "Manual Upload");
+
+    const res = await request(app).get("/api/vault").set("Authorization", `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(1);
+    // pg returns SQL NULL for the outer-joined aei.status column on a manual-only
+    // row, and JSON.stringify keeps explicit `null` values (only `undefined` is
+    // dropped) — so this is `null`, not an absent/undefined key.
+    expect(res.body[0].freshnessStatus).toBeNull();
   });
 });
 

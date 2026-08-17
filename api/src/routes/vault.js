@@ -140,9 +140,9 @@ const vaultFileFilter = (req, file, cb) => {
 
 const upload = multer({ storage: vaultStorage, limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: vaultFileFilter });
 
-// GET /api/vault — list vault items; ?search= filters by title/desc; ?questId= filters to linked items only
+// GET /api/vault — list vault items; ?search= filters by title/desc; ?questId= filters to linked items only; ?source=automated filters to automated items only
 router.get("/", authenticate, requireVaultPin, requireReadOnly(VAULT_READERS), asyncHandler(async (req, res) => {
-  const { search, questId } = req.query;
+  const { search, questId, source } = req.query;
   const cid = req.user.companyId;
   const values = [cid];
   let joinClause = "";
@@ -150,7 +150,7 @@ router.get("/", authenticate, requireVaultPin, requireReadOnly(VAULT_READERS), a
 
   if (questId) {
     values.push(questId);
-    joinClause = `JOIN question_evidence qe_f ON qe_f.vault_id = ev.id AND qe_f.company_id = $1 AND qe_f.quest_id = $${values.length}`;
+    joinClause += `JOIN question_evidence qe_f ON qe_f.vault_id = ev.id AND qe_f.company_id = $1 AND qe_f.quest_id = $${values.length}`;
   }
 
   if (search) {
@@ -159,18 +159,25 @@ router.get("/", authenticate, requireVaultPin, requireReadOnly(VAULT_READERS), a
     conditions += ` AND (ev.title ILIKE $${p} OR ev.description ILIKE $${p})`;
   }
 
+  if (source === "automated") {
+    conditions += ` AND aei.id IS NOT NULL`;
+  }
+
   const result = await query(
     `SELECT ev.*, COUNT(qe.id)::INT AS linked_count,
             EXISTS (
               SELECT 1 FROM question_evidence qe2
               JOIN assessments a ON a.quest_id = qe2.quest_id AND a.company_id = qe2.company_id AND a.review_status = 'FINISHED'
               WHERE qe2.vault_id = ev.id
-            ) AS locked
+            ) AS locked,
+            aei.status AS freshness_status,
+            aei.test_key
      FROM evidence_vault ev
      ${joinClause}
      LEFT JOIN question_evidence qe ON qe.vault_id = ev.id
+     LEFT JOIN automated_evidence_items aei ON aei.evidence_vault_id = ev.id AND aei.company_id = ev.company_id
      WHERE ${conditions}
-     GROUP BY ev.id
+     GROUP BY ev.id, aei.status, aei.test_key
      ORDER BY ev.uploaded_at DESC`,
     values
   );
