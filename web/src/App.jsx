@@ -18,6 +18,7 @@ import EvidenceVault from "./pages/EvidenceVault.jsx";
 import EvidenceRequests from "./pages/EvidenceRequests.jsx";
 import IntegrationsSettings from "./pages/IntegrationsSettings.jsx";
 import ConnectionDetail from "./pages/ConnectionDetail.jsx";
+import Findings from "./pages/Findings.jsx";
 import Homepage from "./pages/Homepage.jsx";
 import DPDPAssess from "./pages/DPDPAssess.jsx";
 import ISO27001Assess from "./pages/ISO27001Assess.jsx";
@@ -411,6 +412,12 @@ export default function App() {
               ? <ConnectionDetail {...authProps} />
               : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />
           }
+        />
+
+        {/* Findings — all authenticated company users except SUPERADMIN */}
+        <Route
+          path="/findings"
+          element={isAuthenticated && !isSuperAdmin ? <Findings {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
         />
 
         <Route path="*" element={<Navigate to={isAuthenticated ? defaultRoute() : "/"} replace />} />
