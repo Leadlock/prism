@@ -37,7 +37,7 @@ export async function runTests({ authType, config, secret }) {
   for (const test of tests) {
     const results = await test.run(clients);
     for (const result of results) {
-      runResults.push({ testKey: test.key, severity: test.severityDefault, ...result });
+      runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, ...result });
     }
   }
   return runResults;

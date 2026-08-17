@@ -61,6 +61,37 @@ describe("POST /api/integrations/:id/credentials", () => {
     const credRows = await query(`SELECT ciphertext FROM integration_credentials WHERE connection_id = $1`, [conn.rows[0].id]);
     expect(credRows.rows[0].ciphertext).not.toContain("ext-1");
   });
+
+  test("rotating credentials revokes the previously stored one", async () => {
+    const company = await createCompany();
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name, config) VALUES ($1, 'aws', 'Prod AWS', $2) RETURNING *`,
+      [company.id, JSON.stringify({ roleArn: "arn:aws:iam::123:role/PrismReadOnly" })]
+    );
+
+    await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ authType: "iam_role", secret: { externalId: "ext-1" } });
+
+    const res = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ authType: "iam_role", secret: { externalId: "ext-2" } });
+
+    expect(res.status).toBe(200);
+
+    const credRows = await query(
+      `SELECT ciphertext, revoked_at FROM integration_credentials WHERE connection_id = $1 ORDER BY created_at ASC`,
+      [conn.rows[0].id]
+    );
+    expect(credRows.rows.length).toBe(2);
+    expect(credRows.rows[0].revoked_at).not.toBeNull();
+    expect(credRows.rows[0].ciphertext).toBeNull();
+    expect(credRows.rows[1].revoked_at).toBeNull();
+    expect(credRows.rows[1].ciphertext).not.toBeNull();
+  });
 });
 
 describe("POST /api/integrations/:id/run", () => {

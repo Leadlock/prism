@@ -44,7 +44,7 @@ async function upsertFinding({ companyId, connectionId, result, sourceResultId }
        last_detected_at = NOW(),
        source_result_id = EXCLUDED.source_result_id,
        description = EXCLUDED.description`,
-    [companyId, connectionId, result.testKey, result.resourceId, result.severity, result.testKey, result.message, sourceResultId]
+    [companyId, connectionId, result.testKey, result.resourceId, result.severity, result.title || result.testKey, result.message, sourceResultId]
   );
 }
 

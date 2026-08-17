@@ -8,8 +8,8 @@ vi.mock("../../connectors/registry.js", () => ({
     key: "aws",
     testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "123456789012" })),
     runTests: vi.fn(async () => ([
-      { testKey: "aws.iam.mfa_enforced", severity: "critical", resourceId: "user-1", status: "pass", message: "MFA enabled", evidencePayload: { userName: "alice" } },
-      { testKey: "aws.network.s3_public_access_blocked", severity: "critical", resourceId: "bucket-1", status: "fail", message: "Public access not blocked", evidencePayload: { bucket: "bucket-1" } },
+      { testKey: "aws.iam.mfa_enforced", title: "IAM users have MFA enabled", severity: "critical", resourceId: "user-1", status: "pass", message: "MFA enabled", evidencePayload: { userName: "alice" } },
+      { testKey: "aws.network.s3_public_access_blocked", title: "S3 buckets block public access", severity: "critical", resourceId: "bucket-1", status: "fail", message: "Public access not blocked", evidencePayload: { bucket: "bucket-1" } },
     ])),
   })),
 }));
@@ -53,6 +53,8 @@ describe("runCollection", () => {
     const findingRows = await query(`SELECT * FROM findings WHERE company_id = $1`, [company.id]);
     expect(findingRows.rows.length).toBe(1);
     expect(findingRows.rows[0].status).toBe("open");
+    expect(findingRows.rows[0].title).toBe("S3 buckets block public access");
+    expect(findingRows.rows[0].title).not.toBe("aws.network.s3_public_access_blocked");
   });
 
   test("throws when there is no active credential", async () => {

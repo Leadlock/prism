@@ -58,6 +58,7 @@ router.post("/:id/credentials", authenticate, requireRole(["ADMIN", "LEAD"]), as
     return res.status(400).json({ error: "authType and secret are required" });
   }
 
+  await revokeCredentials(connectionId, req.user.companyId);
   await storeCredential({ connectionId, companyId: req.user.companyId, authType, secret });
 
   const connector = getConnector(connection.integrationKey);
