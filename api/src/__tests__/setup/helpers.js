@@ -5,6 +5,8 @@ import { query } from "../../db/index.js";
 export async function truncateAll() {
   await query(`
     TRUNCATE
+      findings, automated_evidence_items, evidence_test_results, evidence_collection_runs,
+      integration_credentials, integration_connections,
       evidence_request_comments, evidence_requests,
       question_evidence, evidence_versions, evidence_vault,
       question_dependencies, module_dependencies,
