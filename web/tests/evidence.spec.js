@@ -100,4 +100,18 @@ test.describe("Evidence workflows", () => {
     // Item appears in the list (state update is immediate — no GET refetch)
     await expect(page.getByText("Upload Q3 pen test report").first()).toBeVisible({ timeout: 5_000 });
   });
+
+  test("Automated tab filters vault items by source=automated", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    await page.route("**/api/vault?source=automated", r => r.fulfill({
+      json: [{ id: 5, title: "aws.iam.mfa_enforced — account", description: "MFA enforced", uploadedBy: "automated", uploadedAt: "2026-08-17T00:00:00Z", linkedCount: 1, freshnessStatus: "fresh", testKey: "aws.iam.mfa_enforced" }]
+    }));
+    await page.route("**/api/vault", r => r.fulfill({ json: [] }));
+
+    await page.goto("/vault");
+    await expect(page.getByText("Evidence Vault")).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole("button", { name: /Automated/ }).click();
+    await expect(page.getByText("aws.iam.mfa_enforced — account")).toBeVisible({ timeout: 10_000 });
+  });
 });

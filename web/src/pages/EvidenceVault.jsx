@@ -58,6 +58,7 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [source, setSource] = useState("all"); // "all" | "automated"
   const [selected, setSelected] = useState(null);       // detail panel item
   const [selectedDetail, setSelectedDetail] = useState(null); // full detail with linked questions
   const [detailLoading, setDetailLoading] = useState(false);
@@ -225,7 +226,11 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
     setLoading(true);
     setError("");
     try {
-      const url = q.trim() ? `/api/vault?search=${encodeURIComponent(q.trim())}` : "/api/vault";
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("search", q.trim());
+      if (source === "automated") params.set("source", "automated");
+      const qs = params.toString();
+      const url = qs ? `/api/vault?${qs}` : "/api/vault";
       const data = await apiFetch(url, { token, headers: vaultHeaders });
       setItems(data || []);
     } catch (e) {
@@ -237,7 +242,7 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
     } finally {
       setLoading(false);
     }
-  }, [token, vaultToken]);
+  }, [token, vaultToken, source]);
 
   useEffect(() => { if (vaultUnlocked) load(); }, [vaultUnlocked]);
 
@@ -246,6 +251,8 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
     const t = setTimeout(() => load(search), 350);
     return () => clearTimeout(t);
   }, [search]);
+
+  useEffect(() => { if (vaultUnlocked) load(search); }, [source]);
 
   // Revoke blob URL when it changes or on unmount to prevent memory leaks
   useEffect(() => {
@@ -606,6 +613,21 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
           </div>
         )}
 
+        {/* Source tabs */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
+          {["all", "automated"].map(s => (
+            <button key={s} onClick={() => setSource(s)} style={{
+              background: "none", border: "none", cursor: "pointer",
+              padding: "8px 16px", fontSize: 13, fontWeight: 500,
+              color: source === s ? "var(--accent2)" : "var(--text2)",
+              borderBottom: source === s ? "2px solid var(--accent)" : "2px solid transparent",
+              fontFamily: "var(--sans)"
+            }}>
+              {s === "all" ? "All Evidence" : "Automated"}
+            </button>
+          ))}
+        </div>
+
         {/* Search */}
         <div style={{ marginBottom: 20 }}>
           <input
@@ -671,6 +693,14 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
                           {item.fileType && <span>{item.fileType.split("/")[1]?.toUpperCase() || item.fileType}</span>}
                           {item.fileSize && <span>{formatBytes(item.fileSize)}</span>}
                           <span>Uploaded by {item.uploadedBy || "—"}</span>
+                          {item.freshnessStatus && (
+                            <span style={{
+                              color: item.freshnessStatus === "fresh" ? "var(--green)" : item.freshnessStatus === "stale" ? "var(--amber)" : "var(--red)",
+                              fontWeight: 600
+                            }}>
+                              {item.freshnessStatus}
+                            </span>
+                          )}
                           <span>{formatDate(item.uploadedAt)}</span>
                           <span style={{ color: item.linkedCount > 0 ? "var(--accent)" : "var(--text3)", fontWeight: item.linkedCount > 0 ? 600 : 400 }}>
                             {item.linkedCount} question{item.linkedCount !== 1 ? "s" : ""} linked
