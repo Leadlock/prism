@@ -71,7 +71,7 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
 
   const monthCondition = month ? "AND month = $2" : "";
 
-  const [totalQ, assessed, finished, answerDist, moduleCompletion, evidenceCoverage, actionStatus, maturityDist, overdueQuestions, notesCount, reviewerNotesCount, noNotesCount, openRequests, overdueRequests, completedRequests, requestsByUser, vaultTotalVersions, vaultUpdatedThisMonth, vaultLatestModified, scoreEligible] = await Promise.all([
+  const [totalQ, assessed, finished, answerDist, moduleCompletion, evidenceCoverage, actionStatus, maturityDist, overdueQuestions, notesCount, reviewerNotesCount, noNotesCount, openRequests, overdueRequests, completedRequests, requestsByUser, vaultTotalVersions, vaultUpdatedThisMonth, vaultLatestModified, scoreEligible, automatedCoverage] = await Promise.all([
     // Total questions (filtered by priority/tag)
     hasFilter
       ? query("SELECT $1::int AS n", [filteredQuestIds.length])
@@ -315,6 +315,22 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
     query(
       `SELECT COUNT(DISTINCT quest_id)::INT AS n FROM assessments WHERE company_id = $1 ${monthCondition} ${questFilter} AND score_eligible = TRUE`,
       assessParams
+    ),
+
+    // Automated coverage: controls satisfied by at least one fresh automated evidence item
+    query(
+      hasFilter
+        ? `SELECT COUNT(DISTINCT q.quest_id)::INT AS n
+           FROM questions q
+           JOIN test_control_mappings tcm ON tcm.iso_reference = q.iso_reference
+           JOIN automated_evidence_items aei ON aei.test_key = tcm.test_key AND aei.company_id = q.company_id AND aei.status = 'fresh'
+           WHERE q.company_id = $1 AND q.quest_id = ANY($2)`
+        : `SELECT COUNT(DISTINCT q.quest_id)::INT AS n
+           FROM questions q
+           JOIN test_control_mappings tcm ON tcm.iso_reference = q.iso_reference
+           JOIN automated_evidence_items aei ON aei.test_key = tcm.test_key AND aei.company_id = q.company_id AND aei.status = 'fresh'
+           WHERE q.company_id = $1`,
+      hasFilter ? [cid, filteredQuestIds] : [cid]
     )
   ]);
 
@@ -403,6 +419,10 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
     },
     scoreEligible: {
       count: parseInt(scoreEligible.rows[0]?.n) || 0,
+      total: hasFilter ? filteredQuestIds.length : parseInt(totalQ.rows[0].n)
+    },
+    automatedCoverage: {
+      count: parseInt(automatedCoverage.rows[0]?.n) || 0,
       total: hasFilter ? filteredQuestIds.length : parseInt(totalQ.rows[0].n)
     },
     recentlyReviewed: recentlyReviewed.rows.map(r => ({
