@@ -66,72 +66,81 @@ export async function runCollection({ connectionId, companyId, triggeredBy, trig
   );
   const run = mapRow(runResult);
 
-  const connector = getConnector(connection.integrationKey);
   let results = [];
   let runFailed = false;
   let errorMessage = null;
+  let passed = 0;
+  let failed = 0;
+  let processedResults = 0;
 
+  // Everything from connector resolution through per-result persistence is one
+  // error boundary: any failure here (unknown integration, connector throwing,
+  // or a DB write failing mid-loop) must still finalize the run as 'failed'
+  // with a captured error_message rather than leaving it stuck in 'running'.
   try {
+    const connector = getConnector(connection.integrationKey);
     results = await connector.runTests({ authType: credential.authType, config: connection.config, secret: credential.secret });
+
+    for (const result of results) {
+      const resultRow = await query(
+        `INSERT INTO evidence_test_results (run_id, company_id, test_key, resource_id, status, severity, message, evidence_payload)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [run.id, companyId, result.testKey, result.resourceId, result.status, result.severity, result.message, JSON.stringify(result.evidencePayload || {})]
+      );
+      const savedResult = mapRow(resultRow);
+
+      if (result.status === "pass") {
+        passed++;
+        const payloadHash = hashPayload(result.evidencePayload);
+        const existing = await query(
+          `SELECT * FROM automated_evidence_items WHERE company_id = $1 AND connection_id = $2 AND test_key = $3 AND resource_id = $4`,
+          [companyId, connectionId, result.testKey, result.resourceId]
+        );
+        const existingItem = mapRow(existing);
+        let vaultId = existingItem?.evidenceVaultId;
+        if (!existingItem || existingItem.payloadHash !== payloadHash) {
+          vaultId = await upsertEvidenceForPass({ companyId, result });
+        }
+        await query(
+          `INSERT INTO automated_evidence_items (company_id, connection_id, evidence_vault_id, test_key, resource_id, latest_result_id, payload_hash, status, last_collected_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'fresh', NOW())
+           ON CONFLICT (company_id, connection_id, test_key, resource_id)
+           DO UPDATE SET evidence_vault_id = EXCLUDED.evidence_vault_id, latest_result_id = EXCLUDED.latest_result_id,
+             payload_hash = EXCLUDED.payload_hash, status = 'fresh', last_collected_at = NOW()`,
+          [companyId, connectionId, vaultId, result.testKey, result.resourceId, savedResult.id, payloadHash]
+        );
+        await query(
+          `UPDATE findings SET status = 'resolved', resolved_at = NOW()
+           WHERE company_id = $1 AND connection_id = $2 AND test_key = $3 AND resource_id = $4 AND status = 'open'`,
+          [companyId, connectionId, result.testKey, result.resourceId]
+        );
+      } else if (result.status === "fail") {
+        failed++;
+        await upsertFinding({ companyId, connectionId, result, sourceResultId: savedResult.id });
+      }
+
+      processedResults++;
+    }
   } catch (err) {
     runFailed = true;
     errorMessage = err.message;
   }
 
-  let passed = 0;
-  let failed = 0;
-
-  for (const result of results) {
-    const resultRow = await query(
-      `INSERT INTO evidence_test_results (run_id, company_id, test_key, resource_id, status, severity, message, evidence_payload)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [run.id, companyId, result.testKey, result.resourceId, result.status, result.severity, result.message, JSON.stringify(result.evidencePayload || {})]
-    );
-    const savedResult = mapRow(resultRow);
-
-    if (result.status === "pass") {
-      passed++;
-      const payloadHash = hashPayload(result.evidencePayload);
-      const existing = await query(
-        `SELECT * FROM automated_evidence_items WHERE company_id = $1 AND connection_id = $2 AND test_key = $3 AND resource_id = $4`,
-        [companyId, connectionId, result.testKey, result.resourceId]
-      );
-      const existingItem = mapRow(existing);
-      let vaultId = existingItem?.evidenceVaultId;
-      if (!existingItem || existingItem.payloadHash !== payloadHash) {
-        vaultId = await upsertEvidenceForPass({ companyId, result });
-      }
-      await query(
-        `INSERT INTO automated_evidence_items (company_id, connection_id, evidence_vault_id, test_key, resource_id, latest_result_id, payload_hash, status, last_collected_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'fresh', NOW())
-         ON CONFLICT (company_id, connection_id, test_key, resource_id)
-         DO UPDATE SET evidence_vault_id = EXCLUDED.evidence_vault_id, latest_result_id = EXCLUDED.latest_result_id,
-           payload_hash = EXCLUDED.payload_hash, status = 'fresh', last_collected_at = NOW()`,
-        [companyId, connectionId, vaultId, result.testKey, result.resourceId, savedResult.id, payloadHash]
-      );
-      await query(
-        `UPDATE findings SET status = 'resolved', resolved_at = NOW()
-         WHERE company_id = $1 AND connection_id = $2 AND test_key = $3 AND resource_id = $4 AND status = 'open'`,
-        [companyId, connectionId, result.testKey, result.resourceId]
-      );
-    } else if (result.status === "fail") {
-      failed++;
-      await upsertFinding({ companyId, connectionId, result, sourceResultId: savedResult.id });
-    }
-  }
-
+  const testsRun = processedResults;
   const finalStatus = runFailed ? "failed" : (failed > 0 ? "partial_failure" : "success");
 
-  await query(
+  const finalRunResult = await query(
     `UPDATE evidence_collection_runs
      SET status = $1, tests_run = $2, tests_passed = $3, tests_failed = $4, error_message = $5, finished_at = NOW()
-     WHERE id = $6`,
-    [finalStatus, results.length, passed, failed, errorMessage, run.id]
+     WHERE id = $6 AND company_id = $7
+     RETURNING *`,
+    [finalStatus, testsRun, passed, failed, errorMessage, run.id, companyId]
   );
+  const finalRun = mapRow(finalRunResult);
 
   await query(
-    `UPDATE integration_connections SET last_run_at = NOW(), last_run_status = $1, status = $2, updated_at = NOW() WHERE id = $3`,
-    [finalStatus, finalStatus === "failed" ? "error" : "connected", connectionId]
+    `UPDATE integration_connections SET last_run_at = NOW(), last_run_status = $1, status = $2, updated_at = NOW() WHERE id = $3 AND company_id = $4`,
+    [finalStatus, finalStatus === "failed" ? "error" : "connected", connectionId, companyId]
   );
 
   await writeAuditLog({
@@ -139,8 +148,8 @@ export async function runCollection({ connectionId, companyId, triggeredBy, trig
     companyId,
     action: "COLLECTION_RUN_COMPLETED",
     resource: "evidence_collection_runs",
-    detail: { runId: run.id, connectionId, status: finalStatus, testsRun: results.length, testsPassed: passed, testsFailed: failed },
+    detail: { runId: run.id, connectionId, status: finalStatus, testsRun, testsPassed: passed, testsFailed: failed },
   });
 
-  return { ...run, status: finalStatus, testsRun: results.length, testsPassed: passed, testsFailed: failed };
+  return { ...finalRun, testsRun, testsPassed: passed, testsFailed: failed };
 }
