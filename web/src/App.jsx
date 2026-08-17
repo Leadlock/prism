@@ -17,6 +17,7 @@ import QuestionDetail from "./pages/QuestionDetail.jsx";
 import EvidenceVault from "./pages/EvidenceVault.jsx";
 import EvidenceRequests from "./pages/EvidenceRequests.jsx";
 import IntegrationsSettings from "./pages/IntegrationsSettings.jsx";
+import ConnectionDetail from "./pages/ConnectionDetail.jsx";
 import Homepage from "./pages/Homepage.jsx";
 import DPDPAssess from "./pages/DPDPAssess.jsx";
 import ISO27001Assess from "./pages/ISO27001Assess.jsx";
@@ -398,6 +399,16 @@ export default function App() {
           element={
             isAuthenticated && isLeadOrAdmin
               ? <IntegrationsSettings {...authProps} />
+              : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />
+          }
+        />
+
+        {/* Connection Detail — ADMIN, LEAD */}
+        <Route
+          path="/settings/integrations/:id"
+          element={
+            isAuthenticated && isLeadOrAdmin
+              ? <ConnectionDetail {...authProps} />
               : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />
           }
         />
