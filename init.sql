@@ -474,6 +474,166 @@ CREATE TABLE IF NOT EXISTS marketplace_subscriptions (
 CREATE INDEX IF NOT EXISTS idx_marketplace_subs_company ON marketplace_subscriptions(company_id);
 CREATE INDEX IF NOT EXISTS idx_marketplace_subs_status  ON marketplace_subscriptions(status);
 
+-- ===== Automated Evidence Collection =====
+
+CREATE TABLE IF NOT EXISTS integrations (
+  id SERIAL PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  auth_type TEXT NOT NULL CHECK (auth_type IN ('iam_role', 'access_key', 'oauth2', 'api_key')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'beta', 'coming_soon')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS integration_connections (
+  id SERIAL PRIMARY KEY,
+  company_id INT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  integration_key TEXT NOT NULL REFERENCES integrations(key),
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','connected','error','revoked')),
+  external_account_id TEXT,
+  config JSONB NOT NULL DEFAULT '{}',
+  last_run_at TIMESTAMPTZ,
+  last_run_status TEXT,
+  created_by INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  revoked_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS integration_connections_company_idx ON integration_connections(company_id);
+
+CREATE TABLE IF NOT EXISTS integration_credentials (
+  id SERIAL PRIMARY KEY,
+  connection_id INT NOT NULL REFERENCES integration_connections(id) ON DELETE CASCADE,
+  company_id INT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  auth_type TEXT NOT NULL,
+  ciphertext TEXT,
+  iv TEXT,
+  auth_tag TEXT,
+  key_id TEXT NOT NULL DEFAULT 'local-v1',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  revoked_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS integration_credentials_connection_idx ON integration_credentials(connection_id);
+
+CREATE TABLE IF NOT EXISTS automated_tests (
+  id SERIAL PRIMARY KEY,
+  integration_key TEXT NOT NULL REFERENCES integrations(key),
+  test_key TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  description TEXT,
+  severity_default TEXT NOT NULL CHECK (severity_default IN ('critical','high','medium','low')),
+  remediation_guidance TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS test_control_mappings (
+  id SERIAL PRIMARY KEY,
+  test_key TEXT NOT NULL REFERENCES automated_tests(test_key),
+  framework TEXT NOT NULL DEFAULT 'ISO27001',
+  iso_reference TEXT NOT NULL,
+  UNIQUE(test_key, framework, iso_reference)
+);
+
+CREATE TABLE IF NOT EXISTS evidence_collection_runs (
+  id SERIAL PRIMARY KEY,
+  company_id INT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  connection_id INT NOT NULL REFERENCES integration_connections(id) ON DELETE CASCADE,
+  trigger_type TEXT NOT NULL DEFAULT 'manual' CHECK (trigger_type IN ('manual','scheduled','retry')),
+  status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running','success','partial_failure','failed')),
+  tests_run INT NOT NULL DEFAULT 0,
+  tests_passed INT NOT NULL DEFAULT 0,
+  tests_failed INT NOT NULL DEFAULT 0,
+  error_message TEXT,
+  triggered_by INT REFERENCES users(id) ON DELETE SET NULL,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS evidence_collection_runs_company_idx ON evidence_collection_runs(company_id);
+CREATE INDEX IF NOT EXISTS evidence_collection_runs_connection_idx ON evidence_collection_runs(connection_id);
+
+CREATE TABLE IF NOT EXISTS evidence_test_results (
+  id SERIAL PRIMARY KEY,
+  run_id INT NOT NULL REFERENCES evidence_collection_runs(id) ON DELETE CASCADE,
+  company_id INT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  test_key TEXT NOT NULL REFERENCES automated_tests(test_key),
+  resource_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pass','fail','warn','error','not_applicable')),
+  severity TEXT NOT NULL CHECK (severity IN ('critical','high','medium','low')),
+  message TEXT,
+  evidence_payload JSONB,
+  evaluated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS evidence_test_results_run_idx ON evidence_test_results(run_id);
+CREATE INDEX IF NOT EXISTS evidence_test_results_company_idx ON evidence_test_results(company_id);
+
+CREATE TABLE IF NOT EXISTS automated_evidence_items (
+  id SERIAL PRIMARY KEY,
+  company_id INT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  connection_id INT NOT NULL REFERENCES integration_connections(id) ON DELETE CASCADE,
+  evidence_vault_id INT REFERENCES evidence_vault(id) ON DELETE SET NULL,
+  test_key TEXT NOT NULL REFERENCES automated_tests(test_key),
+  resource_id TEXT NOT NULL,
+  latest_result_id INT REFERENCES evidence_test_results(id) ON DELETE SET NULL,
+  payload_hash TEXT,
+  status TEXT NOT NULL DEFAULT 'fresh' CHECK (status IN ('fresh','stale','expired')),
+  first_collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  next_collection_due_at TIMESTAMPTZ,
+  UNIQUE(company_id, connection_id, test_key, resource_id)
+);
+CREATE INDEX IF NOT EXISTS automated_evidence_items_company_idx ON automated_evidence_items(company_id);
+
+CREATE TABLE IF NOT EXISTS findings (
+  id SERIAL PRIMARY KEY,
+  company_id INT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  connection_id INT NOT NULL REFERENCES integration_connections(id) ON DELETE CASCADE,
+  test_key TEXT NOT NULL REFERENCES automated_tests(test_key),
+  resource_id TEXT NOT NULL,
+  severity TEXT NOT NULL CHECK (severity IN ('critical','high','medium','low')),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','acknowledged','resolved','suppressed','false_positive')),
+  title TEXT NOT NULL,
+  description TEXT,
+  source_result_id INT REFERENCES evidence_test_results(id) ON DELETE SET NULL,
+  linked_action_id INT REFERENCES actions(id) ON DELETE SET NULL,
+  first_detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ,
+  resolved_by INT REFERENCES users(id) ON DELETE SET NULL,
+  UNIQUE(company_id, connection_id, test_key, resource_id)
+);
+CREATE INDEX IF NOT EXISTS findings_company_idx ON findings(company_id);
+CREATE INDEX IF NOT EXISTS findings_status_idx ON findings(company_id, status);
+
+ALTER TABLE actions ADD COLUMN IF NOT EXISTS finding_id INT REFERENCES findings(id) ON DELETE SET NULL;
+
+-- ===== Automated Evidence Collection: catalog seed data =====
+
+INSERT INTO integrations (key, name, category, auth_type, status) VALUES
+  ('aws', 'Amazon Web Services', 'cloud', 'iam_role', 'active')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('aws', 'aws.iam.mfa_enforced', 'IAM users have MFA enabled', 'Checks every IAM user has at least one registered MFA device.', 'critical', 'Require MFA for all IAM users, ideally via an IAM policy condition or SSO enforcement.'),
+  ('aws', 'aws.iam.password_policy', 'Account password policy meets minimum strength', 'Checks the account password policy enforces a 14+ character minimum with mixed case, numbers, and symbols.', 'high', 'Update the account password policy under IAM > Account settings.'),
+  ('aws', 'aws.iam.access_key_age', 'IAM access keys are rotated within 90 days', 'Flags active access keys older than 90 days.', 'high', 'Rotate the access key and update any services using it, then deactivate the old key.'),
+  ('aws', 'aws.logging.cloudtrail_enabled', 'CloudTrail is enabled and multi-region', 'Checks at least one multi-region CloudTrail trail is actively logging.', 'critical', 'Enable a multi-region CloudTrail trail with log file validation.'),
+  ('aws', 'aws.logging.config_enabled', 'AWS Config is recording', 'Checks an AWS Config recorder exists and is actively recording.', 'medium', 'Enable AWS Config in this region and confirm the recorder is turned on.'),
+  ('aws', 'aws.network.s3_public_access_blocked', 'S3 buckets block public access', 'Checks every S3 bucket has all four public access block settings enabled.', 'critical', 'Enable "Block all public access" on the bucket, or at the account level.'),
+  ('aws', 'aws.network.security_groups_no_open_ingress', 'Security groups do not expose management ports publicly', 'Flags security groups allowing inbound SSH (22) or RDP (3389) from 0.0.0.0/0.', 'critical', 'Restrict the security group rule to specific IP ranges or a bastion/VPN.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, framework, iso_reference) VALUES
+  ('aws.iam.mfa_enforced', 'ISO27001', 'A.9.4.2'),
+  ('aws.iam.password_policy', 'ISO27001', 'A.9.4.3'),
+  ('aws.iam.access_key_age', 'ISO27001', 'A.9.2.4'),
+  ('aws.logging.cloudtrail_enabled', 'ISO27001', 'A.12.4.1'),
+  ('aws.logging.config_enabled', 'ISO27001', 'A.12.1.1'),
+  ('aws.network.s3_public_access_blocked', 'ISO27001', 'A.8.2.3'),
+  ('aws.network.security_groups_no_open_ingress', 'ISO27001', 'A.13.1.1')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
 -- ===== Idempotent upgrade guards (existing databases) =====
 -- These are no-ops on a fresh install; safe to run repeatedly on upgrades.
 

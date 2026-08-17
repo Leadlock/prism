@@ -9,6 +9,7 @@ export default defineConfig({
       // during pure-function unit tests because query() is never called.
       DATABASE_URL: "postgresql://test:test@localhost:5432/test",
       JWT_SECRET: "test-secret",
+      CREDENTIAL_ENCRYPTION_KEY: "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
     },
   },
 });

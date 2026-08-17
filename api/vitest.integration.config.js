@@ -10,6 +10,7 @@ export default defineConfig({
       DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/prism_test",
       JWT_SECRET: "integration-test-secret",
       PRISM_AI_PROVIDER: "none",
+      CREDENTIAL_ENCRYPTION_KEY: "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
     },
     pool: "forks",
     poolOptions: { forks: { singleFork: true } },
