@@ -19,6 +19,11 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(a
   res.json(mapRows(result));
 }));
 
+router.get("/catalog", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  const result = await query(`SELECT * FROM integrations WHERE status != 'coming_soon' ORDER BY name`);
+  res.json(mapRows(result));
+}));
+
 router.get("/:id", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT * FROM integration_connections WHERE id = $1 AND company_id = $2`,

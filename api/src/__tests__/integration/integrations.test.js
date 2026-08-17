@@ -15,6 +15,34 @@ vi.mock("../../connectors/registry.js", () => ({
 
 const { default: app } = await import("../../app.js");
 
+describe("GET /api/integrations/catalog", () => {
+  test("lists available connector types", async () => {
+    const company = await createCompany({ domain: "catalog1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+
+    const res = await request(app).get("/api/integrations/catalog").set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThanOrEqual(1);
+    const aws = res.body.find(c => c.key === "aws");
+    expect(aws).toBeDefined();
+    expect(aws.authType).toBe("iam_role");
+    expect(aws.status).toBe("active");
+  });
+
+  test("is readable by LEAD but not by CONTRIBUTOR", async () => {
+    const company = await createCompany({ domain: "catalog2.com" });
+    const lead = await createUser(company.id, "LEAD");
+    const contributor = await createUser(company.id, "CONTRIBUTOR");
+
+    const leadRes = await request(app).get("/api/integrations/catalog").set("Authorization", `Bearer ${lead.token}`);
+    expect(leadRes.status).toBe(200);
+
+    const contributorRes = await request(app).get("/api/integrations/catalog").set("Authorization", `Bearer ${contributor.token}`);
+    expect(contributorRes.status).toBe(403);
+  });
+});
+
 describe("POST /api/integrations", () => {
   test("ADMIN can create a pending connection", async () => {
     const company = await createCompany();
