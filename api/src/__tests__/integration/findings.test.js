@@ -58,6 +58,20 @@ describe("PUT /api/findings/:id", () => {
 
     expect(res.status).toBe(400);
   });
+
+  test("returns 404 when the finding belongs to a different company", async () => {
+    const companyA = await createCompany({ domain: "a2.com" });
+    const companyB = await createCompany({ domain: "b2.com" });
+    const finding = await createFinding(companyA.id);
+    const adminB = await createUser(companyB.id, "ADMIN");
+
+    const res = await request(app)
+      .put(`/api/findings/${finding.id}`)
+      .set("Authorization", `Bearer ${adminB.token}`)
+      .send({ status: "acknowledged" });
+
+    expect(res.status).toBe(404);
+  });
 });
 
 describe("POST /api/findings/:id/promote", () => {
@@ -88,5 +102,19 @@ describe("POST /api/findings/:id/promote", () => {
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe("ALREADY_PROMOTED");
+  });
+
+  test("returns 404 when the finding belongs to a different company", async () => {
+    const companyA = await createCompany({ domain: "a3.com" });
+    const companyB = await createCompany({ domain: "b3.com" });
+    const finding = await createFinding(companyA.id);
+    const adminB = await createUser(companyB.id, "ADMIN");
+
+    const res = await request(app)
+      .post(`/api/findings/${finding.id}/promote`)
+      .set("Authorization", `Bearer ${adminB.token}`)
+      .send({});
+
+    expect(res.status).toBe(404);
   });
 });

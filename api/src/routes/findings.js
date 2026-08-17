@@ -58,7 +58,7 @@ router.post("/:id/promote", authenticate, requireRole(["ADMIN", "LEAD"]), asyncH
   );
   const action = mapRow(actionResult);
 
-  await query(`UPDATE findings SET linked_action_id = $1 WHERE id = $2`, [action.id, findingId]);
+  await query(`UPDATE findings SET linked_action_id = $1 WHERE id = $2 AND company_id = $3`, [action.id, findingId, req.user.companyId]);
   await writeAuditLog({ userId: req.user.userId, companyId: req.user.companyId, action: "FINDING_PROMOTED_TO_ACTION", resource: "findings", detail: { findingId, actionId: action.id } });
 
   res.status(201).json({ ...action, findingId });
