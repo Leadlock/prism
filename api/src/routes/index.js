@@ -20,6 +20,7 @@ import requestRoutes from "./requests.js";
 import notificationRoutes from "./notifications.js";
 import marketplaceRoutes from "./marketplace.js";
 import selfAssessmentRoutes from "./selfAssessment.js";
+import integrationRoutes from "./integrations.js";
 
 const router = Router();
 
@@ -44,6 +45,7 @@ router.use("/requests", requestRoutes);
 router.use("/notifications", notificationRoutes);
 router.use("/marketplace", marketplaceRoutes);
 router.use("/self-assessment", selfAssessmentRoutes);
+router.use("/integrations", integrationRoutes);
 
 // Alias /api/prefs/version for the consent version endpoint — avoids ad-blocker filter lists
 // that block URLs matching "consent" or "cookie"
