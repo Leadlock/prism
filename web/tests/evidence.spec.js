@@ -114,4 +114,33 @@ test.describe("Evidence workflows", () => {
     await page.getByRole("button", { name: /Automated/ }).click();
     await expect(page.getByText("aws.iam.mfa_enforced — account")).toBeVisible({ timeout: 10_000 });
   });
+
+  test("switching tabs while a search debounce is pending does not revert to stale results", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    // Correct request: search + source=automated together (fired both immediately on tab
+    // switch, and again — redundantly but correctly — when the debounce timer elapses).
+    await page.route("**/api/vault?search=policy&source=automated", r => r.fulfill({
+      json: [{ id: 9, title: "Automated Match", uploadedBy: "automated", uploadedAt: "2026-08-17T00:00:00Z", linkedCount: 0, freshnessStatus: "fresh" }]
+    }));
+    // Stale request shape: search only, no source — this is what a leftover debounce timer
+    // from *before* the tab switch would fire if it weren't cleared when `source` changes.
+    await page.route("**/api/vault?search=policy", r => r.fulfill({
+      json: [{ id: 10, title: "Stale All Match", uploadedBy: "admin@test.com", uploadedAt: "2026-08-17T00:00:00Z", linkedCount: 0 }]
+    }));
+    await page.route("**/api/vault", r => r.fulfill({ json: [] }));
+
+    await page.goto("/vault");
+    await expect(page.getByText("Evidence Vault")).toBeVisible({ timeout: 10_000 });
+
+    // Type into search, then immediately switch tabs — before the 350ms debounce elapses.
+    await page.getByPlaceholder("Search by title or description…").fill("policy");
+    await page.getByRole("button", { name: /Automated/ }).click();
+
+    // Wait past the debounce window, then assert the automated result won and the stale
+    // all-evidence result never overwrote it.
+    await expect(page.getByText("Automated Match")).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(500);
+    await expect(page.getByText("Automated Match")).toBeVisible();
+    await expect(page.getByText("Stale All Match")).not.toBeVisible();
+  });
 });

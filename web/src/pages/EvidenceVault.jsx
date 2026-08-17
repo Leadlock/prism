@@ -250,7 +250,7 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
   useEffect(() => {
     const t = setTimeout(() => load(search), 350);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, source]);
 
   useEffect(() => { if (vaultUnlocked) load(search); }, [source]);
 
