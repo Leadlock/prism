@@ -23,7 +23,25 @@ describe("connector registry", () => {
     ]);
   });
 
+  test("resolves the azure connector", () => {
+    const connector = getConnector("azure");
+    expect(connector.key).toBe("azure");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("azure connector exposes exactly the 4 Phase-1 tests", () => {
+    const tests = listConnectorTests("azure");
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "azure.logging.activity_log_diagnostics_enabled",
+      "azure.network.nsg_no_open_ingress",
+      "azure.security.defender_enabled",
+      "azure.storage.public_access_blocked",
+    ]);
+  });
+
   test("throws for an unknown integration", () => {
-    expect(() => getConnector("azure")).toThrow("Unknown integration: azure");
+    expect(() => getConnector("gcp")).toThrow("Unknown integration: gcp");
   });
 });
