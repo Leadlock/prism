@@ -20,7 +20,7 @@ vi.mock("@azure/arm-security", () => ({
 }));
 vi.mock("@azure/arm-monitor", () => ({
   MonitorClient: vi.fn(() => ({
-    diagnosticSettings: { list: () => ({ [Symbol.asyncIterator]: async function* () {} }) },
+    diagnosticSettings: { list: async () => ({ value: [] }) },
   })),
 }));
 

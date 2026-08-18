@@ -1,10 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { checkDefenderForCloudEnabled, checkActivityLogDiagnosticsEnabled } from "../connectors/azure/tests/logging.js";
 
-function asyncIterable(items) {
-  return { [Symbol.asyncIterator]: async function* () { for (const item of items) yield item; } };
-}
-
 describe("checkDefenderForCloudEnabled", () => {
   test("fails a resource type on the Free tier", async () => {
     const security = { pricings: { list: async () => ({ value: [{ id: "/subscriptions/s/pricings/VirtualMachines", name: "VirtualMachines", pricingTier: "Free" }] }) } };
@@ -44,7 +40,7 @@ describe("checkDefenderForCloudEnabled", () => {
 
 describe("checkActivityLogDiagnosticsEnabled", () => {
   test("fails when no diagnostic settings exist for the subscription", async () => {
-    const monitor = { diagnosticSettings: { list: () => asyncIterable([]) } };
+    const monitor = { diagnosticSettings: { list: async () => ({ value: [] }) } };
     const results = await checkActivityLogDiagnosticsEnabled(monitor, "sub-1");
     expect(results).toEqual([{ resourceId: "subscription", status: "fail", message: "No diagnostic settings are configured for the subscription Activity Log", evidencePayload: {} }]);
   });
@@ -53,9 +49,9 @@ describe("checkActivityLogDiagnosticsEnabled", () => {
     let requestedUri = null;
     const monitor = {
       diagnosticSettings: {
-        list: (resourceUri) => {
+        list: async (resourceUri) => {
           requestedUri = resourceUri;
-          return asyncIterable([{ id: "/subscriptions/sub-1/providers/microsoft.insights/diagnosticSettings/to-log-analytics", name: "to-log-analytics" }]);
+          return { value: [{ id: "/subscriptions/sub-1/providers/microsoft.insights/diagnosticSettings/to-log-analytics", name: "to-log-analytics" }] };
         },
       },
     };

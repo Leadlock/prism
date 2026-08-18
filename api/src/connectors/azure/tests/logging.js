@@ -18,15 +18,13 @@ export async function checkDefenderForCloudEnabled(security) {
 }
 
 export async function checkActivityLogDiagnosticsEnabled(monitor, subscriptionId) {
-  const results = [];
-  for await (const setting of monitor.diagnosticSettings.list(`/subscriptions/${subscriptionId}`)) {
-    results.push({
-      resourceId: setting.id || setting.name,
-      status: "pass",
-      message: `Diagnostic setting "${setting.name}" is configured for the subscription Activity Log`,
-      evidencePayload: { name: setting.name },
-    });
-  }
+  const { value: settings } = await monitor.diagnosticSettings.list(`/subscriptions/${subscriptionId}`);
+  const results = (settings || []).map((setting) => ({
+    resourceId: setting.id || setting.name,
+    status: "pass",
+    message: `Diagnostic setting "${setting.name}" is configured for the subscription Activity Log`,
+    evidencePayload: { name: setting.name },
+  }));
   if (results.length === 0) {
     results.push({ resourceId: "subscription", status: "fail", message: "No diagnostic settings are configured for the subscription Activity Log", evidencePayload: {} });
   }

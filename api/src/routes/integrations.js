@@ -74,10 +74,11 @@ router.get("/aws/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), 
   let principalArn = null;
   let principalError = null;
   try {
-    const sts = new STSClient({});
+    const sts = new STSClient({ region: process.env.AWS_REGION || "us-east-1" });
     const identity = await sts.send(new GetCallerIdentityCommand({}));
     principalArn = identity.Arn;
-  } catch {
+  } catch (err) {
+    console.error("aws/setup-info: failed to resolve Prism's AWS principal ARN:", err.message);
     principalError = "This Prism deployment has no AWS credentials configured, so the trust policy's principal can't be resolved automatically. Ask your Prism administrator for the AWS principal ARN Prism runs as, or connect using static access keys instead.";
   }
   res.json({ principalArn, principalError, permissionsPolicy: AWS_READ_ONLY_POLICY });

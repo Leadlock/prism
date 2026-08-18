@@ -28,4 +28,24 @@ describe("resolveAzureCredentials", () => {
       resolveAzureCredentials({ authType: "access_key", config: {}, secret: {} })
     ).rejects.toThrow("Unsupported Azure auth type: access_key");
   });
+
+  test("throws a clear error when config.tenantId is missing", async () => {
+    await expect(
+      resolveAzureCredentials({
+        authType: "oauth2",
+        config: { subscriptionId: "sub-1" },
+        secret: { clientId: "client-1", clientSecret: "shh" },
+      })
+    ).rejects.toThrow("Azure connection is missing config.tenantId");
+  });
+
+  test("throws a clear error when config.subscriptionId is missing", async () => {
+    await expect(
+      resolveAzureCredentials({
+        authType: "oauth2",
+        config: { tenantId: "tenant-1" },
+        secret: { clientId: "client-1", clientSecret: "shh" },
+      })
+    ).rejects.toThrow("Azure connection is missing config.subscriptionId");
+  });
 });
