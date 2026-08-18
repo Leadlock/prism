@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { query, mapRow, mapRows } from "../db/index.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole, requireReadOnly } from "../middleware/roles.js";
@@ -11,6 +12,48 @@ import { runCollection } from "../utils/collectionRunner.js";
 
 const router = Router();
 
+// The exact read-only permissions the AWS connector's Tier-1 checks call —
+// kept in lockstep with connectors/aws/tests/{iam,logging,network}.js so the
+// policy handed to customers never grants more (or less) than the code uses.
+const AWS_READ_ONLY_POLICY = {
+  Version: "2012-10-17",
+  Statement: [
+    {
+      Sid: "PrismReadOnlyEvidenceCollection",
+      Effect: "Allow",
+      Action: [
+        "iam:ListUsers",
+        "iam:ListMFADevices",
+        "iam:ListAccessKeys",
+        "iam:GetAccountPasswordPolicy",
+        "cloudtrail:DescribeTrails",
+        "cloudtrail:GetTrailStatus",
+        "config:DescribeConfigurationRecorders",
+        "config:DescribeConfigurationRecorderStatus",
+        "s3:ListAllMyBuckets",
+        "s3:GetBucketPublicAccessBlock",
+        "ec2:DescribeSecurityGroups",
+      ],
+      Resource: "*",
+    },
+  ],
+};
+
+const AZURE_READ_ONLY_ROLE_DEFINITION = {
+  Name: "Prism Read-Only Evidence Collection",
+  IsCustom: true,
+  Description: "Least-privilege read access for Prism's automated ISO 27001 evidence collection.",
+  Actions: [
+    "Microsoft.Storage/storageAccounts/read",
+    "Microsoft.Network/networkSecurityGroups/read",
+    "Microsoft.Insights/diagnosticSettings/read",
+    "Microsoft.Security/pricings/read",
+    "Microsoft.Resources/subscriptions/resourceGroups/read",
+  ],
+  NotActions: [],
+  AssignableScopes: ["/subscriptions/<subscription-id>"],
+};
+
 router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT * FROM integration_connections WHERE company_id = $1 ORDER BY created_at DESC`,
@@ -22,6 +65,26 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(a
 router.get("/catalog", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   const result = await query(`SELECT * FROM integrations WHERE status != 'coming_soon' ORDER BY name`);
   res.json(mapRows(result));
+}));
+
+// GET /api/integrations/aws/setup-info — the exact trust-policy principal Prism's
+// own backend runs as (via STS), plus the least-privilege permissions policy the
+// connector needs, so a customer's IAM role works on the first try.
+router.get("/aws/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  let principalArn = null;
+  let principalError = null;
+  try {
+    const sts = new STSClient({});
+    const identity = await sts.send(new GetCallerIdentityCommand({}));
+    principalArn = identity.Arn;
+  } catch {
+    principalError = "This Prism deployment has no AWS credentials configured, so the trust policy's principal can't be resolved automatically. Ask your Prism administrator for the AWS principal ARN Prism runs as, or connect using static access keys instead.";
+  }
+  res.json({ principalArn, principalError, permissionsPolicy: AWS_READ_ONLY_POLICY });
+}));
+
+router.get("/azure/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({ roleDefinition: AZURE_READ_ONLY_ROLE_DEFINITION });
 }));
 
 router.get("/:id", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {

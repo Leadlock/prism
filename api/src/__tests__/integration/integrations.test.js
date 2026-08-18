@@ -13,7 +13,78 @@ vi.mock("../../connectors/registry.js", () => ({
   })),
 }));
 
+// GET /aws/setup-info calls real STS via the SDK's default credential chain —
+// mocked here so the test suite never depends on (or accidentally hits) a real
+// AWS account, regardless of what's in the host/CI environment.
+const stsSend = vi.fn();
+vi.mock("@aws-sdk/client-sts", () => ({
+  STSClient: vi.fn(() => ({ send: stsSend })),
+  GetCallerIdentityCommand: vi.fn(),
+  AssumeRoleCommand: vi.fn(),
+}));
+
 const { default: app } = await import("../../app.js");
+
+describe("GET /api/integrations/aws/setup-info", () => {
+  test("returns the resolved principal ARN and the read-only permissions policy", async () => {
+    stsSend.mockResolvedValueOnce({ Arn: "arn:aws:iam::999999999999:role/prism-backend" });
+    const company = await createCompany({ domain: "setupinfo1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+
+    const res = await request(app).get("/api/integrations/aws/setup-info").set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.principalArn).toBe("arn:aws:iam::999999999999:role/prism-backend");
+    expect(res.body.principalError).toBeNull();
+    expect(res.body.permissionsPolicy.Statement[0].Action).toContain("iam:ListUsers");
+    expect(res.body.permissionsPolicy.Statement[0].Action).toContain("s3:GetBucketPublicAccessBlock");
+  });
+
+  test("returns a null principal with an explanatory error when STS is unreachable, but still returns the policy", async () => {
+    stsSend.mockRejectedValueOnce(new Error("Could not load credentials from any providers"));
+    const company = await createCompany({ domain: "setupinfo2.com" });
+    const admin = await createUser(company.id, "ADMIN");
+
+    const res = await request(app).get("/api/integrations/aws/setup-info").set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.principalArn).toBeNull();
+    expect(res.body.principalError).toMatch(/no AWS credentials configured/i);
+    expect(res.body.permissionsPolicy.Statement[0].Action).toContain("ec2:DescribeSecurityGroups");
+  });
+
+  test("is not accessible to CONTRIBUTOR", async () => {
+    const company = await createCompany({ domain: "setupinfo3.com" });
+    const contributor = await createUser(company.id, "CONTRIBUTOR");
+
+    const res = await request(app).get("/api/integrations/aws/setup-info").set("Authorization", `Bearer ${contributor.token}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/integrations/azure/setup-info", () => {
+  test("returns a static least-privilege role definition, no live Azure call needed", async () => {
+    const company = await createCompany({ domain: "azuresetup1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+
+    const res = await request(app).get("/api/integrations/azure/setup-info").set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.roleDefinition.IsCustom).toBe(true);
+    expect(res.body.roleDefinition.Actions).toContain("Microsoft.Storage/storageAccounts/read");
+    expect(res.body.roleDefinition.Actions).toContain("Microsoft.Network/networkSecurityGroups/read");
+    expect(res.body.roleDefinition.Actions).toContain("Microsoft.Security/pricings/read");
+    expect(res.body.roleDefinition.Actions).toContain("Microsoft.Insights/diagnosticSettings/read");
+  });
+
+  test("is not accessible to CONTRIBUTOR", async () => {
+    const company = await createCompany({ domain: "azuresetup2.com" });
+    const contributor = await createUser(company.id, "CONTRIBUTOR");
+
+    const res = await request(app).get("/api/integrations/azure/setup-info").set("Authorization", `Bearer ${contributor.token}`);
+    expect(res.status).toBe(403);
+  });
+});
 
 describe("GET /api/integrations/catalog", () => {
   test("lists available connector types", async () => {
