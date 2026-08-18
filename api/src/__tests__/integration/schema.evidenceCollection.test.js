@@ -19,6 +19,29 @@ describe("automated evidence collection schema", () => {
     expect(result.rows.length).toBe(7);
   });
 
+  test("seeds the azure integration with oauth2 auth and its 4 Phase-1 automated tests", async () => {
+    const integrationResult = await query(`SELECT * FROM integrations WHERE key = 'azure'`);
+    expect(integrationResult.rows.length).toBe(1);
+    expect(integrationResult.rows[0].auth_type).toBe("oauth2");
+    expect(integrationResult.rows[0].status).toBe("active");
+
+    const testsResult = await query(`SELECT test_key, severity_default FROM automated_tests WHERE integration_key = 'azure' ORDER BY test_key`);
+    expect(testsResult.rows.map(r => r.test_key)).toEqual([
+      "azure.logging.activity_log_diagnostics_enabled",
+      "azure.network.nsg_no_open_ingress",
+      "azure.security.defender_enabled",
+      "azure.storage.public_access_blocked",
+    ]);
+
+    const mappingsResult = await query(`SELECT test_key, iso_reference FROM test_control_mappings WHERE test_key LIKE 'azure.%' ORDER BY test_key`);
+    expect(mappingsResult.rows).toEqual([
+      { test_key: "azure.logging.activity_log_diagnostics_enabled", iso_reference: "A.12.4.1" },
+      { test_key: "azure.network.nsg_no_open_ingress", iso_reference: "A.13.1.1" },
+      { test_key: "azure.security.defender_enabled", iso_reference: "A.12.1.1" },
+      { test_key: "azure.storage.public_access_blocked", iso_reference: "A.8.2.3" },
+    ]);
+  });
+
   test("integration_connections defaults to pending status", async () => {
     const company = await createCompany();
     const result = await query(

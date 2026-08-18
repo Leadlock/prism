@@ -634,6 +634,24 @@ INSERT INTO test_control_mappings (test_key, framework, iso_reference) VALUES
   ('aws.network.security_groups_no_open_ingress', 'ISO27001', 'A.13.1.1')
 ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 
+INSERT INTO integrations (key, name, category, auth_type, status) VALUES
+  ('azure', 'Microsoft Azure', 'cloud', 'oauth2', 'active')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO automated_tests (integration_key, test_key, title, severity_default) VALUES
+  ('azure', 'azure.logging.activity_log_diagnostics_enabled', 'Activity Log diagnostic settings are configured', 'critical'),
+  ('azure', 'azure.security.defender_enabled', 'Microsoft Defender for Cloud is enabled', 'medium'),
+  ('azure', 'azure.storage.public_access_blocked', 'Storage accounts block public blob access', 'critical'),
+  ('azure', 'azure.network.nsg_no_open_ingress', 'Network security groups do not expose management ports publicly', 'critical')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
+  ('azure.logging.activity_log_diagnostics_enabled', 'A.12.4.1'),
+  ('azure.security.defender_enabled', 'A.12.1.1'),
+  ('azure.storage.public_access_blocked', 'A.8.2.3'),
+  ('azure.network.nsg_no_open_ingress', 'A.13.1.1')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
 -- ===== Idempotent upgrade guards (existing databases) =====
 -- These are no-ops on a fresh install; safe to run repeatedly on upgrades.
 
