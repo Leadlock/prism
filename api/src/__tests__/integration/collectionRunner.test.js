@@ -3,15 +3,27 @@ import { createCompany, createUser } from "../setup/helpers.js";
 import { query } from "../../db/index.js";
 import { storeCredential } from "../../db/integrationCredentials.js";
 
-vi.mock("../../connectors/registry.js", () => ({
-  getConnector: vi.fn(() => ({
+const CONNECTOR_FIXTURES = {
+  aws: {
     key: "aws",
     testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "123456789012" })),
     runTests: vi.fn(async () => ([
       { testKey: "aws.iam.mfa_enforced", title: "IAM users have MFA enabled", severity: "critical", resourceId: "user-1", status: "pass", message: "MFA enabled", evidencePayload: { userName: "alice" } },
       { testKey: "aws.network.s3_public_access_blocked", title: "S3 buckets block public access", severity: "critical", resourceId: "bucket-1", status: "fail", message: "Public access not blocked", evidencePayload: { bucket: "bucket-1" } },
     ])),
-  })),
+  },
+  azure: {
+    key: "azure",
+    testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "sub-1" })),
+    runTests: vi.fn(async () => ([
+      { testKey: "azure.storage.public_access_blocked", title: "Storage accounts block public blob access", severity: "critical", resourceId: "/subscriptions/sub-1/storageAccounts/data1", status: "pass", message: "data1 blocks public blob access", evidencePayload: { accountName: "data1" } },
+      { testKey: "azure.network.nsg_no_open_ingress", title: "Network security groups do not expose management ports publicly", severity: "critical", resourceId: "/subscriptions/sub-1/nsg/web", status: "fail", message: "web allows inbound access to ports 22/3389 from *", evidencePayload: { nsgName: "web" } },
+    ])),
+  },
+};
+
+vi.mock("../../connectors/registry.js", () => ({
+  getConnector: vi.fn((integrationKey) => CONNECTOR_FIXTURES[integrationKey]),
 }));
 
 const { runCollection } = await import("../../utils/collectionRunner.js");
@@ -83,5 +95,33 @@ describe("runCollection", () => {
       [company.id]
     );
     expect(findingRows.rows[0].status).toBe("resolved");
+  });
+
+  test("works identically for a second, differently-shaped connector (azure), proving genericity", async () => {
+    const company = await createCompany();
+    const admin = await createUser(company.id, "ADMIN");
+    await query(`INSERT INTO modules (module_id, company_id, name) VALUES ('M1', $1, 'Network Security') `, [company.id]);
+    await query(`INSERT INTO questions (quest_id, company_id, module_id, iso_reference) VALUES ('Q1', $1, 'M1', 'A.8.2.3')`, [company.id]);
+    const connResult = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'azure', 'Prod Azure') RETURNING *`,
+      [company.id]
+    );
+    const connection = connResult.rows[0];
+    await storeCredential({ connectionId: connection.id, companyId: company.id, authType: "oauth2", secret: { clientId: "c1", clientSecret: "shh" } });
+
+    const run = await runCollection({ connectionId: connection.id, companyId: company.id, triggeredBy: admin.id, triggerType: "manual" });
+
+    expect(run.status).toBe("partial_failure");
+    expect(run.testsRun).toBe(2);
+    expect(run.testsPassed).toBe(1);
+    expect(run.testsFailed).toBe(1);
+
+    const vaultRows = await query(`SELECT * FROM evidence_vault WHERE company_id = $1`, [company.id]);
+    expect(vaultRows.rows.length).toBe(1);
+
+    const findingRows = await query(`SELECT * FROM findings WHERE company_id = $1`, [company.id]);
+    expect(findingRows.rows.length).toBe(1);
+    expect(findingRows.rows[0].title).toBe("Network security groups do not expose management ports publicly");
+    expect(findingRows.rows[0].test_key).toBe("azure.network.nsg_no_open_ingress");
   });
 });
