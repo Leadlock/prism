@@ -90,6 +90,32 @@ describe("checkNsgNoOpenIngress", () => {
     expect(results[0].status).toBe("pass");
   });
 
+  test("fails an NSG allowing inbound port 22 from sourceAddressPrefixes array (plural field)", async () => {
+    const network = {
+      networkSecurityGroups: {
+        listAll: () => asyncIterable([{
+          id: "/subscriptions/s/nsg/plural", name: "plural-sources",
+          securityRules: [{ name: "allow-ssh-plural", direction: "Inbound", access: "Allow", sourceAddressPrefixes: ["0.0.0.0/0"], destinationPortRange: "22" }],
+        }]),
+      },
+    };
+    const results = await checkNsgNoOpenIngress(network);
+    expect(results[0].status).toBe("fail");
+  });
+
+  test("fails an NSG allowing all ports via wildcard destinationPortRange", async () => {
+    const network = {
+      networkSecurityGroups: {
+        listAll: () => asyncIterable([{
+          id: "/subscriptions/s/nsg/wildcard", name: "all-ports",
+          securityRules: [{ name: "allow-all", direction: "Inbound", access: "Allow", sourceAddressPrefix: "*", destinationPortRange: "*" }],
+        }]),
+      },
+    };
+    const results = await checkNsgNoOpenIngress(network);
+    expect(results[0].status).toBe("fail");
+  });
+
   test("returns not_applicable when there are no network security groups", async () => {
     const network = { networkSecurityGroups: { listAll: () => asyncIterable([]) } };
     const results = await checkNsgNoOpenIngress(network);

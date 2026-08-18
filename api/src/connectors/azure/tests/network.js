@@ -16,8 +16,11 @@ function portRangeIncludesRiskyPort(portRange) {
 
 function isOpenIngressRule(rule) {
   if (rule.direction !== "Inbound" || rule.access !== "Allow") return false;
-  const source = (rule.sourceAddressPrefix || "").toLowerCase();
-  if (!OPEN_SOURCE_PREFIXES.includes(source)) return false;
+  const sources = [rule.sourceAddressPrefix, ...(rule.sourceAddressPrefixes || [])]
+    .filter(Boolean)
+    .map((s) => s.toLowerCase());
+  const hasOpenSource = sources.some((source) => OPEN_SOURCE_PREFIXES.includes(source));
+  if (!hasOpenSource) return false;
   const ranges = [rule.destinationPortRange, ...(rule.destinationPortRanges || [])];
   return ranges.some(portRangeIncludesRiskyPort);
 }
