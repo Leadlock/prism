@@ -39,6 +39,18 @@ const AZURE_SETUP_INFO = {
   },
 };
 
+const GITHUB_SETUP_INFO = {
+  manifest: {
+    name: "Prism Evidence Collection - Acme Corp",
+    url: "https://api.prism.example.com",
+    redirect_url: "https://api.prism.example.com/api/integrations/github/manifest-callback",
+    hook_attributes: { url: "https://api.prism.example.com", active: false },
+    public: false,
+    default_permissions: { organization_administration: "read", administration: "read", metadata: "read" },
+  },
+  state: "signed-state-token-abc123",
+};
+
 test.describe("Integrations settings", () => {
   test.beforeEach(async ({ page }) => {
     await addConsent(page);
@@ -217,6 +229,47 @@ test.describe("Integrations settings", () => {
     expect(createBody.config.region).toBeUndefined();
 
     await expect(page.getByText(/connected/i)).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("clicking the GitHub card creates a pending connection and shows the Create GitHub App button", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    await page.route("**/api/integrations/catalog", r => r.fulfill({
+      json: [...CATALOG, { id: 3, key: "github", name: "GitHub", category: "devops", authType: "oauth2", status: "active" }],
+    }));
+
+    let created = false;
+    await page.route("**/api/integrations", r => {
+      if (r.request().method() === "POST") {
+        created = true;
+        return r.fulfill({ status: 201, json: { id: 30, integrationKey: "github", name: "Prod GitHub", status: "pending" } });
+      }
+      return r.fulfill({ json: created ? [{ id: 30, integrationKey: "github", name: "Prod GitHub", status: "pending" }] : [] });
+    });
+    await page.route("**/api/integrations/30/github/setup-info", r => r.fulfill({ json: GITHUB_SETUP_INFO }));
+
+    await page.goto("/settings/integrations");
+    await page.getByTitle("GitHub").click();
+
+    await page.getByLabel("Connection name").fill("Prod GitHub");
+
+    const [createReq] = await Promise.all([
+      page.waitForRequest(req => req.url().includes("/api/integrations") && req.method() === "POST" && !req.url().includes("/credentials")),
+      page.getByRole("button", { name: "Start GitHub setup" }).click(),
+    ]);
+    expect(createReq.postDataJSON()).toEqual({ integrationKey: "github", name: "Prod GitHub", config: {} });
+
+    const createButton = page.getByRole("button", { name: "Create GitHub App on GitHub" });
+    await expect(createButton).toBeVisible({ timeout: 10_000 });
+
+    const form = page.locator("form", { has: createButton });
+    await expect(form).toHaveAttribute("action", "https://github.com/settings/apps/new?state=signed-state-token-abc123");
+    await expect(form).toHaveAttribute("method", "post");
+    const manifestValue = await form.locator('input[name="manifest"]').getAttribute("value");
+    expect(JSON.parse(manifestValue)).toEqual(GITHUB_SETUP_INFO.manifest);
+
+    // No AWS/Azure-shaped fields should render for GitHub.
+    await expect(page.getByLabel("Region")).toHaveCount(0);
+    await expect(page.getByLabel("Client ID")).toHaveCount(0);
   });
 
   test("clicking the AWS card opens the wizard, shows the real trust policy, and creates a connection", async ({ page }) => {

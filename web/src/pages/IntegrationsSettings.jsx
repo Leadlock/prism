@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { FaAws, FaMicrosoft, FaGithub } from "react-icons/fa";
 import { apiFetch } from "../api/client.js";
 import CredentialFields from "../components/CredentialFields.jsx";
+import GithubAppWalkthrough from "../components/GithubAppWalkthrough.jsx";
 
 const STATUS_COLOR = {
   connected: "var(--green)",
@@ -172,6 +173,28 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
   // so a retry after a credentials-step failure reuses it instead of creating
   // a second, orphaned, credential-less connection.
   const [createdConnection, setCreatedConnection] = useState(null);
+  const [githubSetupStarted, setGithubSetupStarted] = useState(false);
+
+  const handleStartGithubSetup = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      let connection = createdConnection;
+      if (!connection) {
+        connection = await apiFetch("/api/integrations", {
+          token, method: "POST",
+          body: JSON.stringify({ integrationKey: provider.key, name, config: {} })
+        });
+        setCreatedConnection(connection);
+      }
+      setGithubSetupStarted(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -208,77 +231,98 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
     }
   };
 
+  // Once the GitHub connection exists, GithubAppWalkthrough renders its own
+  // <form> that posts to github.com. Nesting that inside this wizard's form
+  // would produce invalid (and Playwright-ambiguous) nested <form> elements,
+  // so this outer wrapper degrades to a plain <div> at that point — by then
+  // it has no submit button of its own anyway.
+  const WizardFormTag = provider.key === "github" && githubSetupStarted ? "div" : "form";
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
         <div className="modal-title">Connect {provider.name}</div>
 
-        <form onSubmit={handleSubmit}>
+        <WizardFormTag onSubmit={WizardFormTag === "form" ? (provider.key === "github" ? handleStartGithubSetup : handleSubmit) : undefined}>
           {error && <p className="error-text">{error}</p>}
           <div className="form-group">
             <label htmlFor="conn-name">Connection name</label>
             <input id="conn-name" required value={name} onChange={e => setName(e.target.value)} placeholder={`My ${provider.name}`} />
           </div>
 
-          {provider.key === "aws" ? (
-            <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
-              {["iam_role", "access_key"].map(t => (
-                <button type="button" key={t}
-                  className="btn btn-ghost"
-                  style={{ fontWeight: authType === t ? 700 : 400, borderBottom: authType === t ? "2px solid var(--accent)" : "none" }}
-                  onClick={() => setAuthType(t)}
-                >
-                  {t === "iam_role" ? "IAM Role" : "Access Keys"}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          {provider.key !== "azure" && (
-            <div className="form-group">
-              <label htmlFor="conn-region">Region</label>
-              <input id="conn-region" value={region} onChange={e => setRegion(e.target.value)} />
-            </div>
-          )}
-
-          {authType === "iam_role" ? (
-            provider.key === "aws" ? (
-              <AwsRoleWalkthrough token={token} roleArn={roleArn} setRoleArn={setRoleArn} externalId={externalId} />
-            ) : (
-              <div className="form-group">
-                <label htmlFor="conn-role-arn">Role ARN</label>
-                <input id="conn-role-arn" required value={roleArn} onChange={e => setRoleArn(e.target.value)} />
-              </div>
-            )
-          ) : authType === "oauth2" ? (
-            <>
-              <AzureServicePrincipalWalkthrough
-                token={token}
-                tenantId={tenantId} setTenantId={setTenantId}
-                subscriptionId={subscriptionId} setSubscriptionId={setSubscriptionId}
-              />
-              <CredentialFields
-                authType="oauth2"
-                clientId={clientId} setClientId={setClientId}
-                clientSecret={clientSecret} setClientSecret={setClientSecret}
-              />
-            </>
+          {provider.key === "github" ? (
+            githubSetupStarted && createdConnection ? (
+              <GithubAppWalkthrough connectionId={createdConnection.id} token={token} />
+            ) : null
           ) : (
-            <CredentialFields
-              authType={authType}
-              accessKeyId={accessKeyId} setAccessKeyId={setAccessKeyId}
-              secretAccessKey={secretAccessKey} setSecretAccessKey={setSecretAccessKey}
-              sessionToken={sessionToken} setSessionToken={setSessionToken}
-            />
+            <>
+              {provider.key === "aws" ? (
+                <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+                  {["iam_role", "access_key"].map(t => (
+                    <button type="button" key={t}
+                      className="btn btn-ghost"
+                      style={{ fontWeight: authType === t ? 700 : 400, borderBottom: authType === t ? "2px solid var(--accent)" : "none" }}
+                      onClick={() => setAuthType(t)}
+                    >
+                      {t === "iam_role" ? "IAM Role" : "Access Keys"}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {provider.key !== "azure" && provider.key !== "github" && (
+                <div className="form-group">
+                  <label htmlFor="conn-region">Region</label>
+                  <input id="conn-region" value={region} onChange={e => setRegion(e.target.value)} />
+                </div>
+              )}
+
+              {authType === "iam_role" ? (
+                provider.key === "aws" ? (
+                  <AwsRoleWalkthrough token={token} roleArn={roleArn} setRoleArn={setRoleArn} externalId={externalId} />
+                ) : (
+                  <div className="form-group">
+                    <label htmlFor="conn-role-arn">Role ARN</label>
+                    <input id="conn-role-arn" required value={roleArn} onChange={e => setRoleArn(e.target.value)} />
+                  </div>
+                )
+              ) : authType === "oauth2" ? (
+                <>
+                  <AzureServicePrincipalWalkthrough
+                    token={token}
+                    tenantId={tenantId} setTenantId={setTenantId}
+                    subscriptionId={subscriptionId} setSubscriptionId={setSubscriptionId}
+                  />
+                  <CredentialFields
+                    authType="oauth2"
+                    clientId={clientId} setClientId={setClientId}
+                    clientSecret={clientSecret} setClientSecret={setClientSecret}
+                  />
+                </>
+              ) : (
+                <CredentialFields
+                  authType={authType}
+                  accessKeyId={accessKeyId} setAccessKeyId={setAccessKeyId}
+                  secretAccessKey={secretAccessKey} setSecretAccessKey={setSecretAccessKey}
+                  sessionToken={sessionToken} setSessionToken={setSessionToken}
+                />
+              )}
+            </>
           )}
 
           <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? "Connecting…" : "Connect"}
+            {!(provider.key === "github" && githubSetupStarted) && (
+              <button type="submit" className="btn btn-primary" disabled={submitting}>
+                {provider.key === "github"
+                  ? (submitting ? "Starting…" : "Start GitHub setup")
+                  : (submitting ? "Connecting…" : "Connect")}
+              </button>
+            )}
+            <button type="button" className="btn btn-ghost" onClick={onClose}>
+              {provider.key === "github" && githubSetupStarted ? "Close" : "Cancel"}
             </button>
-            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           </div>
-        </form>
+        </WizardFormTag>
       </div>
     </div>
   );
