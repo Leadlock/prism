@@ -192,6 +192,33 @@ test.describe("Connection detail", () => {
     expect(body.secret).toEqual({ clientId: "44444444-4444-4444-4444-444444444444", clientSecret: "new-azure-secret" });
   });
 
+  test("Rotate credentials on a GitHub connection shows Reconnect via GitHub instead of a form", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    const GITHUB_CATALOG_ENTRY = { id: 3, key: "github", name: "GitHub", category: "devops", authType: "oauth2", status: "active" };
+    const GITHUB_CONNECTION = { id: 31, integrationKey: "github", name: "Prod GitHub", status: "connected", lastRunAt: null, lastRunStatus: null };
+    await page.route("**/api/integrations/catalog", r => r.fulfill({ json: [...CATALOG, GITHUB_CATALOG_ENTRY] }));
+    await page.route("**/api/integrations/31", r => r.fulfill({ json: GITHUB_CONNECTION }));
+    await page.route("**/api/integrations/31/runs*", r => r.fulfill({ json: [] }));
+    await page.route("**/api/integrations/31/github/setup-info", r => r.fulfill({
+      json: { manifest: { name: "Prism Evidence Collection - Acme Corp" }, state: "reconnect-state-xyz" },
+    }));
+
+    await page.goto("/settings/integrations/31");
+    await expect(page.getByText("Prod GitHub")).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole("button", { name: "Rotate credentials" }).click();
+
+    // No form fields, no auth-type toggle — just the manifest-flow button.
+    await expect(page.getByRole("button", { name: "Rotate", exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Client ID")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Access Keys" })).toHaveCount(0);
+
+    const reconnectButton = page.getByRole("button", { name: "Create GitHub App on GitHub" });
+    await expect(reconnectButton).toBeVisible({ timeout: 10_000 });
+    const form = page.locator("form", { has: reconnectButton });
+    await expect(form).toHaveAttribute("action", "https://github.com/settings/apps/new?state=reconnect-state-xyz");
+  });
+
   test("shows an Install the App prompt when redirected back from GitHub with an install URL", async ({ page }) => {
     await setAuth(page, "ADMIN");
     const GITHUB_CATALOG_ENTRY = { id: 3, key: "github", name: "GitHub", category: "devops", authType: "oauth2", status: "active" };

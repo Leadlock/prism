@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import CredentialFields from "../components/CredentialFields.jsx";
+import GithubAppWalkthrough from "../components/GithubAppWalkthrough.jsx";
 import SeverityPill from "../components/SeverityPill.jsx";
 
 const RUN_STATUS_COLOR = {
@@ -43,13 +44,25 @@ function RotateCredentialModal({ connectionId, token, connectionAuthType, provid
     }
   };
 
+  // For GitHub, this modal opens straight into GithubAppWalkthrough — there's
+  // no "not started yet" state the way the Add Integration wizard has — so
+  // providerKey === "github" is true for the entire lifetime of this modal.
+  // GithubAppWalkthrough renders its own <form> that posts to github.com;
+  // nesting that inside a literal outer <form> here would always produce
+  // invalid (and Playwright-ambiguous) nested <form> elements. So the outer
+  // wrapper degrades to a plain <div> for github, matching the fix applied
+  // to the wizard's WizardFormTag in IntegrationsSettings.jsx.
+  const RotateFormTag = providerKey === "github" ? "div" : "form";
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <div className="modal-title">Rotate credentials</div>
-        <form onSubmit={handleSubmit}>
+        <RotateFormTag onSubmit={RotateFormTag === "form" ? handleSubmit : undefined}>
           {error && <p className="error-text">{error}</p>}
-          {providerKey === "aws" ? (
+          {providerKey === "github" ? (
+            <GithubAppWalkthrough connectionId={connectionId} token={token} />
+          ) : providerKey === "aws" ? (
             <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
               {["iam_role", "access_key"].map(t => (
                 <button type="button" key={t}
@@ -62,7 +75,7 @@ function RotateCredentialModal({ connectionId, token, connectionAuthType, provid
               ))}
             </div>
           ) : null}
-          {authType === "iam_role" ? (
+          {providerKey === "github" ? null : authType === "iam_role" ? (
             <div className="form-group">
               <label htmlFor="rotate-external-id">External ID</label>
               <input id="rotate-external-id" required value={externalId} onChange={e => setExternalId(e.target.value)} />
@@ -82,12 +95,16 @@ function RotateCredentialModal({ connectionId, token, connectionAuthType, provid
             />
           )}
           <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? "Rotating…" : "Rotate"}
+            {providerKey !== "github" && (
+              <button type="submit" className="btn btn-primary" disabled={submitting}>
+                {submitting ? "Rotating…" : "Rotate"}
+              </button>
+            )}
+            <button type="button" className="btn btn-ghost" onClick={onClose}>
+              {providerKey === "github" ? "Close" : "Cancel"}
             </button>
-            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           </div>
-        </form>
+        </RotateFormTag>
       </div>
     </div>
   );
