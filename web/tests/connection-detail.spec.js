@@ -238,6 +238,24 @@ test.describe("Connection detail", () => {
     await expect(page).not.toHaveURL(/githubInstallUrl/);
   });
 
+  test("rejects a githubInstallUrl whose origin is not github.com and shows no Install the App link", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    const GITHUB_CATALOG_ENTRY = { id: 3, key: "github", name: "GitHub", category: "devops", authType: "oauth2", status: "active" };
+    const GITHUB_CONNECTION = { id: 30, integrationKey: "github", name: "Prod GitHub", status: "pending", lastRunAt: null, lastRunStatus: null };
+    await page.route("**/api/integrations/catalog", r => r.fulfill({ json: [...CATALOG, GITHUB_CATALOG_ENTRY] }));
+    await page.route("**/api/integrations/30", r => r.fulfill({ json: GITHUB_CONNECTION }));
+    await page.route("**/api/integrations/30/runs*", r => r.fulfill({ json: [] }));
+
+    await page.goto("/settings/integrations/30?githubInstallUrl=" + encodeURIComponent("https://evil.example/gh"));
+
+    await expect(page.getByText("Prod GitHub")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("link", { name: "Install the App" })).toHaveCount(0);
+    await expect(page.getByText("evil.example")).toHaveCount(0);
+
+    // The query param must not survive a client-side navigation replay.
+    await expect(page).not.toHaveURL(/githubInstallUrl/);
+  });
+
   test("shows a githubError banner when redirected back from GitHub with an error", async ({ page }) => {
     await setAuth(page, "ADMIN");
     const GITHUB_CATALOG_ENTRY = { id: 3, key: "github", name: "GitHub", category: "devops", authType: "oauth2", status: "active" };

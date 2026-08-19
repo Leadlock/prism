@@ -272,6 +272,54 @@ test.describe("Integrations settings", () => {
     await expect(page.getByLabel("Client ID")).toHaveCount(0);
   });
 
+  test("closing the wizard after Start GitHub setup refreshes the list so the new pending connection appears", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    await page.route("**/api/integrations/catalog", r => r.fulfill({
+      json: [...CATALOG, { id: 3, key: "github", name: "GitHub", category: "devops", authType: "oauth2", status: "active" }],
+    }));
+
+    let created = false;
+    let listFetchCount = 0;
+    await page.route("**/api/integrations", r => {
+      if (r.request().method() === "POST") {
+        created = true;
+        return r.fulfill({ status: 201, json: { id: 30, integrationKey: "github", name: "Prod GitHub", status: "pending" } });
+      }
+      listFetchCount += 1;
+      return r.fulfill({ json: created ? [{ id: 30, integrationKey: "github", name: "Prod GitHub", status: "pending" }] : [] });
+    });
+    await page.route("**/api/integrations/30/github/setup-info", r => r.fulfill({ json: GITHUB_SETUP_INFO }));
+
+    await page.goto("/settings/integrations");
+    await expect(page.getByText("No connections yet")).toBeVisible({ timeout: 10_000 });
+    const initialListFetchCount = listFetchCount;
+
+    await page.getByTitle("GitHub").click();
+    await page.getByLabel("Connection name").fill("Prod GitHub");
+
+    const [createReq] = await Promise.all([
+      page.waitForRequest(req => req.url().includes("/api/integrations") && req.method() === "POST" && !req.url().includes("/credentials")),
+      page.getByRole("button", { name: "Start GitHub setup" }).click(),
+    ]);
+    expect(createReq).toBeTruthy();
+
+    const closeButton = page.getByRole("button", { name: "Close" });
+    await expect(closeButton).toBeVisible({ timeout: 10_000 });
+
+    const [listReq] = await Promise.all([
+      page.waitForRequest(req => req.url().endsWith("/api/integrations") && req.method() === "GET"),
+      closeButton.click(),
+    ]);
+    expect(listReq).toBeTruthy();
+    expect(listFetchCount).toBeGreaterThan(initialListFetchCount);
+
+    // The wizard closed and the pending connection now shows in the table
+    // without a manual page refresh.
+    await expect(page.getByText("Connect GitHub")).toHaveCount(0);
+    await expect(page.getByText("Prod GitHub")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("pending")).toBeVisible();
+  });
+
   test("clicking the AWS card opens the wizard, shows the real trust policy, and creates a connection", async ({ page }) => {
     await setAuth(page, "ADMIN");
     await page.route("**/api/integrations/catalog", r => r.fulfill({ json: CATALOG }));
@@ -359,6 +407,17 @@ test.describe("Integrations settings", () => {
 
     await expect(page.getByText(/connected/i)).toBeVisible({ timeout: 10_000 });
     expect(createCount).toBe(1);
+  });
+
+  test("shows a githubError banner when redirected back to the list page from GitHub with an error", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    await page.route("**/api/integrations/catalog", r => r.fulfill({ json: CATALOG }));
+    await page.route("**/api/integrations", r => r.fulfill({ json: CONNECTIONS }));
+
+    await page.goto("/settings/integrations?githubError=" + encodeURIComponent("Invalid or expired state token"));
+
+    await expect(page.getByText("Invalid or expired state token")).toBeVisible({ timeout: 10_000 });
+    await expect(page).not.toHaveURL(/githubError/);
   });
 
   test("non-admin/lead roles cannot reach the page", async ({ page }) => {

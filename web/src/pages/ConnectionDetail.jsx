@@ -146,7 +146,21 @@ export default function ConnectionDetail({ token, user, company, onLogout, theme
   useEffect(() => {
     const installUrl = searchParams.get("githubInstallUrl");
     const githubError = searchParams.get("githubError");
-    if (installUrl) setGithubInstallUrl(installUrl);
+    if (installUrl) {
+      // The backend only ever produces install URLs on github.com
+      // (https://github.com/apps/<slug>/installations/new?state=... or the
+      // app's html_url, always on github.com). This param is otherwise fully
+      // attacker-controlled via a crafted redirect link, so reject anything
+      // that doesn't parse to exactly that origin rather than rendering it
+      // as a raw <a href>.
+      try {
+        if (new URL(installUrl).origin === "https://github.com") {
+          setGithubInstallUrl(installUrl);
+        }
+      } catch {
+        // Malformed URL — ignore, treat as absent.
+      }
+    }
     if (githubError) setError(githubError);
     if (installUrl || githubError) navigate(`/settings/integrations/${id}`, { replace: true });
     // Only ever meant to run once, reading whatever GitHub's redirect put on

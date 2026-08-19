@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { FaAws, FaMicrosoft, FaGithub } from "react-icons/fa";
 import { apiFetch } from "../api/client.js";
 import CredentialFields from "../components/CredentialFields.jsx";
@@ -318,7 +318,11 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                   : (submitting ? "Connecting…" : "Connect")}
               </button>
             )}
-            <button type="button" className="btn btn-ghost" onClick={onClose}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={provider.key === "github" && githubSetupStarted ? () => onCreated(createdConnection) : onClose}
+            >
               {provider.key === "github" && githubSetupStarted ? "Close" : "Cancel"}
             </button>
           </div>
@@ -330,6 +334,7 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
 
 export default function IntegrationsSettings({ token, user, company, onLogout, theme, onThemeToggle }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isLeadOrAdmin = user?.role === "ADMIN" || user?.role === "LEAD";
   const [catalog, setCatalog] = useState([]);
   const [connections, setConnections] = useState([]);
@@ -350,6 +355,17 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
     setLoading(true);
     load().catch(e => setError(e.message)).finally(() => setLoading(false));
   }, [load]);
+
+  useEffect(() => {
+    const githubError = searchParams.get("githubError");
+    if (githubError) {
+      setError(githubError);
+      navigate("/settings/integrations", { replace: true });
+    }
+    // Only ever meant to run once, reading whatever GitHub's redirect put on
+    // the URL at load time — not on every searchParams identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCreated = async () => {
     // The create+credentials steps already succeeded by the time this fires,
