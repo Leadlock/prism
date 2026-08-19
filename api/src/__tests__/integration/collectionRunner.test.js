@@ -20,6 +20,14 @@ const CONNECTOR_FIXTURES = {
       { testKey: "azure.network.nsg_no_open_ingress", title: "Network security groups do not expose management ports publicly", severity: "critical", resourceId: "/subscriptions/sub-1/nsg/web", status: "fail", message: "web allows inbound access to ports 22/3389 from *", evidencePayload: { nsgName: "web" } },
     ])),
   },
+  github: {
+    key: "github",
+    testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "42424242" })),
+    runTests: vi.fn(async () => ([
+      { testKey: "github.org.two_factor_required", title: "Organization requires two-factor authentication", severity: "critical", resourceId: "acme-corp", status: "pass", message: "acme-corp requires two-factor authentication for all members", evidencePayload: { org: "acme-corp" } },
+      { testKey: "github.repo.branch_protection_required_reviews", title: "Default branch requires pull request review before merging", severity: "high", resourceId: "acme-corp/api", status: "fail", message: "api has no pull request review protection configured on main", evidencePayload: { repo: "api" } },
+    ])),
+  },
 };
 
 vi.mock("../../connectors/registry.js", () => ({
@@ -123,5 +131,33 @@ describe("runCollection", () => {
     expect(findingRows.rows.length).toBe(1);
     expect(findingRows.rows[0].title).toBe("Network security groups do not expose management ports publicly");
     expect(findingRows.rows[0].test_key).toBe("azure.network.nsg_no_open_ingress");
+  });
+
+  test("works identically for a third, differently-shaped connector (github), proving genericity", async () => {
+    const company = await createCompany();
+    const admin = await createUser(company.id, "ADMIN");
+    await query(`INSERT INTO modules (module_id, company_id, name) VALUES ('M1', $1, 'Change Management')`, [company.id]);
+    await query(`INSERT INTO questions (quest_id, company_id, module_id, iso_reference) VALUES ('Q1', $1, 'M1', 'A.14.2.2')`, [company.id]);
+    const connResult = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name, config) VALUES ($1, 'github', 'Prod GitHub', $2) RETURNING *`,
+      [company.id, JSON.stringify({ installationId: 42, org: "acme-corp" })]
+    );
+    const connection = connResult.rows[0];
+    await storeCredential({ connectionId: connection.id, companyId: company.id, authType: "oauth2", secret: { appId: "1", privateKey: "pem" } });
+
+    const run = await runCollection({ connectionId: connection.id, companyId: company.id, triggeredBy: admin.id, triggerType: "manual" });
+
+    expect(run.status).toBe("partial_failure");
+    expect(run.testsRun).toBe(2);
+    expect(run.testsPassed).toBe(1);
+    expect(run.testsFailed).toBe(1);
+
+    const vaultRows = await query(`SELECT * FROM evidence_vault WHERE company_id = $1`, [company.id]);
+    expect(vaultRows.rows.length).toBe(1);
+
+    const findingRows = await query(`SELECT * FROM findings WHERE company_id = $1`, [company.id]);
+    expect(findingRows.rows.length).toBe(1);
+    expect(findingRows.rows[0].title).toBe("Default branch requires pull request review before merging");
+    expect(findingRows.rows[0].test_key).toBe("github.repo.branch_protection_required_reviews");
   });
 });
