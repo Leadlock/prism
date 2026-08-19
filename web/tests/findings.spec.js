@@ -57,5 +57,10 @@ test.describe("Findings inbox", () => {
       page.getByRole("button", { name: "Create Remediation Action" }).first().click(),
     ]);
     expect(promoteReq.method()).toBe("POST");
+
+    // Clicking "Create Remediation Action" has no other visible effect (the
+    // button itself only disappears once linkedActionId comes back set) —
+    // this confirmation is the only feedback the user gets that it worked.
+    await expect(page.getByText("Remediation action created.")).toBeVisible({ timeout: 5_000 });
   });
 });

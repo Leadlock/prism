@@ -1,28 +1,52 @@
 const RISKY_PORTS = [22, 3389];
 const OPEN_SOURCE_PREFIXES = ["*", "0.0.0.0/0", "internet", "any"];
 
-function portRangeIncludesRiskyPort(portRange) {
+function portRangeIncludesPort(portRange, port) {
   if (!portRange) return false;
   if (portRange === "*") return true;
   const single = Number(portRange);
-  if (!Number.isNaN(single)) return RISKY_PORTS.includes(single);
+  if (!Number.isNaN(single)) return single === port;
   const rangeMatch = portRange.match(/^(\d+)-(\d+)$/);
   if (rangeMatch) {
     const [, start, end] = rangeMatch;
-    return RISKY_PORTS.some((port) => port >= Number(start) && port <= Number(end));
+    return port >= Number(start) && port <= Number(end);
   }
   return false;
 }
 
-function isOpenIngressRule(rule) {
-  if (rule.direction !== "Inbound" || rule.access !== "Allow") return false;
+function portRangeIncludesRiskyPort(portRange) {
+  return RISKY_PORTS.some((port) => portRangeIncludesPort(portRange, port));
+}
+
+function hasOpenSource(rule) {
   const sources = [rule.sourceAddressPrefix, ...(rule.sourceAddressPrefixes || [])]
     .filter(Boolean)
     .map((s) => s.toLowerCase());
-  const hasOpenSource = sources.some((source) => OPEN_SOURCE_PREFIXES.includes(source));
-  if (!hasOpenSource) return false;
+  return sources.some((source) => OPEN_SOURCE_PREFIXES.includes(source));
+}
+
+// Azure evaluates an NSG's rules in ascending priority order (lowest number
+// first) and stops at the first match — so a lower-priority-number Deny rule
+// covering the same risky port from an equally open source fully blocks that
+// traffic even though a broader Allow rule is also present in the rule set.
+function isPortShadowedByDeny(port, rule, allRules) {
+  return allRules.some((other) => {
+    if (other === rule || other.priority == null || rule.priority == null) return false;
+    if (other.priority >= rule.priority) return false;
+    if (other.direction !== "Inbound" || other.access !== "Deny") return false;
+    if (!hasOpenSource(other)) return false;
+    const otherRanges = [other.destinationPortRange, ...(other.destinationPortRanges || [])];
+    return otherRanges.some((range) => portRangeIncludesPort(range, port));
+  });
+}
+
+function isOpenIngressRule(rule, allRules) {
+  if (rule.direction !== "Inbound" || rule.access !== "Allow") return false;
+  if (!hasOpenSource(rule)) return false;
   const ranges = [rule.destinationPortRange, ...(rule.destinationPortRanges || [])];
-  return ranges.some(portRangeIncludesRiskyPort);
+  const exposedRiskyPorts = RISKY_PORTS.filter((port) => ranges.some((range) => portRangeIncludesPort(range, port)));
+  if (exposedRiskyPorts.length === 0) return false;
+  return !exposedRiskyPorts.every((port) => isPortShadowedByDeny(port, rule, allRules));
 }
 
 export async function checkStoragePublicAccessBlocked(storage) {
@@ -48,7 +72,8 @@ export async function checkStoragePublicAccessBlocked(storage) {
 export async function checkNsgNoOpenIngress(network) {
   const results = [];
   for await (const nsg of network.networkSecurityGroups.listAll()) {
-    const openRules = (nsg.securityRules || []).filter(isOpenIngressRule);
+    const rules = nsg.securityRules || [];
+    const openRules = rules.filter((rule) => isOpenIngressRule(rule, rules));
     results.push({
       resourceId: nsg.id,
       status: openRules.length === 0 ? "pass" : "fail",

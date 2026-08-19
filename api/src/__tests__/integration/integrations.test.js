@@ -95,11 +95,12 @@ describe("GET /api/integrations/azure/setup-info", () => {
     const res = await request(app).get("/api/integrations/azure/setup-info").set("Authorization", `Bearer ${admin.token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.roleDefinition.IsCustom).toBe(true);
-    expect(res.body.roleDefinition.Actions).toContain("Microsoft.Storage/storageAccounts/read");
-    expect(res.body.roleDefinition.Actions).toContain("Microsoft.Network/networkSecurityGroups/read");
-    expect(res.body.roleDefinition.Actions).toContain("Microsoft.Security/pricings/read");
-    expect(res.body.roleDefinition.Actions).toContain("Microsoft.Insights/diagnosticSettings/read");
+    expect(res.body.roleDefinition.properties.roleName).toBe("Prism Read-Only Evidence Collection");
+    const actions = res.body.roleDefinition.properties.permissions[0].actions;
+    expect(actions).toContain("Microsoft.Storage/storageAccounts/read");
+    expect(actions).toContain("Microsoft.Network/networkSecurityGroups/read");
+    expect(actions).toContain("Microsoft.Security/pricings/read");
+    expect(actions).toContain("Microsoft.Insights/diagnosticSettings/read");
   });
 
   test("is not accessible to CONTRIBUTOR", async () => {
@@ -428,24 +429,76 @@ describe("POST /api/integrations/:id/run", () => {
   });
 });
 
-describe("DELETE /api/integrations/:id", () => {
-  test("revokes the connection and crypto-shreds its credential", async () => {
-    const company = await createCompany();
+describe("GET /api/integrations", () => {
+  test("excludes revoked connections from the list", async () => {
+    const company = await createCompany({ domain: "listexcl.com" });
     const admin = await createUser(company.id, "ADMIN");
-    const conn = await query(
-      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+    await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name, status) VALUES ($1, 'aws', 'Active AWS', 'connected')`,
       [company.id]
     );
-    await request(app)
-      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
-      .set("Authorization", `Bearer ${admin.token}`)
-      .send({ authType: "iam_role", secret: { externalId: "ext-1" } });
+    await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name, status) VALUES ($1, 'aws', 'Old AWS', 'revoked')`,
+      [company.id]
+    );
+
+    const res = await request(app)
+      .get("/api/integrations")
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(1);
+    expect(res.body[0].name).toBe("Active AWS");
+  });
+});
+
+describe("DELETE /api/integrations/:id", () => {
+  test("hard-deletes a connection stuck in error status, cascading its credential", async () => {
+    const company = await createCompany();
+    const admin = await createUser(company.id, "ADMIN");
+    // Seeded directly as 'error' — this file's registry mock makes
+    // testConnection always succeed, so the only reliable way to exercise
+    // the error-status branch is to set the status directly, same as the
+    // 'connected' case below.
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name, status) VALUES ($1, 'aws', 'Prod AWS', 'error') RETURNING *`,
+      [company.id]
+    );
+    await query(
+      `INSERT INTO integration_credentials (connection_id, company_id, auth_type, ciphertext, iv, auth_tag) VALUES ($1, $2, 'iam_role', 'ct', 'iv', 'tag')`,
+      [conn.rows[0].id, company.id]
+    );
 
     const res = await request(app)
       .delete(`/api/integrations/${conn.rows[0].id}`)
       .set("Authorization", `Bearer ${admin.token}`);
     expect(res.status).toBe(204);
 
+    const connRows = await query(`SELECT id FROM integration_connections WHERE id = $1`, [conn.rows[0].id]);
+    expect(connRows.rowCount).toBe(0);
+    const credRows = await query(`SELECT id FROM integration_credentials WHERE connection_id = $1`, [conn.rows[0].id]);
+    expect(credRows.rowCount).toBe(0);
+  });
+
+  test("soft-revokes a connected connection and crypto-shreds its credential, keeping the row", async () => {
+    const company = await createCompany({ domain: "revokeconnected.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name, status) VALUES ($1, 'aws', 'Prod AWS', 'connected') RETURNING *`,
+      [company.id]
+    );
+    await query(
+      `INSERT INTO integration_credentials (connection_id, company_id, auth_type, ciphertext, iv, auth_tag) VALUES ($1, $2, 'iam_role', 'ct', 'iv', 'tag')`,
+      [conn.rows[0].id, company.id]
+    );
+
+    const res = await request(app)
+      .delete(`/api/integrations/${conn.rows[0].id}`)
+      .set("Authorization", `Bearer ${admin.token}`);
+    expect(res.status).toBe(204);
+
+    const connRows = await query(`SELECT status FROM integration_connections WHERE id = $1`, [conn.rows[0].id]);
+    expect(connRows.rows[0].status).toBe("revoked");
     const credRows = await query(`SELECT ciphertext FROM integration_credentials WHERE connection_id = $1`, [conn.rows[0].id]);
     expect(credRows.rows[0].ciphertext).toBeNull();
   });
@@ -463,6 +516,70 @@ describe("DELETE /api/integrations/:id", () => {
       .delete(`/api/integrations/${conn.rows[0].id}`)
       .set("Authorization", `Bearer ${adminB.token}`);
     expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /api/integrations/:id", () => {
+  test("reflects the connection's actual stored auth_type, not the catalog default", async () => {
+    const company = await createCompany({ domain: "connauth1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+
+    await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ authType: "access_key", secret: { accessKeyId: "AKIA123", secretAccessKey: "shh" } });
+
+    const res = await request(app)
+      .get(`/api/integrations/${conn.rows[0].id}`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.authType).toBe("access_key");
+  });
+
+  test("reflects the new auth_type after rotating to a different one", async () => {
+    const company = await createCompany({ domain: "connauth2.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+
+    await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ authType: "iam_role", secret: { externalId: "ext-1" } });
+    await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ authType: "access_key", secret: { accessKeyId: "AKIA123", secretAccessKey: "shh" } });
+
+    const res = await request(app)
+      .get(`/api/integrations/${conn.rows[0].id}`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.authType).toBe("access_key");
+  });
+
+  test("returns a null auth_type when no credential has been stored yet", async () => {
+    const company = await createCompany({ domain: "connauth3.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+
+    const res = await request(app)
+      .get(`/api/integrations/${conn.rows[0].id}`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.authType).toBeNull();
   });
 });
 

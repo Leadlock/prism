@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { FaAws, FaMicrosoft } from "react-icons/fa";
 import { apiFetch } from "../api/client.js";
+import CredentialFields from "../components/CredentialFields.jsx";
 
 const STATUS_COLOR = {
   connected: "var(--green)",
   pending:   "var(--text3)",
   error:     "var(--red)",
   revoked:   "var(--text3)",
+};
+
+const PROVIDER_ICON = {
+  aws: { Icon: FaAws, color: "#FF9900" },
+  azure: { Icon: FaMicrosoft, color: "#0078D4" },
 };
 
 function StatusPill({ status }) {
@@ -22,27 +29,142 @@ function StatusPill({ status }) {
   );
 }
 
-const TRUST_POLICY_TEMPLATE = (externalId) => JSON.stringify({
-  Version: "2012-10-17",
-  Statement: [{
-    Effect: "Allow",
-    Principal: { AWS: "<YOUR PRISM DEPLOYMENT'S AWS PRINCIPAL ARN — ask your Prism admin>" },
-    Action: "sts:AssumeRole",
-    Condition: { StringEquals: { "sts:ExternalId": externalId || "<external-id>" } }
-  }]
-}, null, 2);
+function randomExternalId() {
+  return `prism-${crypto.randomUUID().slice(0, 8)}`;
+}
 
-function AddIntegrationWizard({ catalog, token, onClose, onCreated }) {
-  const [step, setStep] = useState("pick"); // "pick" | "configure"
-  const [provider, setProvider] = useState(null);
+function trustPolicyFor(principalArn, externalId) {
+  return JSON.stringify({
+    Version: "2012-10-17",
+    Statement: [{
+      Effect: "Allow",
+      Principal: { AWS: principalArn || "<ask your Prism administrator for this deployment's AWS principal ARN>" },
+      Action: "sts:AssumeRole",
+      Condition: { StringEquals: { "sts:ExternalId": externalId || "<external-id>" } }
+    }]
+  }, null, 2);
+}
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 8px" }} onClick={copy}>
+      {copied ? "Copied!" : "Copy"}
+    </button>
+  );
+}
+
+function JsonBlock({ label, json }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <span style={{ fontSize: 12, color: "var(--text2)", fontWeight: 600 }}>{label}</span>
+        <CopyButton text={json} />
+      </div>
+      <pre style={{ fontSize: 11, overflowX: "auto", padding: 10, background: "var(--bg3)", borderRadius: 6, margin: 0 }}>
+        {json}
+      </pre>
+    </div>
+  );
+}
+
+function AwsRoleWalkthrough({ token, roleArn, setRoleArn, externalId }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/aws/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const trustPolicy = trustPolicyFor(setupInfo?.principalArn, externalId);
+  const permissionsPolicy = setupInfo?.permissionsPolicy ? JSON.stringify(setupInfo.permissionsPolicy, null, 2) : null;
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        <li>In AWS IAM → Roles → Create role → <strong>Custom trust policy</strong>, paste the Trust Policy JSON below.</li>
+        <li>On the permissions step, create/attach an inline policy using the Permissions Policy JSON below (grants read-only access only).</li>
+        <li>Name the role (e.g. <code>prism-readonly</code>) and create it.</li>
+        <li>Copy the role's ARN into the field below, then click Connect.</li>
+      </ol>
+
+      {setupInfo?.principalError && (
+        <p className="error-text" style={{ fontSize: 12 }}>{setupInfo.principalError}</p>
+      )}
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <JsonBlock label="Trust policy JSON" json={trustPolicy} />
+      {permissionsPolicy && <JsonBlock label="Permissions policy JSON (read-only)" json={permissionsPolicy} />}
+
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label htmlFor="conn-role-arn">Role ARN <span style={{ color: "var(--text3)", fontWeight: 400 }}>(from step 4 above)</span></label>
+        <input id="conn-role-arn" required value={roleArn} onChange={e => setRoleArn(e.target.value)} placeholder="arn:aws:iam::123456789012:role/prism-readonly" />
+      </div>
+    </div>
+  );
+}
+
+function AzureServicePrincipalWalkthrough({ token, tenantId, setTenantId, subscriptionId, setSubscriptionId }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/azure/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const roleDefinition = setupInfo?.roleDefinition ? JSON.stringify(setupInfo.roleDefinition, null, 2) : null;
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        <li>In Microsoft Entra ID → App registrations → New registration. Name it (e.g. <code>prism-readonly</code>).</li>
+        <li>Under Certificates &amp; secrets → New client secret. Copy the value immediately — it's shown only once.</li>
+        <li>Copy the Application (client) ID and Directory (tenant) ID from the app's Overview page.</li>
+        <li>In your Subscription → Access control (IAM) → Add role assignment, using the role definition JSON below (or the built-in Reader role for a quicker start), assigned to the app registration.</li>
+        <li>Paste the Tenant ID, Subscription ID, Client ID, and Client Secret below, then click Connect.</li>
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      {roleDefinition && <JsonBlock label="Role definition JSON" json={roleDefinition} />}
+
+      <div className="form-group">
+        <label htmlFor="conn-tenant-id">Tenant ID</label>
+        <input id="conn-tenant-id" required value={tenantId} onChange={e => setTenantId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" />
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label htmlFor="conn-subscription-id">Subscription ID</label>
+        <input id="conn-subscription-id" required value={subscriptionId} onChange={e => setSubscriptionId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" />
+      </div>
+    </div>
+  );
+}
+
+function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
   const [name, setName] = useState("");
   const [region, setRegion] = useState("us-east-1");
   const [roleArn, setRoleArn] = useState("");
-  const [externalId, setExternalId] = useState("");
+  const [externalId] = useState(randomExternalId);
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [sessionToken, setSessionToken] = useState("");
-  const [authType, setAuthType] = useState("iam_role");
+  const [tenantId, setTenantId] = useState("");
+  const [subscriptionId, setSubscriptionId] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [authType, setAuthType] = useState(provider.authType);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // Tracks the connection created by a prior (possibly failed) submit attempt,
@@ -50,26 +172,17 @@ function AddIntegrationWizard({ catalog, token, onClose, onCreated }) {
   // a second, orphaned, credential-less connection.
   const [createdConnection, setCreatedConnection] = useState(null);
 
-  const pickProvider = (p) => {
-    setProvider(p);
-    setAuthType(p.authType === "access_key" ? "access_key" : "iam_role");
-    setStep("configure");
-  };
-
-  const handleClose = () => {
-    setCreatedConnection(null);
-    onClose();
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setSubmitting(true);
     try {
-      const config = authType === "iam_role" ? { region, roleArn } : { region };
-      const secret = authType === "iam_role"
-        ? { externalId }
-        : { accessKeyId, secretAccessKey, sessionToken: sessionToken || undefined };
+      const config = authType === "oauth2"
+        ? { tenantId, subscriptionId }
+        : authType === "iam_role" ? { region, roleArn } : { region };
+      const secret = authType === "oauth2"
+        ? { clientId, clientSecret }
+        : authType === "iam_role" ? { externalId } : { accessKeyId, secretAccessKey, sessionToken: sessionToken || undefined };
 
       let connection = createdConnection;
       if (!connection) {
@@ -95,97 +208,76 @@ function AddIntegrationWizard({ catalog, token, onClose, onCreated }) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={handleClose}>
-      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
-        <div className="modal-title">Add Integration</div>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <div className="modal-title">Connect {provider.name}</div>
 
-        {step === "pick" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-            {catalog.length === 0 && <p style={{ color: "var(--text3)" }}>No connectors available yet.</p>}
-            {catalog.map(c => (
-              <button
-                key={c.key}
-                className="btn btn-ghost"
-                style={{ justifyContent: "flex-start", textAlign: "left" }}
-                disabled={c.status !== "active"}
-                onClick={() => pickProvider(c)}
-              >
-                {c.name} {c.status !== "active" && <span style={{ color: "var(--text3)", fontSize: 11 }}>({c.status})</span>}
-              </button>
-            ))}
-            <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={handleClose}>Cancel</button>
+        <form onSubmit={handleSubmit}>
+          {error && <p className="error-text">{error}</p>}
+          <div className="form-group">
+            <label htmlFor="conn-name">Connection name</label>
+            <input id="conn-name" required value={name} onChange={e => setName(e.target.value)} placeholder={`My ${provider.name}`} />
           </div>
-        )}
 
-        {step === "configure" && (
-          <form onSubmit={handleSubmit}>
-            {error && <p className="error-text">{error}</p>}
-            <div className="form-group">
-              <label htmlFor="conn-name">Connection name</label>
-              <input id="conn-name" required value={name} onChange={e => setName(e.target.value)} />
+          {provider.key === "aws" ? (
+            <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+              {["iam_role", "access_key"].map(t => (
+                <button type="button" key={t}
+                  className="btn btn-ghost"
+                  style={{ fontWeight: authType === t ? 700 : 400, borderBottom: authType === t ? "2px solid var(--accent)" : "none" }}
+                  onClick={() => setAuthType(t)}
+                >
+                  {t === "iam_role" ? "IAM Role" : "Access Keys"}
+                </button>
+              ))}
             </div>
+          ) : null}
 
-            {provider.authType === "access_key" ? (
-              <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
-                {["iam_role", "access_key"].map(t => (
-                  <button type="button" key={t}
-                    className="btn btn-ghost"
-                    style={{ fontWeight: authType === t ? 700 : 400, borderBottom: authType === t ? "2px solid var(--accent)" : "none" }}
-                    onClick={() => setAuthType(t)}
-                  >
-                    {t === "iam_role" ? "IAM Role" : "Access Keys"}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
+          {provider.key !== "azure" && (
             <div className="form-group">
               <label htmlFor="conn-region">Region</label>
               <input id="conn-region" value={region} onChange={e => setRegion(e.target.value)} />
             </div>
+          )}
 
-            {authType === "iam_role" ? (
-              <>
-                <div className="form-group">
-                  <label htmlFor="conn-role-arn">Role ARN</label>
-                  <input id="conn-role-arn" required value={roleArn} onChange={e => setRoleArn(e.target.value)} placeholder="arn:aws:iam::123456789012:role/prism-readonly" />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="conn-external-id">External ID</label>
-                  <input id="conn-external-id" required value={externalId} onChange={e => setExternalId(e.target.value)} />
-                </div>
-                <details style={{ marginBottom: 12 }}>
-                  <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--text2)" }}>Trust policy JSON</summary>
-                  <pre style={{ fontSize: 11, overflowX: "auto", padding: 10, background: "var(--bg3)", borderRadius: 6 }}>
-                    {TRUST_POLICY_TEMPLATE(externalId)}
-                  </pre>
-                </details>
-              </>
+          {authType === "iam_role" ? (
+            provider.key === "aws" ? (
+              <AwsRoleWalkthrough token={token} roleArn={roleArn} setRoleArn={setRoleArn} externalId={externalId} />
             ) : (
-              <>
-                <div className="form-group">
-                  <label htmlFor="conn-access-key">Access key ID</label>
-                  <input id="conn-access-key" required value={accessKeyId} onChange={e => setAccessKeyId(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="conn-secret-key">Secret access key</label>
-                  <input id="conn-secret-key" type="password" required value={secretAccessKey} onChange={e => setSecretAccessKey(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="conn-session-token">Session token (optional)</label>
-                  <input id="conn-session-token" value={sessionToken} onChange={e => setSessionToken(e.target.value)} />
-                </div>
-              </>
-            )}
+              <div className="form-group">
+                <label htmlFor="conn-role-arn">Role ARN</label>
+                <input id="conn-role-arn" required value={roleArn} onChange={e => setRoleArn(e.target.value)} />
+              </div>
+            )
+          ) : authType === "oauth2" ? (
+            <>
+              <AzureServicePrincipalWalkthrough
+                token={token}
+                tenantId={tenantId} setTenantId={setTenantId}
+                subscriptionId={subscriptionId} setSubscriptionId={setSubscriptionId}
+              />
+              <CredentialFields
+                authType="oauth2"
+                clientId={clientId} setClientId={setClientId}
+                clientSecret={clientSecret} setClientSecret={setClientSecret}
+              />
+            </>
+          ) : (
+            <CredentialFields
+              authType={authType}
+              accessKeyId={accessKeyId} setAccessKeyId={setAccessKeyId}
+              secretAccessKey={secretAccessKey} setSecretAccessKey={setSecretAccessKey}
+              sessionToken={sessionToken} setSessionToken={setSessionToken}
+            />
+          )}
 
-            <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-              <button type="submit" className="btn btn-primary" disabled={submitting}>
-                {submitting ? "Connecting…" : "Connect"}
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={() => setStep("pick")}>Back</button>
-            </div>
-          </form>
-        )}
+          <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>
+              {submitting ? "Connecting…" : "Connect"}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -198,7 +290,7 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [showWizard, setShowWizard] = useState(false);
+  const [wizardProvider, setWizardProvider] = useState(null);
 
   const load = useCallback(async () => {
     const [catalogData, connData] = await Promise.all([
@@ -219,11 +311,22 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
     // so close the wizard regardless of whether the post-create reload
     // succeeds — but surface a reload failure via the page's error banner
     // instead of letting it become an unhandled promise rejection.
-    setShowWizard(false);
+    setWizardProvider(null);
     try {
       await load();
     } catch (e) {
       setError(e.message);
+    }
+  };
+
+  const handleDelete = async (e, connectionId, name) => {
+    e.stopPropagation();
+    if (!window.confirm(`Delete "${name}"? This failed connection attempt will be permanently removed.`)) return;
+    try {
+      await apiFetch(`/api/integrations/${connectionId}`, { token, method: "DELETE" });
+      await load();
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -233,11 +336,11 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
 
   return (
     <div className="admin-container">
-      {showWizard && (
+      {wizardProvider && (
         <AddIntegrationWizard
-          catalog={catalog}
+          provider={wizardProvider}
           token={token}
-          onClose={() => setShowWizard(false)}
+          onClose={() => setWizardProvider(null)}
           onCreated={handleCreated}
         />
       )}
@@ -262,27 +365,23 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
         {error && <p className="error-text">{error}</p>}
 
         <section className="admin-section">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h2>Connections</h2>
-            {isLeadOrAdmin && (
-              <button className="btn btn-primary" onClick={() => setShowWizard(true)}>+ Add Integration</button>
-            )}
-          </div>
+          <h2>Connections</h2>
           <div className="admin-table">
-            <div className="admin-row admin-row-header" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr" }}>
+            <div className="admin-row admin-row-header" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr" }}>
               <span>Name</span>
               <span>Provider</span>
               <span>Status</span>
               <span>Last run</span>
+              <span></span>
             </div>
             {connections.length === 0 && (
-              <div className="admin-row admin-row-empty"><span>No connections yet — add one to get started.</span></div>
+              <div className="admin-row admin-row-empty"><span>No connections yet — pick a connector below to get started.</span></div>
             )}
             {connections.map(c => (
               <div
                 key={c.id}
                 className="admin-row"
-                style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr", cursor: "pointer" }}
+                style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", cursor: "pointer" }}
                 onClick={() => navigate(`/settings/integrations/${c.id}`)}
               >
                 <span style={{ fontWeight: 600 }}>{c.name}</span>
@@ -290,6 +389,11 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
                 <span><StatusPill status={c.status} /></span>
                 <span style={{ fontSize: 12, color: "var(--text3)" }}>
                   {c.lastRunAt ? new Date(c.lastRunAt).toLocaleString() : "Never"}
+                </span>
+                <span>
+                  {isLeadOrAdmin && c.status === "error" && (
+                    <button className="btn btn-ghost" style={{ color: "var(--red)", fontSize: 12, padding: "4px 8px" }} onClick={(e) => handleDelete(e, c.id, c.name)}>Delete</button>
+                  )}
                 </span>
               </div>
             ))}
@@ -299,12 +403,30 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
         <section className="admin-section">
           <h2>Available connectors</h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-            {catalog.map(c => (
-              <div key={c.key} className="card" style={{ padding: 16, minWidth: 200 }}>
-                <div style={{ fontWeight: 600 }}>{c.name}</div>
-                <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>{c.category}</div>
-              </div>
-            ))}
+            {catalog.map(c => {
+              const iconEntry = PROVIDER_ICON[c.key];
+              const clickable = isLeadOrAdmin && c.status === "active";
+              return (
+                <div
+                  key={c.key}
+                  className="card"
+                  title={c.name}
+                  style={{
+                    padding: 20, minWidth: 160, display: "flex", flexDirection: "column",
+                    alignItems: "center", gap: 8, cursor: clickable ? "pointer" : "default",
+                    opacity: c.status === "active" ? 1 : 0.5,
+                  }}
+                  onClick={() => clickable && setWizardProvider(c)}
+                >
+                  {iconEntry
+                    ? <iconEntry.Icon size={36} color={iconEntry.color} aria-label={c.name} />
+                    : <div style={{ fontWeight: 600 }}>{c.name}</div>}
+                  <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                    {c.status === "active" ? c.category : `${c.category} · ${c.status.replace("_", " ")}`}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
       </div>

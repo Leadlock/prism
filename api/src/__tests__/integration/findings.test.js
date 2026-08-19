@@ -29,6 +29,21 @@ describe("GET /api/findings", () => {
     expect(res.status).toBe(200);
     expect(res.body.length).toBe(1);
   });
+
+  test("filters to a single connection when connectionId is given", async () => {
+    const company = await createCompany({ domain: "connscoped.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const findingOnConnA = await createFinding(company.id);
+    await createFinding(company.id); // a second connection's finding, should be excluded
+
+    const res = await request(app)
+      .get(`/api/findings?connectionId=${findingOnConnA.connection_id}`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(1);
+    expect(res.body[0].id).toBe(findingOnConnA.id);
+  });
 });
 
 describe("PUT /api/findings/:id", () => {

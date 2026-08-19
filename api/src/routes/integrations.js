@@ -42,19 +42,32 @@ const AWS_READ_ONLY_POLICY = {
   ],
 };
 
+// Shaped for the Azure Portal's "Create a custom role" > Start from JSON flow
+// (and the ARM REST API directly) — NOT the Azure CLI/PowerShell shape, which
+// uses top-level PascalCase Name/Actions/AssignableScopes instead of a nested
+// "properties" object. Pasting the CLI shape into the Portal's JSON editor
+// fails with "Properties not found", since the Portal is how most customers
+// actually create the role.
 const AZURE_READ_ONLY_ROLE_DEFINITION = {
-  Name: "Prism Read-Only Evidence Collection",
-  IsCustom: true,
-  Description: "Least-privilege read access for Prism's automated ISO 27001 evidence collection.",
-  Actions: [
-    "Microsoft.Storage/storageAccounts/read",
-    "Microsoft.Network/networkSecurityGroups/read",
-    "Microsoft.Insights/diagnosticSettings/read",
-    "Microsoft.Security/pricings/read",
-    "Microsoft.Resources/subscriptions/resourceGroups/read",
-  ],
-  NotActions: [],
-  AssignableScopes: ["/subscriptions/<subscription-id>"],
+  properties: {
+    roleName: "Prism Read-Only Evidence Collection",
+    description: "Least-privilege read access for Prism's automated ISO 27001 evidence collection.",
+    assignableScopes: ["/subscriptions/<subscription-id>"],
+    permissions: [
+      {
+        actions: [
+          "Microsoft.Storage/storageAccounts/read",
+          "Microsoft.Network/networkSecurityGroups/read",
+          "Microsoft.Insights/diagnosticSettings/read",
+          "Microsoft.Security/pricings/read",
+          "Microsoft.Resources/subscriptions/resourceGroups/read",
+        ],
+        notActions: [],
+        dataActions: [],
+        notDataActions: [],
+      },
+    ],
+  },
 };
 
 // Kept in lockstep with exactly what connectors/github/index.js's testConnection
@@ -82,7 +95,7 @@ function buildGithubAppManifest({ companyName }) {
 
 router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   const result = await query(
-    `SELECT * FROM integration_connections WHERE company_id = $1 ORDER BY created_at DESC`,
+    `SELECT * FROM integration_connections WHERE company_id = $1 AND status != 'revoked' ORDER BY created_at DESC`,
     [req.user.companyId]
   );
   res.json(mapRows(result));
@@ -254,7 +267,14 @@ router.get("/github/install-callback", asyncHandler(async (req, res) => {
 
 router.get("/:id", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   const result = await query(
-    `SELECT * FROM integration_connections WHERE id = $1 AND company_id = $2`,
+    `SELECT ic.*, cred.auth_type
+     FROM integration_connections ic
+     LEFT JOIN LATERAL (
+       SELECT auth_type FROM integration_credentials
+       WHERE connection_id = ic.id AND company_id = ic.company_id AND revoked_at IS NULL
+       ORDER BY created_at DESC LIMIT 1
+     ) cred ON true
+     WHERE ic.id = $1 AND ic.company_id = $2`,
     [parseInt(req.params.id), req.user.companyId]
   );
   const connection = mapRow(result);
@@ -341,12 +361,37 @@ router.post("/:id/run", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandl
 
 router.delete("/:id", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   const connectionId = parseInt(req.params.id);
-  const result = await query(
-    `UPDATE integration_connections SET status = 'revoked', revoked_at = NOW(), updated_at = NOW() WHERE id = $1 AND company_id = $2 RETURNING *`,
+  const existing = await query(
+    `SELECT ic.status,
+            EXISTS (
+              SELECT 1 FROM evidence_collection_runs r
+              WHERE r.connection_id = ic.id AND r.status IN ('success', 'partial_failure')
+            ) AS ever_collected
+       FROM integration_connections ic
+       WHERE ic.id = $1 AND ic.company_id = $2`,
     [connectionId, req.user.companyId]
   );
-  if (result.rowCount === 0) return res.status(404).json({ error: "Connection not found" });
+  if (existing.rowCount === 0) return res.status(404).json({ error: "Connection not found" });
 
+  // A connection that never successfully connected never held a working
+  // credential worth crypto-shredding for audit purposes — hard-delete it
+  // (cascades to credentials/runs/findings) instead of leaving a dead
+  // "revoked" row behind. A connection that did connect gets the existing
+  // soft-revoke treatment, preserving its audit trail. `status === 'error'`
+  // alone isn't a reliable proxy for "never connected" — collectionRunner
+  // flips a previously-connected connection to 'error' on any later failed
+  // run too, so this also requires that no run of that connection ever
+  // completed (successfully or partially) before hard-deleting.
+  if (existing.rows[0].status === "error" && !existing.rows[0].ever_collected) {
+    await query(`DELETE FROM integration_connections WHERE id = $1 AND company_id = $2`, [connectionId, req.user.companyId]);
+    await writeAuditLog({ userId: req.user.userId, companyId: req.user.companyId, action: "CONNECTION_DELETED", resource: "integration_connections", detail: { connectionId } });
+    return res.status(204).send();
+  }
+
+  await query(
+    `UPDATE integration_connections SET status = 'revoked', revoked_at = NOW(), updated_at = NOW() WHERE id = $1 AND company_id = $2`,
+    [connectionId, req.user.companyId]
+  );
   await revokeCredentials(connectionId, req.user.companyId);
   await writeAuditLog({ userId: req.user.userId, companyId: req.user.companyId, action: "CONNECTION_REVOKED", resource: "integration_connections", detail: { connectionId } });
 

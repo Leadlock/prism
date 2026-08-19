@@ -104,9 +104,11 @@ test.describe("Admin workflows", () => {
 
     // Status change is optimistic — UI updates immediately on click
     const companyRow = page.locator("[style*='cursor']", { has: page.getByText("Acme Corp") });
-    await page.getByRole("button", { name: "Approve" }).first().click();
+    await page.getByRole("button", { name: "Approve", exact: true }).first().click();
 
-    // After optimistic update, Approve button disappears (only shown when status !== "approved")
-    await expect(page.getByRole("button", { name: "Approve" })).not.toBeVisible({ timeout: 5_000 });
+    // After optimistic update, Approve button disappears (only shown when status !== "approved").
+    // "Approve" is `exact: true` here too — otherwise it substring-matches "Unapprove", which
+    // appears once the company becomes verified.
+    await expect(page.getByRole("button", { name: "Approve", exact: true })).not.toBeVisible({ timeout: 5_000 });
   });
 });

@@ -1,27 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
-
-const SEVERITY_COLOR = {
-  critical: "var(--red)",
-  high:     "var(--red)",
-  medium:   "var(--amber)",
-  low:      "var(--text3)",
-};
+import SeverityPill from "../components/SeverityPill.jsx";
 
 const STATUS_OPTIONS = ["open", "acknowledged", "resolved", "suppressed", "false_positive"];
-
-function SeverityPill({ severity }) {
-  const color = SEVERITY_COLOR[severity] || "var(--text3)";
-  return (
-    <span style={{
-      fontSize: 11, fontWeight: 700, color, textTransform: "uppercase",
-      background: `${color}18`, padding: "2px 8px", borderRadius: 20, border: `1px solid ${color}40`
-    }}>
-      {severity}
-    </span>
-  );
-}
 
 export default function Findings({ token, user, company, onLogout, theme, onThemeToggle }) {
   const navigate = useNavigate();
@@ -29,6 +11,7 @@ export default function Findings({ token, user, company, onLogout, theme, onThem
   const [findings, setFindings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [severityFilter, setSeverityFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [busyId, setBusyId] = useState(null);
@@ -63,8 +46,11 @@ export default function Findings({ token, user, company, onLogout, theme, onThem
   const handlePromote = async (findingId) => {
     setBusyId(findingId);
     setError("");
+    setSuccessMessage("");
     try {
       await apiFetch(`/api/findings/${findingId}/promote`, { token, method: "POST", body: JSON.stringify({}) });
+      setSuccessMessage("Remediation action created.");
+      setTimeout(() => setSuccessMessage(""), 4000);
       await load();
     } catch (err) {
       setError(err.message);
@@ -97,6 +83,7 @@ export default function Findings({ token, user, company, onLogout, theme, onThem
         </div>
 
         {error && <p className="error-text">{error}</p>}
+        {successMessage && <p style={{ color: "var(--green)" }}>{successMessage}</p>}
 
         <div style={{ display: "flex", gap: 12, marginTop: 16, marginBottom: 8 }}>
           <select className="month-selector" value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}>

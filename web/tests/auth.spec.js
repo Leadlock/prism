@@ -69,6 +69,8 @@ test.describe("Auth workflows", () => {
     await page.route("**/api/assessments*", r => r.fulfill({ json: [] }));
     await page.goto("/tracker");
 
+    // Logout lives inside the TopBar's "⋮" overflow menu.
+    await page.getByRole("button", { name: "⋮" }).click();
     await expect(page.getByRole("button", { name: "Logout" })).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Logout" }).click();
 
@@ -90,6 +92,8 @@ test.describe("Auth workflows", () => {
     await page.route("**/api/assessments*", r => r.fulfill({ json: [] }));
     await page.goto("/tracker");
 
+    // Logout lives inside the TopBar's "⋮" overflow menu.
+    await page.getByRole("button", { name: "⋮" }).click();
     await expect(page.getByRole("button", { name: "Logout" })).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Logout" }).click();
 

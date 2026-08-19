@@ -2128,6 +2128,8 @@ body {
   padding: 28px;
   width: 100%;
   max-width: 400px;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: var(--neu-raised);
   animation: fadeUp 0.18s ease;
 }

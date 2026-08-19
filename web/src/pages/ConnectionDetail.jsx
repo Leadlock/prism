@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
+import CredentialFields from "../components/CredentialFields.jsx";
+import SeverityPill from "../components/SeverityPill.jsx";
 
 const RUN_STATUS_COLOR = {
   success: "var(--green)",
@@ -9,13 +11,15 @@ const RUN_STATUS_COLOR = {
   running: "var(--text3)",
 };
 
-function RotateCredentialModal({ connectionId, token, providerAuthType, onClose, onRotated }) {
-  const [authType, setAuthType] = useState(providerAuthType || "iam_role");
+function RotateCredentialModal({ connectionId, token, connectionAuthType, providerKey, providerAuthType, onClose, onRotated }) {
+  const [authType, setAuthType] = useState(connectionAuthType || providerAuthType || "iam_role");
   const [roleArn, setRoleArn] = useState("");
   const [externalId, setExternalId] = useState("");
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [sessionToken, setSessionToken] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -24,9 +28,9 @@ function RotateCredentialModal({ connectionId, token, providerAuthType, onClose,
     setError("");
     setSubmitting(true);
     try {
-      const secret = authType === "iam_role"
-        ? { externalId }
-        : { accessKeyId, secretAccessKey, sessionToken: sessionToken || undefined };
+      const secret = authType === "oauth2"
+        ? { clientId, clientSecret }
+        : authType === "iam_role" ? { externalId } : { accessKeyId, secretAccessKey, sessionToken: sessionToken || undefined };
       const updated = await apiFetch(`/api/integrations/${connectionId}/credentials`, {
         token, method: "POST",
         body: JSON.stringify({ authType, secret })
@@ -45,7 +49,7 @@ function RotateCredentialModal({ connectionId, token, providerAuthType, onClose,
         <div className="modal-title">Rotate credentials</div>
         <form onSubmit={handleSubmit}>
           {error && <p className="error-text">{error}</p>}
-          {providerAuthType === "access_key" ? (
+          {providerKey === "aws" ? (
             <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
               {["iam_role", "access_key"].map(t => (
                 <button type="button" key={t}
@@ -63,21 +67,19 @@ function RotateCredentialModal({ connectionId, token, providerAuthType, onClose,
               <label htmlFor="rotate-external-id">External ID</label>
               <input id="rotate-external-id" required value={externalId} onChange={e => setExternalId(e.target.value)} />
             </div>
+          ) : authType === "oauth2" ? (
+            <CredentialFields
+              authType="oauth2"
+              clientId={clientId} setClientId={setClientId}
+              clientSecret={clientSecret} setClientSecret={setClientSecret}
+            />
           ) : (
-            <>
-              <div className="form-group">
-                <label htmlFor="rotate-access-key">Access key ID</label>
-                <input id="rotate-access-key" required value={accessKeyId} onChange={e => setAccessKeyId(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label htmlFor="rotate-secret-key">Secret access key</label>
-                <input id="rotate-secret-key" type="password" required value={secretAccessKey} onChange={e => setSecretAccessKey(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label htmlFor="rotate-session-token">Session token (optional)</label>
-                <input id="rotate-session-token" value={sessionToken} onChange={e => setSessionToken(e.target.value)} />
-              </div>
-            </>
+            <CredentialFields
+              authType={authType}
+              accessKeyId={accessKeyId} setAccessKeyId={setAccessKeyId}
+              secretAccessKey={secretAccessKey} setSecretAccessKey={setSecretAccessKey}
+              sessionToken={sessionToken} setSessionToken={setSessionToken}
+            />
           )}
           <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
             <button type="submit" className="btn btn-primary" disabled={submitting}>
@@ -98,20 +100,23 @@ export default function ConnectionDetail({ token, user, company, onLogout, theme
   const [connection, setConnection] = useState(null);
   const [runs, setRuns] = useState([]);
   const [catalog, setCatalog] = useState([]);
+  const [findings, setFindings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [running, setRunning] = useState(false);
   const [showRotate, setShowRotate] = useState(false);
 
   const load = useCallback(async () => {
-    const [connData, runsData, catalogData] = await Promise.all([
+    const [connData, runsData, catalogData, findingsData] = await Promise.all([
       apiFetch(`/api/integrations/${id}`, { token }),
       apiFetch(`/api/integrations/${id}/runs`, { token }),
       apiFetch(`/api/integrations/catalog`, { token }),
+      apiFetch(`/api/findings?connectionId=${id}`, { token }),
     ]);
     setConnection(connData);
     setRuns(runsData || []);
     setCatalog(catalogData || []);
+    setFindings(findingsData || []);
   }, [token, id]);
 
   useEffect(() => {
@@ -133,7 +138,11 @@ export default function ConnectionDetail({ token, user, company, onLogout, theme
   };
 
   const handleRevoke = async () => {
-    if (!window.confirm("Revoke this connection? Its credentials will be permanently shredded.")) return;
+    const isFailed = connection?.status === "error";
+    const confirmText = isFailed
+      ? "Delete this connection? This failed connection attempt will be permanently removed."
+      : "Revoke this connection? Its credentials will be permanently shredded.";
+    if (!window.confirm(confirmText)) return;
     try {
       await apiFetch(`/api/integrations/${id}`, { token, method: "DELETE" });
       navigate("/settings/integrations");
@@ -167,6 +176,8 @@ export default function ConnectionDetail({ token, user, company, onLogout, theme
         <RotateCredentialModal
           connectionId={id}
           token={token}
+          connectionAuthType={connection.authType}
+          providerKey={connection.integrationKey}
           providerAuthType={matchingCatalogEntry?.authType}
           onClose={() => setShowRotate(false)}
           onRotated={handleRotated}
@@ -211,7 +222,9 @@ export default function ConnectionDetail({ token, user, company, onLogout, theme
                 {running ? "Running…" : "Run Now"}
               </button>
               <button className="btn btn-ghost" onClick={() => setShowRotate(true)}>Rotate credentials</button>
-              <button className="btn btn-ghost" style={{ color: "var(--red)" }} onClick={handleRevoke}>Revoke</button>
+              <button className="btn btn-ghost" style={{ color: "var(--red)" }} onClick={handleRevoke}>
+                {connection.status === "error" ? "Delete" : "Revoke"}
+              </button>
             </div>
           )}
         </section>
@@ -236,6 +249,30 @@ export default function ConnectionDetail({ token, user, company, onLogout, theme
                 <span style={{ fontSize: 12, fontWeight: 600, color: RUN_STATUS_COLOR[r.status] || "var(--text3)" }}>{r.status}</span>
                 <span style={{ fontSize: 12, color: "var(--green)" }}>{r.testsPassed}</span>
                 <span style={{ fontSize: 12, color: r.testsFailed > 0 ? "var(--red)" : "var(--text3)" }}>{r.testsFailed}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="admin-section">
+          <h2>Findings</h2>
+          <div className="admin-table">
+            <div className="admin-row admin-row-header" style={{ gridTemplateColumns: "2.5fr 1fr 1fr" }}>
+              <span>Finding</span>
+              <span>Severity</span>
+              <span>Status</span>
+            </div>
+            {findings.length === 0 && (
+              <div className="admin-row admin-row-empty"><span>No findings for this connection yet.</span></div>
+            )}
+            {findings.map(f => (
+              <div key={f.id} className="admin-row" style={{ gridTemplateColumns: "2.5fr 1fr 1fr" }}>
+                <span>
+                  <div style={{ fontWeight: 600 }}>{f.title}</div>
+                  <div style={{ fontSize: 11, color: "var(--text3)" }}>{f.resourceId}</div>
+                </span>
+                <span><SeverityPill severity={f.severity} /></span>
+                <span style={{ fontSize: 12 }}>{f.status}</span>
               </div>
             ))}
           </div>

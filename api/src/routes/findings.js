@@ -8,11 +8,12 @@ import { writeAuditLog } from "../utils/auditLog.js";
 const router = Router();
 
 router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "VIEWER"]), asyncHandler(async (req, res) => {
-  const { status, severity } = req.query;
+  const { status, severity, connectionId } = req.query;
   const conditions = ["company_id = $1"];
   const values = [req.user.companyId];
   if (status) { values.push(status); conditions.push(`status = $${values.length}`); }
   if (severity) { values.push(severity); conditions.push(`severity = $${values.length}`); }
+  if (connectionId) { values.push(parseInt(connectionId)); conditions.push(`connection_id = $${values.length}`); }
   const result = await query(
     `SELECT * FROM findings WHERE ${conditions.join(" AND ")} ORDER BY
        CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,

@@ -115,7 +115,7 @@ test.describe("QuestionCard — rejection reason banner", () => {
     await expect(page.locator(".quest-card")).toBeVisible({ timeout: 10_000 });
 
     // The rejection banner should be visible
-    await expect(page.getByText("Assessment rejected — please revise and resubmit")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/Rejected by auditor@acme.com/)).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText(/Evidence is outdated/)).toBeVisible();
     await expect(page.getByText(/auditor@acme.com/)).toBeVisible();
   });
@@ -140,7 +140,7 @@ test.describe("QuestionCard — rejection reason banner", () => {
     await page.goto("/tracker");
     await expect(page.locator(".quest-card")).toBeVisible({ timeout: 10_000 });
 
-    await expect(page.getByText("Assessment rejected — please revise and resubmit")).not.toBeVisible();
+    await expect(page.getByText(/Rejected by/)).not.toBeVisible();
   });
 });
 
@@ -221,9 +221,19 @@ test.describe("TopBar — primary action label", () => {
 // ─── Dashboard — filter active indicator ──────────────────────────────────────
 
 test.describe("Dashboard — compliance filter indicator", () => {
+  // Dashboard derives its "framework"/tag filter options from GET /api/questions
+  // (comma-separated `tags` field), not from the dashboard payload itself. The
+  // tag <select> only renders at all once availableTags is non-empty, and sits
+  // after Month/Status/Priority (and Owner, if any owners exist) in the DOM —
+  // with no owners in these questions, it's the 4th .month-selector (index 3).
+  const TAGGED_QUESTIONS = [
+    { id: "P1.1", questId: "P1.1", moduleId: "P", area: "Policies", text: "Q1", priority: "High", tags: "ISO27001,GDPR", isOverdue: false },
+  ];
+
   test("filter banner appears when a framework is selected", async ({ page }) => {
     await setAuth(page, "ADMIN");
     await page.route("**/api/dashboard*", r => r.fulfill({ json: MOCK_DASHBOARD }));
+    await page.route("**/api/questions*", r => r.fulfill({ json: TAGGED_QUESTIONS }));
 
     await page.goto("/dashboard");
     await expect(page.locator(".dash-card").first()).toBeVisible({ timeout: 10_000 });
@@ -231,23 +241,25 @@ test.describe("Dashboard — compliance filter indicator", () => {
     // Select a framework filter
     const [request] = await Promise.all([
       page.waitForRequest(req => req.url().includes("tag=ISO27001")),
-      page.locator("select.month-selector").nth(2).selectOption("ISO27001"),
+      page.locator("select.month-selector").nth(3).selectOption("ISO27001"),
     ]);
 
-    // Filter banner should appear
+    // Filter banner should appear. Scope to the banner's <strong> tag —
+    // a bare text match also hits the still-in-DOM <option value="ISO27001">.
     await expect(page.getByText("Filtered:")).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("ISO27001")).toBeVisible();
+    await expect(page.locator("strong", { hasText: "ISO27001" })).toBeVisible();
     expect(request.url()).toContain("tag=ISO27001");
   });
 
   test("clear filters button removes the banner", async ({ page }) => {
     await setAuth(page, "ADMIN");
     await page.route("**/api/dashboard*", r => r.fulfill({ json: MOCK_DASHBOARD }));
+    await page.route("**/api/questions*", r => r.fulfill({ json: TAGGED_QUESTIONS }));
 
     await page.goto("/dashboard");
     await expect(page.locator(".dash-card").first()).toBeVisible({ timeout: 10_000 });
 
-    await page.locator("select.month-selector").nth(2).selectOption("GDPR");
+    await page.locator("select.month-selector").nth(3).selectOption("GDPR");
     await expect(page.getByText("Filtered:")).toBeVisible({ timeout: 5_000 });
 
     await page.getByRole("button", { name: /Clear filters/ }).click();
