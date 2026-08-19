@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
+import { Octokit } from "@octokit/rest";
+import { createAppAuth } from "@octokit/auth-app";
 import { query, mapRow, mapRows } from "../db/index.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole, requireReadOnly } from "../middleware/roles.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { writeAuditLog } from "../utils/auditLog.js";
 import { sanitiseFields } from "../utils/sanitise.js";
-import { storeCredential, revokeCredentials } from "../db/integrationCredentials.js";
+import { storeCredential, revokeCredentials, getActiveCredential } from "../db/integrationCredentials.js";
 import { getConnector } from "../connectors/registry.js";
 import { runCollection } from "../utils/collectionRunner.js";
 import { signGithubAppState, verifyGithubAppState } from "../utils/githubAppState.js";
@@ -177,6 +179,70 @@ router.get("/github/manifest-callback", asyncHandler(async (req, res) => {
   // from `slug` alone if `html_url` is ever absent.
   const installUrl = appData.html_url ? `${appData.html_url}/installations/new` : `https://github.com/apps/${appData.slug}/installations/new`;
   res.redirect(`${webUrl}/settings/integrations/${connectionId}?githubInstallUrl=${encodeURIComponent(`${installUrl}?state=${state}`)}`);
+}));
+
+// Also unauthenticated, for the same reason as manifest-callback above —
+// this is GitHub's own redirect after the admin installs the App, carrying
+// only `installation_id`. That alone doesn't tell us the org login the
+// connector's testConnection/runTests need, so this route resolves it via
+// an App-level (JWT, not installation-token) lookup first.
+router.get("/github/install-callback", asyncHandler(async (req, res) => {
+  const installationId = parseInt(req.query.installation_id);
+  const { state } = req.query;
+  const webUrl = (process.env.WEB_URL || "http://localhost:5173").replace(/\/$/, "");
+
+  let stateData;
+  try {
+    stateData = verifyGithubAppState(state);
+  } catch (err) {
+    return res.redirect(`${webUrl}/settings/integrations?githubError=${encodeURIComponent(err.message)}`);
+  }
+  const { connectionId, companyId } = stateData;
+
+  const connResult = await query(
+    `SELECT * FROM integration_connections WHERE id = $1 AND company_id = $2 AND integration_key = 'github'`,
+    [connectionId, companyId]
+  );
+  if (!mapRow(connResult)) {
+    return res.redirect(`${webUrl}/settings/integrations?githubError=${encodeURIComponent("Connection not found")}`);
+  }
+
+  const credential = await getActiveCredential(connectionId, companyId);
+  if (!credential) {
+    return res.redirect(`${webUrl}/settings/integrations/${connectionId}?githubError=${encodeURIComponent("Create the GitHub App before installing it")}`);
+  }
+
+  let org;
+  try {
+    const appAuth = createAppAuth({ appId: credential.secret.appId, privateKey: credential.secret.privateKey });
+    const { token: appJwt } = await appAuth({ type: "app" });
+    const appOctokit = new Octokit({ auth: appJwt });
+    const { data: installation } = await appOctokit.rest.apps.getInstallation({ installation_id: installationId });
+    org = installation.account.login;
+  } catch (err) {
+    return res.redirect(`${webUrl}/settings/integrations/${connectionId}?githubError=${encodeURIComponent(err.message)}`);
+  }
+
+  await query(
+    `UPDATE integration_connections SET config = $1, updated_at = NOW() WHERE id = $2 AND company_id = $3`,
+    [JSON.stringify({ installationId, org }), connectionId, companyId]
+  );
+
+  const connector = getConnector("github");
+  try {
+    const testResult = await connector.testConnection({ authType: "oauth2", config: { installationId, org }, secret: credential.secret });
+    await query(
+      `UPDATE integration_connections SET status = 'connected', external_account_id = $1, updated_at = NOW() WHERE id = $2 AND company_id = $3`,
+      [testResult.externalAccountId || null, connectionId, companyId]
+    );
+  } catch (err) {
+    await query(`UPDATE integration_connections SET status = 'error', updated_at = NOW() WHERE id = $1 AND company_id = $2`, [connectionId, companyId]);
+    await writeAuditLog({ userId: null, companyId, action: "CONNECTION_TEST_FAILED", resource: "integration_connections", detail: { connectionId, error: err.message } });
+    return res.redirect(`${webUrl}/settings/integrations/${connectionId}?githubError=${encodeURIComponent(err.message)}`);
+  }
+
+  await writeAuditLog({ userId: null, companyId, action: "CONNECTION_INSTALLED", resource: "integration_connections", detail: { connectionId, installationId, org } });
+  res.redirect(`${webUrl}/settings/integrations/${connectionId}`);
 }));
 
 router.get("/:id", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {

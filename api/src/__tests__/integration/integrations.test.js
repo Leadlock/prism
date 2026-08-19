@@ -3,16 +3,37 @@ import request from "supertest";
 import { createCompany, createUser } from "../setup/helpers.js";
 import { query } from "../../db/index.js";
 import { signGithubAppState, verifyGithubAppState } from "../../utils/githubAppState.js";
-import { getActiveCredential } from "../../db/integrationCredentials.js";
+import { getActiveCredential, storeCredential } from "../../db/integrationCredentials.js";
 
-vi.mock("../../connectors/registry.js", () => ({
-  getConnector: vi.fn(() => ({
+const CONNECTOR_FIXTURES = {
+  aws: {
     key: "aws",
     testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "123456789012" })),
     runTests: vi.fn(async () => ([
       { testKey: "aws.iam.mfa_enforced", severity: "critical", resourceId: "user-1", status: "pass", message: "MFA enabled", evidencePayload: {} },
     ])),
-  })),
+  },
+  github: {
+    key: "github",
+    testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "42424242" })),
+    runTests: vi.fn(async () => ([])),
+  },
+};
+
+vi.mock("../../connectors/registry.js", () => ({
+  getConnector: vi.fn((integrationKey) => CONNECTOR_FIXTURES[integrationKey]),
+}));
+
+// GET /github/install-callback resolves the org login via an App-level (JWT)
+// Octokit lookup — mocked here so the suite never makes a real GitHub API call.
+const getInstallation = vi.fn(async () => ({ data: { account: { login: "acme-corp" } } }));
+vi.mock("@octokit/auth-app", () => ({
+  createAppAuth: vi.fn(() => vi.fn(async () => ({ token: "fake-app-jwt" }))),
+}));
+vi.mock("@octokit/rest", () => ({
+  Octokit: vi.fn(function () {
+    this.rest = { apps: { getInstallation } };
+  }),
 }));
 
 // GET /aws/setup-info calls real STS via the SDK's default credential chain —
@@ -199,6 +220,59 @@ describe("GET /api/integrations/github/manifest-callback", () => {
 
     const credential = await getActiveCredential(connectionId, company.id);
     expect(credential).toBeNull();
+  });
+});
+
+describe("GET /api/integrations/github/install-callback", () => {
+  afterEach(() => { global.fetch = originalFetch; });
+
+  test("resolves the org from the installation, stores config, and connects", async () => {
+    const company = await createCompany({ domain: "githubinstall1.com" });
+    const connResult = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'github', 'Prod GitHub') RETURNING *`,
+      [company.id]
+    );
+    const connectionId = connResult.rows[0].id;
+    const state = signGithubAppState({ connectionId, companyId: company.id });
+    await storeCredential({ connectionId, companyId: company.id, authType: "oauth2", secret: { appId: "987654", privateKey: "fake-pem" } });
+
+    CONNECTOR_FIXTURES.github.testConnection.mockResolvedValueOnce({ ok: true, externalAccountId: "42424242" });
+
+    const res = await request(app).get(`/api/integrations/github/install-callback?installation_id=555&state=${encodeURIComponent(state)}`);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(`http://localhost:5173/settings/integrations/${connectionId}`);
+
+    const updated = await query(`SELECT * FROM integration_connections WHERE id = $1`, [connectionId]);
+    expect(updated.rows[0].status).toBe("connected");
+    expect(updated.rows[0].config).toEqual({ installationId: 555, org: "acme-corp" });
+    expect(updated.rows[0].external_account_id).toBe("42424242");
+  });
+
+  test("redirects with an error and does not connect when the state token is invalid", async () => {
+    const res = await request(app).get(`/api/integrations/github/install-callback?installation_id=555&state=garbage`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain("githubError=");
+  });
+
+  test("marks the connection as error when testConnection fails after install", async () => {
+    const company = await createCompany({ domain: "githubinstall2.com" });
+    const connResult = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'github', 'Prod GitHub') RETURNING *`,
+      [company.id]
+    );
+    const connectionId = connResult.rows[0].id;
+    const state = signGithubAppState({ connectionId, companyId: company.id });
+    await storeCredential({ connectionId, companyId: company.id, authType: "oauth2", secret: { appId: "987654", privateKey: "fake-pem" } });
+
+    CONNECTOR_FIXTURES.github.testConnection.mockRejectedValueOnce(new Error("installation has no repositories"));
+
+    const res = await request(app).get(`/api/integrations/github/install-callback?installation_id=555&state=${encodeURIComponent(state)}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain("githubError=installation%20has%20no%20repositories");
+
+    const updated = await query(`SELECT status FROM integration_connections WHERE id = $1`, [connectionId]);
+    expect(updated.rows[0].status).toBe("error");
   });
 });
 
