@@ -192,6 +192,39 @@ test.describe("Connection detail", () => {
     expect(body.secret).toEqual({ clientId: "44444444-4444-4444-4444-444444444444", clientSecret: "new-azure-secret" });
   });
 
+  test("shows an Install the App prompt when redirected back from GitHub with an install URL", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    const GITHUB_CATALOG_ENTRY = { id: 3, key: "github", name: "GitHub", category: "devops", authType: "oauth2", status: "active" };
+    const GITHUB_CONNECTION = { id: 30, integrationKey: "github", name: "Prod GitHub", status: "pending", lastRunAt: null, lastRunStatus: null };
+    await page.route("**/api/integrations/catalog", r => r.fulfill({ json: [...CATALOG, GITHUB_CATALOG_ENTRY] }));
+    await page.route("**/api/integrations/30", r => r.fulfill({ json: GITHUB_CONNECTION }));
+    await page.route("**/api/integrations/30/runs*", r => r.fulfill({ json: [] }));
+
+    await page.goto("/settings/integrations/30?githubInstallUrl=" + encodeURIComponent("https://github.com/apps/prism-acme/installations/new?state=abc123"));
+
+    await expect(page.getByText("Prod GitHub")).toBeVisible({ timeout: 10_000 });
+    const installLink = page.getByRole("link", { name: "Install the App" });
+    await expect(installLink).toBeVisible();
+    await expect(installLink).toHaveAttribute("href", "https://github.com/apps/prism-acme/installations/new?state=abc123");
+
+    // The query param must not survive a client-side navigation replay.
+    await expect(page).not.toHaveURL(/githubInstallUrl/);
+  });
+
+  test("shows a githubError banner when redirected back from GitHub with an error", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    const GITHUB_CATALOG_ENTRY = { id: 3, key: "github", name: "GitHub", category: "devops", authType: "oauth2", status: "active" };
+    const GITHUB_CONNECTION = { id: 30, integrationKey: "github", name: "Prod GitHub", status: "error", lastRunAt: null, lastRunStatus: null };
+    await page.route("**/api/integrations/catalog", r => r.fulfill({ json: [...CATALOG, GITHUB_CATALOG_ENTRY] }));
+    await page.route("**/api/integrations/30", r => r.fulfill({ json: GITHUB_CONNECTION }));
+    await page.route("**/api/integrations/30/runs*", r => r.fulfill({ json: [] }));
+
+    await page.goto("/settings/integrations/30?githubError=" + encodeURIComponent("GitHub returned 404 exchanging the manifest code"));
+
+    await expect(page.getByText("GitHub returned 404 exchanging the manifest code")).toBeVisible({ timeout: 10_000 });
+    await expect(page).not.toHaveURL(/githubError/);
+  });
+
   test("AUDITOR can view connection detail but not Run Now/Rotate/Revoke", async ({ page }) => {
     await setAuth(page, "AUDITOR");
     await page.route("**/api/integrations/catalog", r => r.fulfill({ json: CATALOG }));

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import CredentialFields from "../components/CredentialFields.jsx";
 import SeverityPill from "../components/SeverityPill.jsx";
@@ -96,6 +96,7 @@ function RotateCredentialModal({ connectionId, token, connectionAuthType, provid
 export default function ConnectionDetail({ token, user, company, onLogout, theme, onThemeToggle }) {
   const navigate = useNavigate();
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const isLeadOrAdmin = user?.role === "ADMIN" || user?.role === "LEAD";
   const [connection, setConnection] = useState(null);
   const [runs, setRuns] = useState([]);
@@ -105,6 +106,7 @@ export default function ConnectionDetail({ token, user, company, onLogout, theme
   const [error, setError] = useState("");
   const [running, setRunning] = useState(false);
   const [showRotate, setShowRotate] = useState(false);
+  const [githubInstallUrl, setGithubInstallUrl] = useState(null);
 
   const load = useCallback(async () => {
     const [connData, runsData, catalogData, findingsData] = await Promise.all([
@@ -123,6 +125,17 @@ export default function ConnectionDetail({ token, user, company, onLogout, theme
     setLoading(true);
     load().catch(e => setError(e.message)).finally(() => setLoading(false));
   }, [load]);
+
+  useEffect(() => {
+    const installUrl = searchParams.get("githubInstallUrl");
+    const githubError = searchParams.get("githubError");
+    if (installUrl) setGithubInstallUrl(installUrl);
+    if (githubError) setError(githubError);
+    if (installUrl || githubError) navigate(`/settings/integrations/${id}`, { replace: true });
+    // Only ever meant to run once, reading whatever GitHub's redirect put on
+    // the URL at load time — not on every searchParams identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleRunNow = async () => {
     setError("");
@@ -203,6 +216,12 @@ export default function ConnectionDetail({ token, user, company, onLogout, theme
         {error && <p className="error-text">{error}</p>}
 
         <section className="admin-section">
+          {githubInstallUrl && (
+            <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+              <p style={{ fontSize: 13, margin: "0 0 8px" }}>The GitHub App was created. Install it on your organization to finish connecting.</p>
+              <a href={githubInstallUrl} className="btn btn-primary">Install the App</a>
+            </div>
+          )}
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase" }}>Status</div>
