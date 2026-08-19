@@ -1,8 +1,9 @@
-import { describe, test, expect, vi } from "vitest";
+import { describe, test, expect, vi, afterEach } from "vitest";
 import request from "supertest";
 import { createCompany, createUser } from "../setup/helpers.js";
 import { query } from "../../db/index.js";
-import { verifyGithubAppState } from "../../utils/githubAppState.js";
+import { signGithubAppState, verifyGithubAppState } from "../../utils/githubAppState.js";
+import { getActiveCredential } from "../../db/integrationCredentials.js";
 
 vi.mock("../../connectors/registry.js", () => ({
   getConnector: vi.fn(() => ({
@@ -23,6 +24,8 @@ vi.mock("@aws-sdk/client-sts", () => ({
   GetCallerIdentityCommand: vi.fn(),
   AssumeRoleCommand: vi.fn(),
 }));
+
+const originalFetch = global.fetch;
 
 const { default: app } = await import("../../app.js");
 
@@ -136,6 +139,66 @@ describe("GET /api/integrations/:id/github/setup-info", () => {
 
     const res = await request(app).get(`/api/integrations/${connResult.rows[0].id}/github/setup-info`).set("Authorization", `Bearer ${contributor.token}`);
     expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/integrations/github/manifest-callback", () => {
+  afterEach(() => { global.fetch = originalFetch; });
+
+  test("exchanges the manifest code, stores the App credential, and redirects with an install link", async () => {
+    const company = await createCompany({ domain: "githubcallback1.com" });
+    const connResult = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'github', 'Prod GitHub') RETURNING *`,
+      [company.id]
+    );
+    const connectionId = connResult.rows[0].id;
+    const state = signGithubAppState({ connectionId, companyId: company.id });
+
+    global.fetch = vi.fn(async (url) => {
+      expect(url).toBe("https://api.github.com/app-manifests/temp-code-123/conversions");
+      return {
+        ok: true,
+        json: async () => ({ id: 987654, pem: "-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----", client_id: "Iv1.abc", client_secret: "shh", webhook_secret: "wh", slug: "prism-acme", html_url: "https://github.com/apps/prism-acme" }),
+      };
+    });
+
+    const res = await request(app).get(`/api/integrations/github/manifest-callback?code=temp-code-123&state=${encodeURIComponent(state)}`);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain(`/settings/integrations/${connectionId}`);
+    expect(res.headers.location).toContain("githubInstallUrl=");
+    expect(decodeURIComponent(res.headers.location)).toContain("https://github.com/apps/prism-acme/installations/new");
+
+    const credential = await getActiveCredential(connectionId, company.id);
+    expect(credential.authType).toBe("oauth2");
+    expect(credential.secret.appId).toBe("987654");
+    expect(credential.secret.privateKey).toContain("BEGIN RSA PRIVATE KEY");
+  });
+
+  test("redirects with an error and touches no data when the state token is invalid", async () => {
+    const res = await request(app).get(`/api/integrations/github/manifest-callback?code=whatever&state=not-a-real-token`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain("githubError=");
+  });
+
+  test("redirects with an error when GitHub's code exchange fails", async () => {
+    const company = await createCompany({ domain: "githubcallback2.com" });
+    const connResult = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'github', 'Prod GitHub') RETURNING *`,
+      [company.id]
+    );
+    const connectionId = connResult.rows[0].id;
+    const state = signGithubAppState({ connectionId, companyId: company.id });
+
+    global.fetch = vi.fn(async () => ({ ok: false, status: 404 }));
+
+    const res = await request(app).get(`/api/integrations/github/manifest-callback?code=expired-code&state=${encodeURIComponent(state)}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain(`/settings/integrations/${connectionId}`);
+    expect(res.headers.location).toContain("githubError=");
+
+    const credential = await getActiveCredential(connectionId, company.id);
+    expect(credential).toBeNull();
   });
 });
 

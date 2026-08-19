@@ -9,7 +9,7 @@ import { sanitiseFields } from "../utils/sanitise.js";
 import { storeCredential, revokeCredentials } from "../db/integrationCredentials.js";
 import { getConnector } from "../connectors/registry.js";
 import { runCollection } from "../utils/collectionRunner.js";
-import { signGithubAppState } from "../utils/githubAppState.js";
+import { signGithubAppState, verifyGithubAppState } from "../utils/githubAppState.js";
 
 const router = Router();
 
@@ -123,6 +123,60 @@ router.get("/:id/github/setup-info", authenticate, requireReadOnly(["ADMIN", "LE
   const state = signGithubAppState({ connectionId, companyId: req.user.companyId });
   const manifest = buildGithubAppManifest({ companyName: req.user.company?.name || "Prism" });
   res.json({ manifest, state });
+}));
+
+// Hit directly by the customer's browser via GitHub's redirect after they
+// create the App from the manifest — there is no Prism session at this
+// point, so authorization is entirely the signed `state` token, verified
+// before any database access.
+router.get("/github/manifest-callback", asyncHandler(async (req, res) => {
+  const { code, state } = req.query;
+  const webUrl = (process.env.WEB_URL || "http://localhost:5173").replace(/\/$/, "");
+
+  let stateData;
+  try {
+    stateData = verifyGithubAppState(state);
+  } catch (err) {
+    return res.redirect(`${webUrl}/settings/integrations?githubError=${encodeURIComponent(err.message)}`);
+  }
+  const { connectionId, companyId } = stateData;
+
+  const connResult = await query(
+    `SELECT * FROM integration_connections WHERE id = $1 AND company_id = $2 AND integration_key = 'github'`,
+    [connectionId, companyId]
+  );
+  if (!mapRow(connResult)) {
+    return res.redirect(`${webUrl}/settings/integrations?githubError=${encodeURIComponent("Connection not found")}`);
+  }
+
+  let appData;
+  try {
+    const response = await fetch(`https://api.github.com/app-manifests/${code}/conversions`, {
+      method: "POST",
+      headers: { Accept: "application/vnd.github+json" },
+    });
+    if (!response.ok) throw new Error(`GitHub returned ${response.status} exchanging the manifest code`);
+    appData = await response.json();
+  } catch (err) {
+    return res.redirect(`${webUrl}/settings/integrations/${connectionId}?githubError=${encodeURIComponent(err.message)}`);
+  }
+
+  await revokeCredentials(connectionId, companyId);
+  await storeCredential({
+    connectionId, companyId, authType: "oauth2",
+    secret: { appId: String(appData.id), privateKey: appData.pem },
+  });
+  // No authenticated user exists on a GitHub-initiated redirect — userId: null
+  // is a legitimate value here, same as other automated, non-user-attributed
+  // audit events already written by this codebase (e.g. evidence auto-collection).
+  await writeAuditLog({ userId: null, companyId, action: "CREDENTIAL_STORED", resource: "integration_credentials", detail: { connectionId, authType: "oauth2", via: "github_manifest_flow" } });
+
+  // `slug`/`html_url` are part of GitHub's App resource shape by convention
+  // (not independently confirmed via context7 in this planning pass, see the
+  // plan header's Spec section) — fall back to constructing the install URL
+  // from `slug` alone if `html_url` is ever absent.
+  const installUrl = appData.html_url ? `${appData.html_url}/installations/new` : `https://github.com/apps/${appData.slug}/installations/new`;
+  res.redirect(`${webUrl}/settings/integrations/${connectionId}?githubInstallUrl=${encodeURIComponent(`${installUrl}?state=${state}`)}`);
 }));
 
 router.get("/:id", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
