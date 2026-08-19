@@ -2,6 +2,7 @@ import { describe, test, expect, vi } from "vitest";
 import request from "supertest";
 import { createCompany, createUser } from "../setup/helpers.js";
 import { query } from "../../db/index.js";
+import { verifyGithubAppState } from "../../utils/githubAppState.js";
 
 vi.mock("../../connectors/registry.js", () => ({
   getConnector: vi.fn(() => ({
@@ -82,6 +83,58 @@ describe("GET /api/integrations/azure/setup-info", () => {
     const contributor = await createUser(company.id, "CONTRIBUTOR");
 
     const res = await request(app).get("/api/integrations/azure/setup-info").set("Authorization", `Bearer ${contributor.token}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/integrations/:id/github/setup-info", () => {
+  test("returns a manifest scoped to this connection and a signed state token", async () => {
+    const company = await createCompany({ domain: "githubsetup1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const connResult = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'github', 'Prod GitHub') RETURNING *`,
+      [company.id]
+    );
+    const connectionId = connResult.rows[0].id;
+
+    const res = await request(app).get(`/api/integrations/${connectionId}/github/setup-info`).set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.manifest.public).toBe(false);
+    expect(res.body.manifest.default_permissions).toEqual({
+      organization_administration: "read",
+      administration: "read",
+      metadata: "read",
+    });
+    expect(res.body.manifest.hook_attributes.active).toBe(false);
+    expect(typeof res.body.state).toBe("string");
+
+    const decoded = verifyGithubAppState(res.body.state);
+    expect(decoded).toEqual({ connectionId, companyId: company.id });
+  });
+
+  test("404s for a connection belonging to a different company", async () => {
+    const companyA = await createCompany({ domain: "githubsetup2.com" });
+    const companyB = await createCompany({ domain: "githubsetup3.com" });
+    const adminB = await createUser(companyB.id, "ADMIN");
+    const connResult = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'github', 'Not yours') RETURNING *`,
+      [companyA.id]
+    );
+
+    const res = await request(app).get(`/api/integrations/${connResult.rows[0].id}/github/setup-info`).set("Authorization", `Bearer ${adminB.token}`);
+    expect(res.status).toBe(404);
+  });
+
+  test("is not accessible to CONTRIBUTOR", async () => {
+    const company = await createCompany({ domain: "githubsetup4.com" });
+    const contributor = await createUser(company.id, "CONTRIBUTOR");
+    const connResult = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'github', 'X') RETURNING *`,
+      [company.id]
+    );
+
+    const res = await request(app).get(`/api/integrations/${connResult.rows[0].id}/github/setup-info`).set("Authorization", `Bearer ${contributor.token}`);
     expect(res.status).toBe(403);
   });
 });

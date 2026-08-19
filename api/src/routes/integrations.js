@@ -9,6 +9,7 @@ import { sanitiseFields } from "../utils/sanitise.js";
 import { storeCredential, revokeCredentials } from "../db/integrationCredentials.js";
 import { getConnector } from "../connectors/registry.js";
 import { runCollection } from "../utils/collectionRunner.js";
+import { signGithubAppState } from "../utils/githubAppState.js";
 
 const router = Router();
 
@@ -54,6 +55,28 @@ const AZURE_READ_ONLY_ROLE_DEFINITION = {
   AssignableScopes: ["/subscriptions/<subscription-id>"],
 };
 
+// Kept in lockstep with exactly what connectors/github/index.js's testConnection
+// and connectors/github/tests/{access,security}.js's checks actually call, same
+// "policy in code = policy in docs" discipline as AWS_READ_ONLY_POLICY /
+// AZURE_READ_ONLY_ROLE_DEFINITION. No webhook events are consumed in Phase 1,
+// so hook_attributes.active is explicitly false rather than standing up a
+// receiver Prism doesn't use yet.
+function buildGithubAppManifest({ companyName }) {
+  const baseUrl = process.env.API_URL || "http://localhost:4000";
+  return {
+    name: `Prism Evidence Collection - ${companyName}`.slice(0, 34),
+    url: baseUrl,
+    redirect_url: `${baseUrl}/api/integrations/github/manifest-callback`,
+    hook_attributes: { url: baseUrl, active: false },
+    public: false,
+    default_permissions: {
+      organization_administration: "read",
+      administration: "read",
+      metadata: "read",
+    },
+  };
+}
+
 router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT * FROM integration_connections WHERE company_id = $1 ORDER BY created_at DESC`,
@@ -86,6 +109,20 @@ router.get("/aws/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), 
 
 router.get("/azure/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   res.json({ roleDefinition: AZURE_READ_ONLY_ROLE_DEFINITION });
+}));
+
+router.get("/:id/github/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  const connectionId = parseInt(req.params.id);
+  const result = await query(
+    `SELECT * FROM integration_connections WHERE id = $1 AND company_id = $2 AND integration_key = 'github'`,
+    [connectionId, req.user.companyId]
+  );
+  const connection = mapRow(result);
+  if (!connection) return res.status(404).json({ error: "Connection not found" });
+
+  const state = signGithubAppState({ connectionId, companyId: req.user.companyId });
+  const manifest = buildGithubAppManifest({ companyName: req.user.company?.name || "Prism" });
+  res.json({ manifest, state });
 }));
 
 router.get("/:id", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
