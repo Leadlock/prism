@@ -652,6 +652,24 @@ INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
   ('azure.network.nsg_no_open_ingress', 'A.13.1.1')
 ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 
+INSERT INTO integrations (key, name, category, auth_type, status) VALUES
+  ('github', 'GitHub', 'devops', 'oauth2', 'active')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('github', 'github.org.two_factor_required', 'Organization requires two-factor authentication', 'Checks the GitHub organization enforces 2FA for all members, billing managers, and outside collaborators.', 'critical', 'Enable Require two-factor authentication under Organization settings > Authentication security.'),
+  ('github', 'github.repo.branch_protection_required_reviews', 'Default branch requires pull request review before merging', 'Checks each repository default branch has a protection rule requiring at least one approving review.', 'high', 'Add a branch protection rule on the default branch requiring at least 1 approving review before merge.'),
+  ('github', 'github.repo.vulnerability_alerts_enabled', 'Dependabot vulnerability alerts are enabled', 'Checks Dependabot alerts are enabled for each repository.', 'high', 'Enable Dependabot alerts under Repository settings > Code security and analysis.'),
+  ('github', 'github.repo.secret_scanning_enabled', 'Secret scanning is enabled', 'Checks secret scanning is enabled for each repository where GitHub Advanced Security is available.', 'medium', 'Enable secret scanning under Repository settings > Code security and analysis.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
+  ('github.org.two_factor_required', 'A.9.4.2'),
+  ('github.repo.branch_protection_required_reviews', 'A.14.2.2'),
+  ('github.repo.vulnerability_alerts_enabled', 'A.12.6.1'),
+  ('github.repo.secret_scanning_enabled', 'A.9.4.3')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
 -- ===== Idempotent upgrade guards (existing databases) =====
 -- These are no-ops on a fresh install; safe to run repeatedly on upgrades.
 

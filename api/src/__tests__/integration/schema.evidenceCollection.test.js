@@ -42,6 +42,29 @@ describe("automated evidence collection schema", () => {
     ]);
   });
 
+  test("seeds the github integration with oauth2 auth and its 4 Phase-1 automated tests", async () => {
+    const integrationResult = await query(`SELECT * FROM integrations WHERE key = 'github'`);
+    expect(integrationResult.rows.length).toBe(1);
+    expect(integrationResult.rows[0].auth_type).toBe("oauth2");
+    expect(integrationResult.rows[0].status).toBe("active");
+
+    const testsResult = await query(`SELECT test_key, severity_default FROM automated_tests WHERE integration_key = 'github' ORDER BY test_key`);
+    expect(testsResult.rows.map(r => r.test_key)).toEqual([
+      "github.org.two_factor_required",
+      "github.repo.branch_protection_required_reviews",
+      "github.repo.secret_scanning_enabled",
+      "github.repo.vulnerability_alerts_enabled",
+    ]);
+
+    const mappingsResult = await query(`SELECT test_key, iso_reference FROM test_control_mappings WHERE test_key LIKE 'github.%' ORDER BY test_key`);
+    expect(mappingsResult.rows).toEqual([
+      { test_key: "github.org.two_factor_required", iso_reference: "A.9.4.2" },
+      { test_key: "github.repo.branch_protection_required_reviews", iso_reference: "A.14.2.2" },
+      { test_key: "github.repo.secret_scanning_enabled", iso_reference: "A.9.4.3" },
+      { test_key: "github.repo.vulnerability_alerts_enabled", iso_reference: "A.12.6.1" },
+    ]);
+  });
+
   test("integration_connections defaults to pending status", async () => {
     const company = await createCompany();
     const result = await query(
