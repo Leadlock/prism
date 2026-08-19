@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaAws, FaMicrosoft } from "react-icons/fa";
+import { FaAws, FaMicrosoft, FaGithub } from "react-icons/fa";
 import { apiFetch } from "../api/client.js";
 import CredentialFields from "../components/CredentialFields.jsx";
 
@@ -14,6 +14,7 @@ const STATUS_COLOR = {
 const PROVIDER_ICON = {
   aws: { Icon: FaAws, color: "#FF9900" },
   azure: { Icon: FaMicrosoft, color: "#0078D4" },
+  github: { Icon: FaGithub, color: "#181717" },
 };
 
 function StatusPill({ status }) {

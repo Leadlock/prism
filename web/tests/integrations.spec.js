@@ -107,6 +107,19 @@ test.describe("Integrations settings", () => {
     await expect(page.locator('[title="Microsoft Azure"] svg')).toBeVisible();
   });
 
+  test("shows the GitHub catalog entry with its own icon", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    await page.route("**/api/integrations/catalog", r => r.fulfill({
+      json: [...CATALOG, { id: 3, key: "github", name: "GitHub", category: "devops", authType: "oauth2", status: "active" }],
+    }));
+    await page.route("**/api/integrations", r => r.fulfill({ json: CONNECTIONS }));
+
+    await page.goto("/settings/integrations");
+
+    await expect(page.getByTitle("Amazon Web Services")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[title="GitHub"] svg')).toBeVisible();
+  });
+
   test("Access Keys toggle is reachable and submits the correct payload", async ({ page }) => {
     await setAuth(page, "ADMIN");
     await page.route("**/api/integrations/catalog", r => r.fulfill({ json: CATALOG }));
