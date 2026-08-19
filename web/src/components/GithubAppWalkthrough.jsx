@@ -19,6 +19,9 @@ export default function GithubAppWalkthrough({ connectionId, token }) {
         <li>Confirm creating the App. GitHub sends you back here automatically.</li>
         <li>Click "Install the App" and choose which repositories Prism can read.</li>
       </ol>
+      <p style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px" }}>
+        You'll need to be an <strong>Owner</strong> of the GitHub organization to complete the install step — repo admin access or the "GitHub App manager" role isn't enough. If you're not an owner, ask one to run through this instead.
+      </p>
 
       {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
 

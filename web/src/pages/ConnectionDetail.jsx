@@ -249,7 +249,7 @@ export default function ConnectionDetail({ token, user, company, onLogout, theme
         <section className="admin-section">
           {githubInstallUrl && (
             <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
-              <p style={{ fontSize: 13, margin: "0 0 8px" }}>The GitHub App was created. Install it on your organization to finish connecting.</p>
+              <p style={{ fontSize: 13, margin: "0 0 8px" }}>The GitHub App was created. Install it on your organization to finish connecting. Only an organization Owner can complete this step.</p>
               <a href={githubInstallUrl} className="btn btn-primary">Install the App</a>
             </div>
           )}

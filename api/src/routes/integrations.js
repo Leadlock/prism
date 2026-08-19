@@ -147,7 +147,7 @@ router.get("/:id/github/setup-info", authenticate, requireRole(["ADMIN", "LEAD"]
 // before any database access.
 router.get("/github/manifest-callback", asyncHandler(async (req, res) => {
   const { code, state } = req.query;
-  const webUrl = (process.env.WEB_URL || "http://localhost:5173").replace(/\/$/, "");
+  const webUrl = (process.env.WEB_URL || "https://prism.askthechamp.com").replace(/\/$/, "");
 
   let stateData;
   try {
@@ -209,7 +209,7 @@ router.get("/github/manifest-callback", asyncHandler(async (req, res) => {
 router.get("/github/install-callback", asyncHandler(async (req, res) => {
   const installationId = parseInt(req.query.installation_id);
   const { state } = req.query;
-  const webUrl = (process.env.WEB_URL || "http://localhost:5173").replace(/\/$/, "");
+  const webUrl = (process.env.WEB_URL || "https://prism.askthechamp.com").replace(/\/$/, "");
 
   let stateData;
   try {
