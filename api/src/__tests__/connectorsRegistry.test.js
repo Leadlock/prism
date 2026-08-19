@@ -41,6 +41,24 @@ describe("connector registry", () => {
     ]);
   });
 
+  test("resolves the github connector", () => {
+    const connector = getConnector("github");
+    expect(connector.key).toBe("github");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("github connector exposes exactly the 4 Phase-1 tests", () => {
+    const tests = listConnectorTests("github");
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "github.org.two_factor_required",
+      "github.repo.branch_protection_required_reviews",
+      "github.repo.secret_scanning_enabled",
+      "github.repo.vulnerability_alerts_enabled",
+    ]);
+  });
+
   test("throws for an unknown integration", () => {
     expect(() => getConnector("gcp")).toThrow("Unknown integration: gcp");
   });
