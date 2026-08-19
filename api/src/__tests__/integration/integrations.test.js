@@ -131,6 +131,7 @@ describe("GET /api/integrations/:id/github/setup-info", () => {
       metadata: "read",
     });
     expect(res.body.manifest.hook_attributes.active).toBe(false);
+    expect(res.body.manifest.setup_url).toBe(`http://localhost:4000/api/integrations/github/install-callback`);
     expect(typeof res.body.state).toBe("string");
 
     const decoded = verifyGithubAppState(res.body.state);
@@ -159,6 +160,28 @@ describe("GET /api/integrations/:id/github/setup-info", () => {
     );
 
     const res = await request(app).get(`/api/integrations/${connResult.rows[0].id}/github/setup-info`).set("Authorization", `Bearer ${contributor.token}`);
+    expect(res.status).toBe(403);
+  });
+
+  // This route mints the `state` token that is the sole authorization for
+  // manifest-callback (which revokes and replaces credentials) and
+  // install-callback (which repoints config and connects) — an otherwise
+  // read-only AUDITOR must not be able to mint that capability.
+  test("is not accessible to AUDITOR", async () => {
+    const company = await createCompany({ domain: "githubsetup5.com" });
+    const auditor = await createUser(company.id, "AUDITOR");
+    // An active, non-expired profile so the 403 below comes from this route's
+    // role check, not from auth.js's separate "no auditor profile" guard.
+    await query(
+      `INSERT INTO auditor_profiles (user_id, company_id, active) VALUES ($1, $2, TRUE)`,
+      [auditor.id, company.id]
+    );
+    const connResult = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'github', 'X') RETURNING *`,
+      [company.id]
+    );
+
+    const res = await request(app).get(`/api/integrations/${connResult.rows[0].id}/github/setup-info`).set("Authorization", `Bearer ${auditor.token}`);
     expect(res.status).toBe(403);
   });
 });

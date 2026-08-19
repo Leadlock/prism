@@ -23,6 +23,16 @@ describe("checkTwoFactorRequired", () => {
     const results = await checkTwoFactorRequired(octokit, "acme");
     expect(results[0].status).toBe("fail");
   });
+
+  test("returns not_applicable when the field is entirely absent, instead of treating it as fail", async () => {
+    const octokit = { rest: { orgs: { get: async () => ({ data: { id: 1 } }) } } };
+    const results = await checkTwoFactorRequired(octokit, "acme");
+    expect(results).toEqual([{
+      resourceId: "acme", status: "not_applicable",
+      message: "acme's two-factor enforcement status is not visible with this App's current permissions",
+      evidencePayload: { org: "acme" },
+    }]);
+  });
 });
 
 describe("checkBranchProtectionRequiredReviews", () => {

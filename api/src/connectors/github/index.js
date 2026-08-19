@@ -42,13 +42,17 @@ export async function testConnection({ authType, config, secret }) {
 
 export async function runTests({ authType, config, secret }) {
   const octokit = await resolveGithubCredentials({ authType, config, secret });
-  const clients = await buildClients(octokit, config.org);
-  const runResults = [];
-  for (const test of tests) {
-    const results = await test.run(clients);
-    for (const result of results) {
-      runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, ...result });
+  try {
+    const clients = await buildClients(octokit, config.org);
+    const runResults = [];
+    for (const test of tests) {
+      const results = await test.run(clients);
+      for (const result of results) {
+        runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, ...result });
+      }
     }
+    return runResults;
+  } catch (err) {
+    throw new Error(describeGithubError(err));
   }
-  return runResults;
 }

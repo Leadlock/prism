@@ -69,6 +69,7 @@ function buildGithubAppManifest({ companyName }) {
     name: `Prism Evidence Collection - ${companyName}`.slice(0, 34),
     url: baseUrl,
     redirect_url: `${baseUrl}/api/integrations/github/manifest-callback`,
+    setup_url: `${baseUrl}/api/integrations/github/install-callback`,
     hook_attributes: { url: baseUrl, active: false },
     public: false,
     default_permissions: {
@@ -113,7 +114,7 @@ router.get("/azure/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"])
   res.json({ roleDefinition: AZURE_READ_ONLY_ROLE_DEFINITION });
 }));
 
-router.get("/:id/github/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+router.get("/:id/github/setup-info", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   const connectionId = parseInt(req.params.id);
   const result = await query(
     `SELECT * FROM integration_connections WHERE id = $1 AND company_id = $2 AND integration_key = 'github'`,
@@ -153,7 +154,7 @@ router.get("/github/manifest-callback", asyncHandler(async (req, res) => {
 
   let appData;
   try {
-    const response = await fetch(`https://api.github.com/app-manifests/${code}/conversions`, {
+    const response = await fetch(`https://api.github.com/app-manifests/${encodeURIComponent(code)}/conversions`, {
       method: "POST",
       headers: { Accept: "application/vnd.github+json" },
     });
@@ -177,8 +178,14 @@ router.get("/github/manifest-callback", asyncHandler(async (req, res) => {
   // (not independently confirmed via context7 in this planning pass, see the
   // plan header's Spec section) — fall back to constructing the install URL
   // from `slug` alone if `html_url` is ever absent.
+  // Re-sign a fresh state token rather than reusing the one verified above —
+  // its 15-minute clock started at setup-info time and has to survive reading
+  // setup-info, creating the App on github.com, this manifest-conversion
+  // redirect, AND the admin clicking through to install. Re-minting here gives
+  // the install leg its own full window instead of inheriting whatever's left.
+  const installState = signGithubAppState({ connectionId, companyId });
   const installUrl = appData.html_url ? `${appData.html_url}/installations/new` : `https://github.com/apps/${appData.slug}/installations/new`;
-  res.redirect(`${webUrl}/settings/integrations/${connectionId}?githubInstallUrl=${encodeURIComponent(`${installUrl}?state=${state}`)}`);
+  res.redirect(`${webUrl}/settings/integrations/${connectionId}?githubInstallUrl=${encodeURIComponent(`${installUrl}?state=${installState}`)}`);
 }));
 
 // Also unauthenticated, for the same reason as manifest-callback above —

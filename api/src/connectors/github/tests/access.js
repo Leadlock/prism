@@ -1,5 +1,21 @@
 export async function checkTwoFactorRequired(octokit, org) {
   const { data: orgData } = await octokit.rest.orgs.get({ org });
+
+  // An absent field (undefined) means Prism's App permissions can't observe
+  // this setting — not that the org failed to enforce it. Collapsing that
+  // into "fail" would create a findings row asserting the org doesn't
+  // enforce 2FA when Prism simply couldn't tell, on a critical-severity
+  // check. Only an explicit true/false is a real pass/fail, same treatment
+  // as checkSecretScanningEnabled's "entitlement not visible" case.
+  if (orgData.two_factor_requirement_enabled === undefined) {
+    return [{
+      resourceId: org,
+      status: "not_applicable",
+      message: `${org}'s two-factor enforcement status is not visible with this App's current permissions`,
+      evidencePayload: { org },
+    }];
+  }
+
   const enabled = orgData.two_factor_requirement_enabled === true;
   return [{
     resourceId: org,
@@ -7,7 +23,7 @@ export async function checkTwoFactorRequired(octokit, org) {
     message: enabled
       ? `${org} requires two-factor authentication for all members`
       : `${org} does not require two-factor authentication for all members`,
-    evidencePayload: { org, twoFactorRequirementEnabled: orgData.two_factor_requirement_enabled ?? null },
+    evidencePayload: { org, twoFactorRequirementEnabled: orgData.two_factor_requirement_enabled },
   }];
 }
 
