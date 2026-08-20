@@ -9,17 +9,26 @@ describe("connector registry", () => {
     expect(typeof connector.runTests).toBe("function");
   });
 
-  test("aws connector exposes exactly the 7 tier-1 tests", () => {
+  test("aws connector exposes exactly the 16 tier-1 tests", () => {
     const tests = listConnectorTests("aws");
     const keys = tests.map((t) => t.key).sort();
     expect(keys).toEqual([
+      "aws.dynamodb.encryption_uses_cmk",
+      "aws.dynamodb.point_in_time_recovery_enabled",
       "aws.iam.access_key_age",
       "aws.iam.mfa_enforced",
       "aws.iam.password_policy",
+      "aws.kms.key_rotation_enabled",
+      "aws.kms.no_wildcard_key_policy",
+      "aws.lambda.function_url_not_public",
+      "aws.lambda.no_wildcard_resource_policy",
       "aws.logging.cloudtrail_enabled",
       "aws.logging.config_enabled",
       "aws.network.s3_public_access_blocked",
       "aws.network.security_groups_no_open_ingress",
+      "aws.rds.automated_backups_enabled",
+      "aws.rds.publicly_accessible",
+      "aws.rds.storage_encrypted",
     ]);
   });
 

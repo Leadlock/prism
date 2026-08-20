@@ -25,6 +25,22 @@ vi.mock("@aws-sdk/client-ec2", async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, EC2Client: vi.fn(() => ({ send: vi.fn(async () => ({})) })) };
 });
+vi.mock("@aws-sdk/client-rds", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, RDSClient: vi.fn(() => ({ send: vi.fn(async () => ({ DBInstances: [] })) })) };
+});
+vi.mock("@aws-sdk/client-lambda", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, LambdaClient: vi.fn(() => ({ send: vi.fn(async () => ({ Functions: [] })) })) };
+});
+vi.mock("@aws-sdk/client-dynamodb", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, DynamoDBClient: vi.fn(() => ({ send: vi.fn(async () => ({ TableNames: [] })) })) };
+});
+vi.mock("@aws-sdk/client-kms", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, KMSClient: vi.fn(() => ({ send: vi.fn(async () => ({ Keys: [] })) })) };
+});
 
 const { runTests, tests } = await import("../connectors/aws/index.js");
 
