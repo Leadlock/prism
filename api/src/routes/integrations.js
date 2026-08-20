@@ -70,6 +70,36 @@ const AZURE_READ_ONLY_ROLE_DEFINITION = {
   },
 };
 
+// Kept in lockstep with exactly what connectors/purview's checks actually call
+// (tests/datamap.js needs Data Reader for entity/classification/search reads
+// and Data Source Administrator for /datasources scan-history reads; tests/audit.js
+// needs the three Office 365 Management API application permissions below).
+// Both Purview roles are assigned in the Purview governance portal's collection
+// Role assignments tab — this is a DIFFERENT system from Azure IAM/RBAC, the most
+// common point of confusion for customers who already set up the Azure connector.
+const PURVIEW_REQUIRED_PERMISSIONS = {
+  purviewRbacRoles: [
+    {
+      roleName: "Data Reader",
+      scope: "Root collection (recommended) or a narrower collection — API calls are scoped to whatever collection the role is assigned on",
+      note: "Grants read access to catalog entities, classifications, and search — used by the Data Map classification/sensitivity-label checks.",
+    },
+    {
+      roleName: "Data Source Administrator",
+      scope: "Root collection (recommended) or a narrower collection",
+      note: "Grants read access to registered data sources and scan run history — used by the scan-recency and scan-schedule checks.",
+    },
+  ],
+  office365ManagementApiPermissions: {
+    type: "Application permissions (not Delegated) — require tenant admin consent",
+    permissions: ["ActivityFeed.Read", "ActivityFeed.ReadDlp", "ServiceHealth.Read"],
+    note: "Granted under the app registration's API permissions > Office 365 Management APIs, then 'Grant admin consent'. Requires a Global Administrator or Privileged Role Administrator to consent.",
+  },
+  prerequisites: [
+    "Unified audit logging must be turned on in Microsoft Purview > Audit before the audit subscriptions will return data (Purview portal > Audit > 'Start recording user and admin activity'; can take up to 60 minutes to take effect).",
+  ],
+};
+
 // Kept in lockstep with exactly what connectors/github/index.js's testConnection
 // and connectors/github/tests/{access,security}.js's checks actually call, same
 // "policy in code = policy in docs" discipline as AWS_READ_ONLY_POLICY /
@@ -125,6 +155,10 @@ router.get("/aws/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), 
 
 router.get("/azure/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   res.json({ roleDefinition: AZURE_READ_ONLY_ROLE_DEFINITION });
+}));
+
+router.get("/purview/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({ permissions: PURVIEW_REQUIRED_PERMISSIONS });
 }));
 
 router.get("/:id/github/setup-info", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
