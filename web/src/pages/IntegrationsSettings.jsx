@@ -16,6 +16,7 @@ const PROVIDER_ICON = {
   aws: { Icon: FaAws, color: "#FF9900" },
   azure: { Icon: FaMicrosoft, color: "#0078D4" },
   github: { Icon: FaGithub, color: "#181717" },
+  purview: { Icon: FaMicrosoft, color: "#8661C5" },
 };
 
 function StatusPill({ status }) {
@@ -154,6 +155,60 @@ function AzureServicePrincipalWalkthrough({ token, tenantId, setTenantId, subscr
   );
 }
 
+function PurviewWalkthrough({ token, tenantId, setTenantId, purviewAccountName, setPurviewAccountName }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/purview/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const permissions = setupInfo?.permissions;
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        <li>In Microsoft Entra ID → App registrations → New registration. Name it (e.g. <code>prism-readonly</code>), then under Certificates &amp; secrets → New client secret — copy the value immediately, it's shown only once.</li>
+        <li>
+          <strong>In the Purview governance portal</strong> (not Azure IAM — this is a separate, commonly-confused system) → Data Map → Collections → your root collection → Role assignments, grant the app registration both:
+          {permissions?.purviewRbacRoles && (
+            <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+              {permissions.purviewRbacRoles.map(r => (
+                <li key={r.roleName}><strong>{r.roleName}</strong> ({r.scope}) — {r.note}</li>
+              ))}
+            </ul>
+          )}
+        </li>
+        <li>
+          Under the app registration's API permissions → Add a permission → Office 365 Management APIs → Application permissions, add:
+          {permissions?.office365ManagementApiPermissions && (
+            <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+              {permissions.office365ManagementApiPermissions.permissions.map(p => <li key={p}><code>{p}</code></li>)}
+            </ul>
+          )}
+          then click <strong>Grant admin consent</strong> — {permissions?.office365ManagementApiPermissions?.note}
+        </li>
+        {permissions?.prerequisites?.map(p => <li key={p}>{p}</li>)}
+        <li>Copy the Tenant ID (Overview page) and your Purview account name, plus the Client ID and Client Secret, into the fields below, then click Connect.</li>
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <div className="form-group">
+        <label htmlFor="conn-tenant-id">Tenant ID</label>
+        <input id="conn-tenant-id" required value={tenantId} onChange={e => setTenantId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" />
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label htmlFor="conn-purview-account-name">Purview account name</label>
+        <input id="conn-purview-account-name" required value={purviewAccountName} onChange={e => setPurviewAccountName(e.target.value)} placeholder="my-purview-account" />
+      </div>
+    </div>
+  );
+}
+
 function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
   const [name, setName] = useState("");
   const [region, setRegion] = useState("us-east-1");
@@ -164,6 +219,7 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
   const [sessionToken, setSessionToken] = useState("");
   const [tenantId, setTenantId] = useState("");
   const [subscriptionId, setSubscriptionId] = useState("");
+  const [purviewAccountName, setPurviewAccountName] = useState("");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [authType, setAuthType] = useState(provider.authType);
@@ -202,7 +258,7 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
     setSubmitting(true);
     try {
       const config = authType === "oauth2"
-        ? { tenantId, subscriptionId }
+        ? (provider.key === "purview" ? { tenantId, purviewAccountName } : { tenantId, subscriptionId })
         : authType === "iam_role" ? { region, roleArn } : { region };
       const secret = authType === "oauth2"
         ? { clientId, clientSecret }
@@ -270,7 +326,7 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                 </div>
               ) : null}
 
-              {provider.key !== "azure" && provider.key !== "github" && (
+              {provider.key !== "azure" && provider.key !== "github" && provider.key !== "purview" && (
                 <div className="form-group">
                   <label htmlFor="conn-region">Region</label>
                   <input id="conn-region" value={region} onChange={e => setRegion(e.target.value)} />
@@ -288,11 +344,19 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                 )
               ) : authType === "oauth2" ? (
                 <>
-                  <AzureServicePrincipalWalkthrough
-                    token={token}
-                    tenantId={tenantId} setTenantId={setTenantId}
-                    subscriptionId={subscriptionId} setSubscriptionId={setSubscriptionId}
-                  />
+                  {provider.key === "purview" ? (
+                    <PurviewWalkthrough
+                      token={token}
+                      tenantId={tenantId} setTenantId={setTenantId}
+                      purviewAccountName={purviewAccountName} setPurviewAccountName={setPurviewAccountName}
+                    />
+                  ) : (
+                    <AzureServicePrincipalWalkthrough
+                      token={token}
+                      tenantId={tenantId} setTenantId={setTenantId}
+                      subscriptionId={subscriptionId} setSubscriptionId={setSubscriptionId}
+                    />
+                  )}
                   <CredentialFields
                     authType="oauth2"
                     clientId={clientId} setClientId={setClientId}

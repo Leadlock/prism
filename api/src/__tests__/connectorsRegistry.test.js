@@ -59,7 +59,36 @@ describe("connector registry", () => {
     ]);
   });
 
+  test("resolves the purview connector", () => {
+    const connector = getConnector("purview");
+    expect(connector.key).toBe("purview");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("purview connector exposes exactly the 8 datamap + audit tests", () => {
+    const tests = listConnectorTests("purview");
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "purview.audit.content_recently_available",
+      "purview.audit.dlp_alerts_available",
+      "purview.audit.subscriptions_active",
+      "purview.audit.unified_logging_enabled",
+      "purview.datamap.classification_applied",
+      "purview.datamap.scan_schedule_configured",
+      "purview.datamap.sensitivity_labels_applied",
+      "purview.datamap.sources_scanned",
+    ]);
+  });
+
   test("throws for an unknown integration", () => {
     expect(() => getConnector("gcp")).toThrow("Unknown integration: gcp");
+  });
+
+  // Guardrail: purview_compliance is a catalog-only placeholder (no connector
+  // module exists for it) — assert it stays unresolvable so nobody
+  // accidentally wires it up as if it were a real, testable connector.
+  test("throws for purview_compliance (catalog-only placeholder, no connector module)", () => {
+    expect(() => getConnector("purview_compliance")).toThrow("Unknown integration: purview_compliance");
   });
 });

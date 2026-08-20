@@ -670,6 +670,40 @@ INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
   ('github.repo.secret_scanning_enabled', 'A.9.4.3')
 ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 
+-- ===== Purview connector: catalog seed data =====
+
+INSERT INTO integrations (key, name, category, auth_type, status) VALUES
+  ('purview', 'Microsoft Purview', 'data_governance', 'oauth2', 'active')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('purview', 'purview.datamap.sources_scanned', 'Registered data sources have a recent successful scan', 'Checks every registered Data Map source has completed a successful scan within the last 30 days.', 'high', 'Run or re-schedule a scan for the source in Microsoft Purview > Data Map > Sources.'),
+  ('purview', 'purview.datamap.scan_schedule_configured', 'Registered data sources have a recurring scan schedule', 'Checks each registered source has a recurring (not one-off) scan trigger configured.', 'medium', 'Edit the source''s scan and set a recurring trigger instead of "Once".'),
+  ('purview', 'purview.datamap.classification_applied', 'Scanned assets have classifications applied', 'Checks scanned assets have at least one data classification applied where the source type supports classification.', 'medium', 'Review scan rule sets to ensure classification rules are enabled for this source type, then re-run the scan.'),
+  ('purview', 'purview.datamap.sensitivity_labels_applied', 'Scanned assets have sensitivity labels applied', 'Checks scanned assets carry a sensitivity label where the source type supports labeling.', 'medium', 'Apply sensitivity labels via auto-labeling policies or manually label the asset in the Purview Unified Catalog.'),
+  ('purview', 'purview.audit.unified_logging_enabled', 'Unified audit logging is enabled', 'Checks unified audit logging is turned on for the tenant.', 'critical', 'Enable audit logging in Microsoft Purview > Audit > Start recording user and admin activity.'),
+  ('purview', 'purview.audit.subscriptions_active', 'Required audit log content-type subscriptions are active', 'Checks Azure AD, Exchange, SharePoint, and General audit content-type subscriptions are enabled.', 'high', 'Start the missing content-type subscription via the Office 365 Management Activity API (POST /activity/feed/subscriptions/start?contentType={type}).'),
+  ('purview', 'purview.audit.dlp_alerts_available', 'DLP audit content is available', 'Checks the DLP.All content-type subscription is active and retrievable, evidencing DLP policy enforcement logging.', 'high', 'Confirm at least one DLP policy is enabled in Purview and that the DLP.All subscription is active.'),
+  ('purview', 'purview.audit.content_recently_available', 'Audit content is actively flowing', 'Checks at least one audit content blob was produced within the last 24 hours for each active subscription, proving logs are actually flowing rather than merely subscribed.', 'medium', 'Investigate why no recent audit content is available - this can indicate audit logging was disabled after setup or the subscription lapsed.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
+  ('purview.datamap.sources_scanned', 'A.8.1.1'),
+  ('purview.datamap.scan_schedule_configured', 'A.8.1.1'),
+  ('purview.datamap.classification_applied', 'A.8.2.1'),
+  ('purview.datamap.sensitivity_labels_applied', 'A.8.2.3'),
+  ('purview.audit.unified_logging_enabled', 'A.12.4.1'),
+  ('purview.audit.subscriptions_active', 'A.12.4.1'),
+  ('purview.audit.dlp_alerts_available', 'A.13.2.1'),
+  ('purview.audit.content_recently_available', 'A.12.4.1')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
+-- ===== Purview Compliance Manager: catalog-only placeholder (no connector) =====
+
+INSERT INTO integrations (key, name, category, auth_type, status) VALUES
+  ('purview_compliance', 'Microsoft Purview Compliance Manager', 'data_governance', 'oauth2', 'coming_soon')
+ON CONFLICT (key) DO NOTHING;
+
 -- ===== Idempotent upgrade guards (existing databases) =====
 -- These are no-ops on a fresh install; safe to run repeatedly on upgrades.
 

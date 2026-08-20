@@ -1,6 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { query } from "../../db/index.js";
 import { createCompany } from "../setup/helpers.js";
+import { tests as purviewTests } from "../../connectors/purview/index.js";
 
 describe("automated evidence collection schema", () => {
   test("integrations catalog is seeded with aws", async () => {
@@ -63,6 +64,61 @@ describe("automated evidence collection schema", () => {
       { test_key: "github.repo.secret_scanning_enabled", iso_reference: "A.9.4.3" },
       { test_key: "github.repo.vulnerability_alerts_enabled", iso_reference: "A.12.6.1" },
     ]);
+  });
+
+  test("seeds the purview integration with oauth2 auth and its 8 automated tests", async () => {
+    const integrationResult = await query(`SELECT * FROM integrations WHERE key = 'purview'`);
+    expect(integrationResult.rows.length).toBe(1);
+    expect(integrationResult.rows[0].auth_type).toBe("oauth2");
+    expect(integrationResult.rows[0].status).toBe("active");
+
+    const testsResult = await query(`SELECT test_key, severity_default FROM automated_tests WHERE integration_key = 'purview' ORDER BY test_key`);
+    expect(testsResult.rows).toEqual([
+      { test_key: "purview.audit.content_recently_available", severity_default: "medium" },
+      { test_key: "purview.audit.dlp_alerts_available", severity_default: "high" },
+      { test_key: "purview.audit.subscriptions_active", severity_default: "high" },
+      { test_key: "purview.audit.unified_logging_enabled", severity_default: "critical" },
+      { test_key: "purview.datamap.classification_applied", severity_default: "medium" },
+      { test_key: "purview.datamap.scan_schedule_configured", severity_default: "medium" },
+      { test_key: "purview.datamap.sensitivity_labels_applied", severity_default: "medium" },
+      { test_key: "purview.datamap.sources_scanned", severity_default: "high" },
+    ]);
+
+    const mappingsResult = await query(`SELECT test_key, iso_reference FROM test_control_mappings WHERE test_key LIKE 'purview.%' ORDER BY test_key`);
+    expect(mappingsResult.rows).toEqual([
+      { test_key: "purview.audit.content_recently_available", iso_reference: "A.12.4.1" },
+      { test_key: "purview.audit.dlp_alerts_available", iso_reference: "A.13.2.1" },
+      { test_key: "purview.audit.subscriptions_active", iso_reference: "A.12.4.1" },
+      { test_key: "purview.audit.unified_logging_enabled", iso_reference: "A.12.4.1" },
+      { test_key: "purview.datamap.classification_applied", iso_reference: "A.8.2.1" },
+      { test_key: "purview.datamap.scan_schedule_configured", iso_reference: "A.8.1.1" },
+      { test_key: "purview.datamap.sensitivity_labels_applied", iso_reference: "A.8.2.3" },
+      { test_key: "purview.datamap.sources_scanned", iso_reference: "A.8.1.1" },
+    ]);
+  });
+
+  test("purview connector's own test definitions match what's seeded in init.sql (drift guardrail)", async () => {
+    expect(purviewTests.length).toBe(8);
+
+    for (const definition of purviewTests) {
+      const dbTestResult = await query(
+        `SELECT test_key, title, severity_default FROM automated_tests WHERE test_key = $1`,
+        [definition.key]
+      );
+      expect(dbTestResult.rows.length).toBe(1);
+      expect(dbTestResult.rows[0]).toEqual({
+        test_key: definition.key,
+        title: definition.title,
+        severity_default: definition.severityDefault,
+      });
+
+      const dbMappingsResult = await query(
+        `SELECT iso_reference FROM test_control_mappings WHERE test_key = $1 ORDER BY iso_reference`,
+        [definition.key]
+      );
+      const dbIsoReferences = dbMappingsResult.rows.map((r) => r.iso_reference);
+      expect(dbIsoReferences).toEqual([...definition.isoReferences].sort());
+    }
   });
 
   test("integration_connections defaults to pending status", async () => {

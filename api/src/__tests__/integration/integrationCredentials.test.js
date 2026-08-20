@@ -62,4 +62,31 @@ describe("integrationCredentials", () => {
     const credential = await getActiveCredential(connection.id, companyB.id);
     expect(credential).toBeNull();
   });
+
+  // Purview is the first oauth2-authType connector's credential shape to flow
+  // through this layer. No new logic is being tested here — this layer is
+  // fully generic to authType/secret shape — this just proves the 'purview'
+  // integration_key satisfies the integration_connections.integration_key
+  // REFERENCES integrations(key) FK constraint (seeded by init.sql) and that
+  // an oauth2-shaped { clientId, clientSecret } secret round-trips correctly.
+  test("stores and retrieves an oauth2 credential for a purview connection", async () => {
+    const company = await createCompany();
+    const connResult = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'purview', 'Prod Purview') RETURNING *`,
+      [company.id]
+    );
+    const connection = connResult.rows[0];
+
+    await storeCredential({
+      connectionId: connection.id,
+      companyId: company.id,
+      authType: "oauth2",
+      secret: { clientId: "client-abc", clientSecret: "shh" },
+    });
+
+    const credential = await getActiveCredential(connection.id, company.id);
+    expect(credential.authType).toBe("oauth2");
+    expect(credential.secret.clientId).toBe("client-abc");
+    expect(credential.secret.clientSecret).toBe("shh");
+  });
 });

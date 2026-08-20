@@ -18,6 +18,13 @@ const CONNECTOR_FIXTURES = {
     testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "42424242" })),
     runTests: vi.fn(async () => ([])),
   },
+  purview: {
+    key: "purview",
+    testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "my-purview-account" })),
+    runTests: vi.fn(async () => ([
+      { testKey: "purview.audit.unified_logging_enabled", severity: "critical", resourceId: "tenant", status: "pass", message: "Unified audit logging is enabled", evidencePayload: {} },
+    ])),
+  },
 };
 
 vi.mock("../../connectors/registry.js", () => ({
@@ -108,6 +115,38 @@ describe("GET /api/integrations/azure/setup-info", () => {
     const contributor = await createUser(company.id, "CONTRIBUTOR");
 
     const res = await request(app).get("/api/integrations/azure/setup-info").set("Authorization", `Bearer ${contributor.token}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/integrations/purview/setup-info", () => {
+  test("returns the two Purview RBAC roles and the three O365 Management API permissions, no live call needed", async () => {
+    const company = await createCompany({ domain: "purviewsetup1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+
+    const res = await request(app).get("/api/integrations/purview/setup-info").set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    // Asserted against structural shape, not a brittle deep-equal, so wording
+    // tweaks to PURVIEW_REQUIRED_PERMISSIONS (routes/integrations.js) don't
+    // break this test — per task-0-research.md finding #2's correction that
+    // Purview needs TWO distinct RBAC roles (Data Reader + Data Source
+    // Administrator), not one.
+    const permissions = res.body.permissions;
+    expect(permissions.purviewRbacRoles).toHaveLength(2);
+    expect(permissions.purviewRbacRoles.map((r) => r.roleName)).toEqual(
+      expect.arrayContaining(["Data Reader", "Data Source Administrator"])
+    );
+    expect(permissions.office365ManagementApiPermissions.permissions).toEqual(
+      expect.arrayContaining(["ActivityFeed.Read", "ActivityFeed.ReadDlp", "ServiceHealth.Read"])
+    );
+  });
+
+  test("is not accessible to CONTRIBUTOR", async () => {
+    const company = await createCompany({ domain: "purviewsetup2.com" });
+    const contributor = await createUser(company.id, "CONTRIBUTOR");
+
+    const res = await request(app).get("/api/integrations/purview/setup-info").set("Authorization", `Bearer ${contributor.token}`);
     expect(res.status).toBe(403);
   });
 });
@@ -313,6 +352,16 @@ describe("GET /api/integrations/catalog", () => {
     expect(aws).toBeDefined();
     expect(aws.authType).toBe("iam_role");
     expect(aws.status).toBe("active");
+
+    const purview = res.body.find(c => c.key === "purview");
+    expect(purview).toBeDefined();
+    expect(purview.authType).toBe("oauth2");
+    expect(purview.status).toBe("active");
+
+    // 'purview_compliance' is seeded with status 'coming_soon' — the route's
+    // `WHERE status != 'coming_soon'` filter (routes/integrations.js) must
+    // exclude it from the catalog entirely.
+    expect(res.body.find(c => c.key === "purview_compliance")).toBeUndefined();
   });
 
   test("is readable by LEAD but not by CONTRIBUTOR", async () => {
@@ -426,6 +475,37 @@ describe("POST /api/integrations/:id/run", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.testsPassed).toBe(1);
+  });
+
+  // Full create -> credentials -> run flow for Purview specifically, since
+  // it's a new oauth2-authType connector (config shaped as
+  // { tenantId, purviewAccountName } rather than AWS's iam_role config) —
+  // confirms it flows through the same connector-agnostic pipe as aws/github
+  // with no new logic required.
+  test("Purview: connects via oauth2 credentials and runs a collection", async () => {
+    const company = await createCompany({ domain: "purviewrun1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name, config) VALUES ($1, 'purview', 'Prod Purview', $2) RETURNING *`,
+      [company.id, JSON.stringify({ tenantId: "tenant-abc", purviewAccountName: "my-purview-account" })]
+    );
+
+    const credsRes = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ authType: "oauth2", secret: { clientId: "client-abc", clientSecret: "shh" } });
+
+    expect(credsRes.status).toBe(200);
+    expect(credsRes.body.status).toBe("connected");
+    expect(credsRes.body.externalAccountId).toBe("my-purview-account");
+
+    const runRes = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/run`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(runRes.status).toBe(200);
+    expect(runRes.body.testsPassed).toBe(1);
+    expect(runRes.body.testsFailed).toBe(0);
   });
 });
 
