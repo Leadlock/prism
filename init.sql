@@ -623,7 +623,16 @@ INSERT INTO automated_tests (integration_key, test_key, title, description, seve
   ('aws', 'aws.logging.cloudtrail_enabled', 'CloudTrail is enabled and multi-region', 'Checks at least one multi-region CloudTrail trail is actively logging.', 'critical', 'Enable a multi-region CloudTrail trail with log file validation.'),
   ('aws', 'aws.logging.config_enabled', 'AWS Config is recording', 'Checks an AWS Config recorder exists and is actively recording.', 'medium', 'Enable AWS Config in this region and confirm the recorder is turned on.'),
   ('aws', 'aws.network.s3_public_access_blocked', 'S3 buckets block public access', 'Checks every S3 bucket has all four public access block settings enabled.', 'critical', 'Enable "Block all public access" on the bucket, or at the account level.'),
-  ('aws', 'aws.network.security_groups_no_open_ingress', 'Security groups do not expose management ports publicly', 'Flags security groups allowing inbound SSH (22) or RDP (3389) from 0.0.0.0/0.', 'critical', 'Restrict the security group rule to specific IP ranges or a bastion/VPN.')
+  ('aws', 'aws.network.security_groups_no_open_ingress', 'Security groups do not expose management ports publicly', 'Flags security groups allowing inbound SSH (22) or RDP (3389) from 0.0.0.0/0.', 'critical', 'Restrict the security group rule to specific IP ranges or a bastion/VPN.'),
+  ('aws', 'aws.rds.publicly_accessible', 'RDS instances are not publicly accessible', 'Checks every RDS instance has PubliclyAccessible disabled.', 'critical', 'Disable public accessibility on the instance and connect via VPC peering, VPN, or a bastion host.'),
+  ('aws', 'aws.rds.storage_encrypted', 'RDS instances have storage encryption enabled', 'Checks every RDS instance has storage encryption at rest enabled.', 'critical', 'Storage encryption cannot be enabled on an existing instance — create an encrypted snapshot and restore into a new encrypted instance.'),
+  ('aws', 'aws.rds.automated_backups_enabled', 'RDS instances have automated backups enabled', 'Checks every RDS instance has a backup retention period greater than zero.', 'high', 'Set a backup retention period of at least 7 days under the instance''s Backup settings.'),
+  ('aws', 'aws.lambda.function_url_not_public', 'Lambda function URLs require authentication', 'Checks every configured Lambda function URL requires AWS_IAM authentication rather than allowing unauthenticated access.', 'critical', 'Set the function URL''s auth type to AWS_IAM, or front it with API Gateway and appropriate authorization.'),
+  ('aws', 'aws.lambda.no_wildcard_resource_policy', 'Lambda resource policies do not grant a wildcard principal', 'Checks no Lambda function''s resource-based policy grants access to Principal "*".', 'critical', 'Scope the resource policy''s Principal to specific accounts, services, or ARNs instead of "*".'),
+  ('aws', 'aws.dynamodb.point_in_time_recovery_enabled', 'DynamoDB tables have point-in-time recovery enabled', 'Checks every DynamoDB table has continuous backups (PITR) enabled.', 'high', 'Enable point-in-time recovery under the table''s Backups tab.'),
+  ('aws', 'aws.dynamodb.encryption_uses_cmk', 'DynamoDB tables are encrypted with a customer-managed key', 'Checks every DynamoDB table uses a customer-managed KMS key rather than the AWS-owned default key.', 'medium', 'Enable encryption at rest with a customer-managed KMS key under the table''s Encryption settings.'),
+  ('aws', 'aws.kms.key_rotation_enabled', 'Customer-managed KMS keys have rotation enabled', 'Checks every customer-managed symmetric KMS key has automatic annual rotation enabled.', 'high', 'Enable automatic key rotation under the key''s Key rotation tab.'),
+  ('aws', 'aws.kms.no_wildcard_key_policy', 'KMS key policies do not grant a wildcard principal', 'Checks no customer-managed KMS key''s policy grants access to Principal "*".', 'critical', 'Scope the key policy''s Principal to specific accounts, roles, or users instead of "*".')
 ON CONFLICT (test_key) DO NOTHING;
 
 INSERT INTO test_control_mappings (test_key, framework, iso_reference) VALUES
@@ -633,7 +642,16 @@ INSERT INTO test_control_mappings (test_key, framework, iso_reference) VALUES
   ('aws.logging.cloudtrail_enabled', 'ISO27001', 'A.12.4.1'),
   ('aws.logging.config_enabled', 'ISO27001', 'A.12.1.1'),
   ('aws.network.s3_public_access_blocked', 'ISO27001', 'A.8.2.3'),
-  ('aws.network.security_groups_no_open_ingress', 'ISO27001', 'A.13.1.1')
+  ('aws.network.security_groups_no_open_ingress', 'ISO27001', 'A.13.1.1'),
+  ('aws.rds.publicly_accessible', 'ISO27001', 'A.13.1.1'),
+  ('aws.rds.storage_encrypted', 'ISO27001', 'A.8.2.3'),
+  ('aws.rds.automated_backups_enabled', 'ISO27001', 'A.12.3.1'),
+  ('aws.lambda.function_url_not_public', 'ISO27001', 'A.13.1.1'),
+  ('aws.lambda.no_wildcard_resource_policy', 'ISO27001', 'A.9.1.2'),
+  ('aws.dynamodb.point_in_time_recovery_enabled', 'ISO27001', 'A.12.3.1'),
+  ('aws.dynamodb.encryption_uses_cmk', 'ISO27001', 'A.8.2.3'),
+  ('aws.kms.key_rotation_enabled', 'ISO27001', 'A.10.1.2'),
+  ('aws.kms.no_wildcard_key_policy', 'ISO27001', 'A.9.1.2')
 ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 
 INSERT INTO integrations (key, name, category, auth_type, status) VALUES

@@ -3,15 +3,23 @@ import { CloudTrailClient } from "@aws-sdk/client-cloudtrail";
 import { ConfigServiceClient } from "@aws-sdk/client-config-service";
 import { S3Client } from "@aws-sdk/client-s3";
 import { EC2Client } from "@aws-sdk/client-ec2";
+import { RDSClient } from "@aws-sdk/client-rds";
+import { LambdaClient } from "@aws-sdk/client-lambda";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { KMSClient } from "@aws-sdk/client-kms";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { resolveAwsCredentials } from "./credentials.js";
 import { iamTests } from "./tests/iam.js";
 import { loggingTests } from "./tests/logging.js";
 import { networkTests } from "./tests/network.js";
+import { rdsTests } from "./tests/rds.js";
+import { lambdaTests } from "./tests/lambda.js";
+import { dynamodbTests } from "./tests/dynamodb.js";
+import { kmsTests } from "./tests/kms.js";
 
 export const key = "aws";
 
-export const tests = [...iamTests, ...loggingTests, ...networkTests];
+export const tests = [...iamTests, ...loggingTests, ...networkTests, ...rdsTests, ...lambdaTests, ...dynamodbTests, ...kmsTests];
 
 function buildClients(credentials, region) {
   return {
@@ -20,6 +28,10 @@ function buildClients(credentials, region) {
     configService: new ConfigServiceClient({ credentials, region }),
     s3: new S3Client({ credentials, region }),
     ec2: new EC2Client({ credentials, region }),
+    rds: new RDSClient({ credentials, region }),
+    lambda: new LambdaClient({ credentials, region }),
+    dynamodb: new DynamoDBClient({ credentials, region }),
+    kms: new KMSClient({ credentials, region }),
   };
 }
 
