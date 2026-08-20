@@ -9,7 +9,8 @@
         default-src 'self';
         script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-        img-src 'self' data: https://www.google-analytics.com;
+        img-src 'self' data: blob: https://www.google-analytics.com;
+        frame-src 'self' blob:;
         connect-src 'self' ws://localhost:* http://localhost:* https://www.google-analytics.com https://analytics.google.com;
         font-src 'self' https://fonts.gstatic.com;
       "
