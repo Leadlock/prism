@@ -253,6 +253,39 @@ describe("checkClassificationApplied", () => {
     const results = await checkClassificationApplied(dataMap);
     expect(results[0].resourceId).toBe("byid");
   });
+
+  test.each([
+    ["azure_data_explorer_table", "AzureDataExplorer family"],
+    ["azure_kusto_table", "AzureDataExplorer family (kusto alt prefix)"],
+    ["azure_file_share", "AzureFileService family"],
+    ["azure_postgresql_table", "AzurePostgreSql family"],
+    ["sqlserver_table", "SqlServerDatabase family"],
+    ["azure_sql_mi_table", "AzureSqlDatabaseManagedInstance family (falls under generic azure_sql rule)"],
+    ["azure_mysql_table", "AzureMySql family"],
+    ["amazon_rds_table", "AmazonSql family"],
+  ])("supports classification for the %s prefix (%s)", async (typeName) => {
+    const dataMap = { post: async () => ({ value: [{ guid: "e1", typeName, classification: [{ typeName: "PII" }] }] }) };
+    const results = await checkClassificationApplied(dataMap);
+    expect(results[0].status).toBe("pass");
+  });
+
+  test("Amazon RDS (AmazonSql family) supports classification but not sensitivity labeling", async () => {
+    const dataMap = { post: async () => ({ value: [{ guid: "e1", typeName: "amazon_rds_instance", classification: [{ typeName: "PII" }] }] }) };
+    const classificationResults = await checkClassificationApplied(dataMap);
+    const labelResults = await checkSensitivityLabelsApplied(dataMap);
+    expect(classificationResults[0].status).toBe("pass");
+    expect(labelResults[0].status).toBe("not_applicable");
+  });
+
+  test.each([
+    ["azure_sql_dw_table", "azure_sql_dw prefix"],
+    ["azure_sql_data_warehouse_table", "azure_sql_data_warehouse prefix"],
+    ["dedicated_sql_pool_table", "dedicated_sql_pool prefix"],
+  ])("Synapse dedicated SQL pool / SQL Data Warehouse family (%s) supports classification", async (typeName) => {
+    const dataMap = { post: async () => ({ value: [{ guid: "e1", typeName, classification: [{ typeName: "PII" }] }] }) };
+    const results = await checkClassificationApplied(dataMap);
+    expect(results[0].status).toBe("pass");
+  });
 });
 
 describe("checkSensitivityLabelsApplied", () => {
@@ -272,6 +305,33 @@ describe("checkSensitivityLabelsApplied", () => {
     const dataMap = { post: async () => ({ value: [{ guid: "e1", typeName: "azure_sql_table", attributes: { sensitivityLabel: "Confidential" } }] }) };
     const results = await checkSensitivityLabelsApplied(dataMap);
     expect(results).toEqual([{ resourceId: "e1", status: "pass", message: "Asset has a sensitivity label applied", evidencePayload: { typeName: "azure_sql_table" } }]);
+  });
+
+  test.each([
+    ["azure_sql_dw_table", "azure_sql_dw prefix"],
+    ["azure_sql_data_warehouse_table", "azure_sql_data_warehouse prefix"],
+    ["dedicated_sql_pool_table", "dedicated_sql_pool prefix"],
+  ])(
+    "Synapse dedicated SQL pool / SQL Data Warehouse family (%s) is NOT swallowed by the broader azure_sql rule — supports classification but not sensitivity labeling",
+    async (typeName) => {
+      const dataMap = { post: async () => ({ value: [{ guid: "e1", typeName, attributes: { sensitivityLabel: "Confidential" } }] }) };
+      const results = await checkSensitivityLabelsApplied(dataMap);
+      expect(results).toEqual([{ resourceId: "e1", status: "not_applicable", message: `Asset type "${typeName}" does not support sensitivity labeling`, evidencePayload: { typeName } }]);
+    },
+  );
+
+  test("distinguishes a plain azure_sql database (labeling supported) from an azure_sql_dw warehouse (labeling not supported) in the same result set", async () => {
+    const dataMap = {
+      post: async () => ({
+        value: [
+          { guid: "db1", typeName: "azure_sql_database_table", attributes: { sensitivityLabel: "Confidential" } },
+          { guid: "dw1", typeName: "azure_sql_dw_table", attributes: { sensitivityLabel: "Confidential" } },
+        ],
+      }),
+    };
+    const results = await checkSensitivityLabelsApplied(dataMap);
+    expect(results.find((r) => r.resourceId === "db1").status).toBe("pass");
+    expect(results.find((r) => r.resourceId === "dw1").status).toBe("not_applicable");
   });
 
   test("matches the label field case-insensitively and by substring", async () => {

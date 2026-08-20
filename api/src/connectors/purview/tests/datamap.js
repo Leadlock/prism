@@ -89,31 +89,92 @@ export async function checkScanScheduleConfigured(dataMap) {
   });
 }
 
-// Approximate Atlas type-name family -> capability mapping, per
-// task-3a-research-supplement.md's capability matrix (best-effort — Purview's
-// full Atlas type-name taxonomy isn't documented). Matched by case-insensitive
-// prefix against entity.typeName / entity.entityType.
-const CLASSIFICATION_PREFIXES = ["azure_sql", "azure_storage", "azure_datalake", "adls", "azure_cosmos", "azure_synapse", "amazon_s3", "oracle", "teradata"];
-const LABEL_PREFIXES = ["azure_sql", "azure_storage", "azure_datalake", "adls", "azure_cosmos", "azure_synapse"];
+// IMPORTANT — provenance note: the table below is an INVENTED, best-effort
+// approximation of Atlas typeName-family -> capability support. It is NOT
+// sourced verbatim from task-3a-research-supplement.md. That file's
+// capability matrix is keyed on the Scanning API's PascalCase `kind` enum
+// (e.g. `AzureSqlDatabase`, `AzureDataExplorer`, `AzureSqlDataWarehouse`),
+// which is a different API (the /datasources Scanning API) using a different
+// naming convention than the snake_case Atlas `typeName` values returned by
+// the entity-search API this table matches against. Purview's Atlas typeName
+// taxonomy is not publicly documented (confirmed during Task 0 research), so
+// there is no real source to mechanically translate the `kind` matrix from —
+// every prefix below is a guess at what the corresponding typeName family
+// probably looks like, informed by (but not copied from) the research
+// supplement's `kind` -> capability findings.
+//
+// Entries are tried in order and the first prefix match wins, so more
+// specific families must be listed before broader ones they'd otherwise be
+// swallowed by — e.g. the Synapse dedicated SQL pool / SQL Data Warehouse
+// family (matrix: classification yes, label no) is listed before the
+// general "azure_sql" family (matrix: classification yes, label yes), since
+// typeName can't be confirmed to actually distinguish the two at the API
+// level; this ordering is itself a guess, documented as a known limitation
+// rather than resolved with confirmed data.
+//
+// Unrecognized/unmatched types (including sap*, power_bi/powerbi, and
+// anything not covered below) default to "not supported" for both checks —
+// safer than guessing at a false compliance signal.
+const TYPE_CAPABILITY_RULES = [
+  // Azure Synapse dedicated SQL pool / SQL Data Warehouse: classification
+  // only (matrix AzureSqlDataWarehouse: Yes/No). Listed first so it takes
+  // precedence over the broader "azure_sql" rule below when it matches.
+  { prefixes: ["azure_sql_dw", "azure_sql_data_warehouse", "dedicated_sql_pool"], classification: true, label: false },
+  // Azure SQL Database / Managed Instance: both supported (matrix
+  // AzureSqlDatabase, AzureSqlDatabaseManagedInstance: Yes/Yes).
+  { prefixes: ["azure_sql", "azure_sql_mi", "sql_managed_instance"], classification: true, label: true },
+  // Azure Storage (Blob) and Azure Files: both supported (matrix
+  // AzureStorage, AzureFileService: Yes/Yes).
+  { prefixes: ["azure_storage", "azure_file", "azurefile"], classification: true, label: true },
+  // Azure Data Lake Storage Gen1/Gen2: both supported (matrix AdlsGen1
+  // (flagged assumption in the matrix itself), AdlsGen2: Yes/Yes).
+  { prefixes: ["azure_datalake", "adls"], classification: true, label: true },
+  // Azure Cosmos DB: both supported (matrix AzureCosmosDb: Yes/Yes).
+  { prefixes: ["azure_cosmos"], classification: true, label: true },
+  // Azure Synapse Analytics Workspace (the workspace resource itself, not
+  // the dedicated SQL pool handled above): both supported (matrix
+  // AzureSynapseWorkspace/AzureSynapse: Yes/Yes).
+  { prefixes: ["azure_synapse"], classification: true, label: true },
+  // Azure Data Explorer (Kusto): both supported (matrix AzureDataExplorer:
+  // Yes/Yes).
+  { prefixes: ["azure_data_explorer", "azure_kusto", "kusto"], classification: true, label: true },
+  // Azure Database for PostgreSQL: both supported (matrix AzurePostgreSql:
+  // Yes/Yes). Deliberately not a bare "postgresql" prefix — the matrix marks
+  // the non-Azure/Amazon PostgreSQL family as unsupported (No/No), and a
+  // bare prefix would wrongly capture that family too.
+  { prefixes: ["azure_postgresql", "azure_postgres"], classification: true, label: true },
+  // SQL Server (on-premises, registered via Purview's SQL Server source
+  // type): both supported (matrix SqlServerDatabase: Yes/Yes).
+  { prefixes: ["sqlserver", "sql_server", "mssql"], classification: true, label: true },
+  // Azure Database for MySQL: both supported (matrix AzureMySql: Yes/Yes).
+  { prefixes: ["azure_mysql", "mysql"], classification: true, label: true },
+  // Amazon RDS (SQL): classification only (matrix AmazonSql: Yes/No).
+  { prefixes: ["amazon_rds", "amazon_sql", "rds"], classification: true, label: false },
+  // Amazon S3: classification only (matrix AmazonS3: Yes/No).
+  { prefixes: ["amazon_s3"], classification: true, label: false },
+  // Oracle: classification only (matrix Oracle: Yes/No).
+  { prefixes: ["oracle"], classification: true, label: false },
+  // Teradata: classification only (matrix Teradata: Yes/No).
+  { prefixes: ["teradata"], classification: true, label: false },
+  // SAP (S/4HANA, ECC) and Power BI: neither supported (matrix: No/No).
+  { prefixes: ["sap", "power_bi", "powerbi"], classification: false, label: false },
+];
 
 function getEntityTypeName(entity) {
   return entity.typeName || entity.entityType || "";
 }
 
-function matchesPrefix(typeName, prefixes) {
+function findCapabilityRule(typeName) {
   const lower = (typeName || "").toLowerCase();
-  return prefixes.some((prefix) => lower.startsWith(prefix));
+  return TYPE_CAPABILITY_RULES.find((rule) => rule.prefixes.some((prefix) => lower.startsWith(prefix)));
 }
 
-// Unrecognized/unrecognized-family types (including sap*, power_bi/powerbi,
-// and anything else not in the lists above) default to "not supported" —
-// safer than guessing at a false compliance signal.
 function sourceTypeSupportsClassification(typeName) {
-  return matchesPrefix(typeName, CLASSIFICATION_PREFIXES);
+  return findCapabilityRule(typeName)?.classification === true;
 }
 
 function sourceTypeSupportsSensitivityLabeling(typeName) {
-  return matchesPrefix(typeName, LABEL_PREFIXES);
+  return findCapabilityRule(typeName)?.label === true;
 }
 
 function entityResourceId(entity) {
