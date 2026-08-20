@@ -5,6 +5,60 @@ import SeverityPill from "../components/SeverityPill.jsx";
 
 const STATUS_OPTIONS = ["open", "acknowledged", "resolved", "suppressed", "false_positive"];
 
+// HTML-escape helper — required for the bulk report which uses document.write(),
+// since finding titles/resource IDs can contain cloud-resource-derived text.
+function esc(v) {
+  return String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function exportFindingsListPDF(findings, company) {
+  const date = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const th = `style="background:#1e293b;color:#fff;padding:8px 10px;text-align:left;font-weight:600"`;
+  const td = `style="padding:7px 10px;border-bottom:1px solid #e2e8f0"`;
+
+  const rows = findings.map(f => `<tr>
+    <td ${td}>${esc(f.title)}</td>
+    <td ${td}>${esc(f.severity)}</td>
+    <td ${td}>${esc(f.status)}</td>
+    <td ${td}>${esc(f.resourceId)}</td>
+    <td ${td}>${f.lastDetectedAt ? new Date(f.lastDetectedAt).toLocaleDateString("en-GB") : "—"}</td>
+  </tr>`).join("") || `<tr><td colspan="5" ${td}>No findings match the current filters</td></tr>`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<title>${esc(company?.name || "Compliance Report")} — Findings</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#0f172a;background:#fff;padding:40px;font-size:13px}
+  @media print{body{padding:20px}.no-print{display:none}}
+  .header{border-bottom:3px solid #1e293b;padding-bottom:18px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-end}
+  .title{font-size:20px;font-weight:700;color:#1e293b}
+  .subtitle{font-size:12px;color:#64748b;margin-top:3px}
+  .date{font-size:11px;color:#94a3b8;white-space:nowrap}
+  table{border-collapse:collapse;width:100%}
+  tr:nth-child(even) td{background:#f8fafc}
+  .print-btn{position:fixed;top:18px;right:18px;padding:9px 18px;background:#1e293b;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
+</style>
+</head><body>
+<button class="print-btn no-print" onclick="window.print()">Print / Save PDF</button>
+<div class="header">
+  <div><div class="title">${esc(company?.name || "Compliance Report")}</div><div class="subtitle">Findings Report — PRISM</div></div>
+  <div class="date">Generated ${date}</div>
+</div>
+<table><thead><tr>
+  <th ${th}>Finding</th><th ${th}>Severity</th><th ${th}>Status</th><th ${th}>Resource</th><th ${th}>Last detected</th>
+</tr></thead><tbody>${rows}</tbody></table>
+</body></html>`;
+
+  const win = window.open("", "_blank", "width=900,height=700");
+  win.document.write(html);
+  win.document.close();
+}
+
 export default function Findings({ token, user, company, onLogout, theme, onThemeToggle }) {
   const navigate = useNavigate();
   const isLeadOrAdmin = user?.role === "ADMIN" || user?.role === "LEAD";
@@ -59,6 +113,36 @@ export default function Findings({ token, user, company, onLogout, theme, onThem
     }
   };
 
+  // Downloads the vault-backed evidence PDF for a single finding.
+  // Uses raw fetch (not apiFetch) so the vault download path returns a blob, not JSON.
+  const downloadEvidencePdf = async (vaultId) => {
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || "";
+      const res = await fetch(`${API_URL}/api/vault/${vaultId}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(
+          body.error?.includes("VAULT_PIN") || res.status === 403
+            ? "Vault is PIN-protected — open Evidence Vault to unlock it, then try again."
+            : `Download failed (${res.status})`
+        );
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = "evidence.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   if (loading) {
     return <div className="admin-container"><div className="admin-card"><p>Loading…</p></div></div>;
   }
@@ -73,6 +157,7 @@ export default function Findings({ token, user, company, onLogout, theme, onThem
             {company?.domain && <p className="admin-domain">{company.domain}</p>}
           </div>
           <div className="admin-actions">
+            <button className="btn btn-ghost" onClick={() => exportFindingsListPDF(findings, company)}>↓ Export PDF</button>
             <button className="btn btn-ghost theme-toggle" onClick={onThemeToggle} title="Toggle theme">
               {theme === "dark" ? "☀" : "☾"}
             </button>
@@ -118,6 +203,12 @@ export default function Findings({ token, user, company, onLogout, theme, onThem
               <span><SeverityPill severity={f.severity} /></span>
               <span style={{ fontSize: 12 }}>{f.status}</span>
               <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {/* Evidence PDF download — available to any role that can view findings (matches VAULT_DOWNLOADERS) */}
+                {f.evidenceVaultId && (
+                  <button className="btn btn-ghost" disabled={busyId === f.id} onClick={() => downloadEvidencePdf(f.evidenceVaultId)}>
+                    Download Evidence PDF
+                  </button>
+                )}
                 {isLeadOrAdmin && f.status === "open" && (
                   <button className="btn btn-ghost" disabled={busyId === f.id} onClick={() => handleStatusChange(f.id, "acknowledged")}>Acknowledge</button>
                 )}

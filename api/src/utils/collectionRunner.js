@@ -1,22 +1,19 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import { query, mapRow } from "../db/index.js";
 import { getActiveCredential } from "../db/integrationCredentials.js";
 import { getConnector } from "../connectors/registry.js";
 import { writeAuditLog } from "./auditLog.js";
+import { renderFindingEvidencePdf } from "./findingEvidencePdf.js";
 
 function hashPayload(payload) {
   return crypto.createHash("sha256").update(JSON.stringify(payload || {})).digest("hex");
 }
 
-async function upsertEvidenceForPass({ companyId, result }) {
-  const vaultResult = await query(
-    `INSERT INTO evidence_vault (company_id, title, description, uploaded_by)
-     VALUES ($1, $2, $3, 'automated') RETURNING *`,
-    [companyId, `${result.testKey} — ${result.resourceId}`, result.message]
-  );
-  const vault = mapRow(vaultResult);
-
-  const mappings = await query(`SELECT iso_reference FROM test_control_mappings WHERE test_key = $1`, [result.testKey]);
+// Shared helper: links a vault item to every question mapped to the given testKey via ISO reference.
+async function linkVaultToQuestions({ companyId, testKey, vaultId }) {
+  const mappings = await query(`SELECT iso_reference FROM test_control_mappings WHERE test_key = $1`, [testKey]);
   for (const mapping of mappings.rows) {
     const questions = await query(
       `SELECT quest_id FROM questions WHERE company_id = $1 AND iso_reference = $2`,
@@ -27,26 +24,89 @@ async function upsertEvidenceForPass({ companyId, result }) {
         `INSERT INTO question_evidence (company_id, quest_id, vault_id, linked_by)
          VALUES ($1, $2, $3, 'automated')
          ON CONFLICT (company_id, quest_id, vault_id) DO NOTHING`,
-        [companyId, q.quest_id, vault.id]
+        [companyId, q.quest_id, vaultId]
       );
     }
   }
+}
+
+async function upsertEvidenceForPass({ companyId, result }) {
+  const vaultResult = await query(
+    `INSERT INTO evidence_vault (company_id, title, description, uploaded_by)
+     VALUES ($1, $2, $3, 'automated') RETURNING *`,
+    [companyId, `${result.testKey} — ${result.resourceId}`, result.message]
+  );
+  const vault = mapRow(vaultResult);
+  await linkVaultToQuestions({ companyId, testKey: result.testKey, vaultId: vault.id });
+  return vault.id;
+}
+
+// Generates a real pdfkit PDF, writes it to disk, inserts an evidence_vault row with full file metadata,
+// and auto-links it to all matching questions — used only on the fail path.
+async function generateFindingEvidenceVaultItem({ companyId, connectionId, result }) {
+  const [isoRows, connRow] = await Promise.all([
+    query(`SELECT iso_reference FROM test_control_mappings WHERE test_key = $1`, [result.testKey]),
+    query(`SELECT name, integration_key FROM integration_connections WHERE id = $1`, [connectionId]),
+  ]);
+  const conn = mapRow(connRow);
+
+  const pdfBuffer = await renderFindingEvidencePdf({
+    title: result.title || result.testKey,
+    testKey: result.testKey,
+    resourceId: result.resourceId,
+    severity: result.severity,
+    message: result.message,
+    evidencePayload: result.evidencePayload,
+    isoReferences: isoRows.rows.map(r => r.iso_reference),
+    connectionName: conn?.name,
+    integrationKey: conn?.integrationKey,
+  });
+
+  const dir = path.join(process.env.UPLOAD_DIR || "./uploads", String(companyId), "vault");
+  fs.mkdirSync(dir, { recursive: true });
+  const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}.pdf`;
+  const storagePath = path.join(dir, fileName);
+  fs.writeFileSync(storagePath, pdfBuffer);
+
+  const vaultResult = await query(
+    `INSERT INTO evidence_vault (company_id, title, description, file_name, file_type, file_size, storage_path, uploaded_by)
+     VALUES ($1, $2, $3, $4, 'application/pdf', $5, $6, 'automated') RETURNING *`,
+    [companyId, `${result.testKey} — ${result.resourceId}`, result.message, fileName, pdfBuffer.length, storagePath]
+  );
+  const vault = mapRow(vaultResult);
+  await linkVaultToQuestions({ companyId, testKey: result.testKey, vaultId: vault.id });
   return vault.id;
 }
 
 async function upsertFinding({ companyId, connectionId, result, sourceResultId }) {
+  const payloadHash = hashPayload(result.evidencePayload);
+  const existing = await query(
+    `SELECT evidence_vault_id, payload_hash FROM findings WHERE company_id = $1 AND connection_id = $2 AND test_key = $3 AND resource_id = $4`,
+    [companyId, connectionId, result.testKey, result.resourceId]
+  );
+  const existingFinding = mapRow(existing);
+
+  // Only generate a new PDF if evidence is new or has changed (dedup by payload hash)
+  let vaultId = existingFinding?.evidenceVaultId || null;
+  if (!existingFinding || !existingFinding.evidenceVaultId || existingFinding.payloadHash !== payloadHash) {
+    vaultId = await generateFindingEvidenceVaultItem({ companyId, connectionId, result });
+  }
+
   await query(
-    `INSERT INTO findings (company_id, connection_id, test_key, resource_id, severity, title, description, source_result_id, last_detected_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+    `INSERT INTO findings (company_id, connection_id, test_key, resource_id, severity, title, description, source_result_id, evidence_vault_id, payload_hash, last_detected_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
      ON CONFLICT (company_id, connection_id, test_key, resource_id)
      DO UPDATE SET
        status = CASE WHEN findings.status = 'resolved' THEN 'open' ELSE findings.status END,
        last_detected_at = NOW(),
        source_result_id = EXCLUDED.source_result_id,
-       description = EXCLUDED.description`,
-    [companyId, connectionId, result.testKey, result.resourceId, result.severity, result.title || result.testKey, result.message, sourceResultId]
+       description = EXCLUDED.description,
+       evidence_vault_id = EXCLUDED.evidence_vault_id,
+       payload_hash = EXCLUDED.payload_hash`,
+    [companyId, connectionId, result.testKey, result.resourceId, result.severity, result.title || result.testKey, result.message, sourceResultId, vaultId, payloadHash]
   );
 }
+
 
 export async function runCollection({ connectionId, companyId, triggeredBy, triggerType = "manual" }) {
   const connectionResult = await query(

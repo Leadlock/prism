@@ -63,6 +63,9 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
   const [selectedDetail, setSelectedDetail] = useState(null); // full detail with linked questions
   const [detailLoading, setDetailLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [showFileViewer, setShowFileViewer] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState(null);
+  const [viewerLoading, setViewerLoading] = useState(false);
 
   // Vault PIN state
   const [pinSet, setPinSet] = useState(false);
@@ -493,6 +496,32 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   };
 
+  // Opens the file in an in-app modal viewer (detail panel only — list-row View keeps new-tab behavior via handleView).
+  const handleViewInBrowser = async (item) => {
+    setViewerLoading(true);
+    setShowFileViewer(true);
+    const API_URL = import.meta.env.VITE_API_URL || "";
+    try {
+      const res = await fetch(`${API_URL}/api/vault/${item.id}/view`, {
+        headers: { Authorization: `Bearer ${token}`, ...vaultHeaders }
+      });
+      if (!res.ok) { setError("Could not open file"); setShowFileViewer(false); return; }
+      const blob = await res.blob();
+      setViewerUrl(URL.createObjectURL(blob));
+    } catch {
+      setError("Could not open file");
+      setShowFileViewer(false);
+    } finally {
+      setViewerLoading(false);
+    }
+  };
+
+  const closeFileViewer = () => {
+    if (viewerUrl) URL.revokeObjectURL(viewerUrl);
+    setViewerUrl(null);
+    setShowFileViewer(false);
+  };
+
   const handleViewVersion = async (vaultId, ver) => {
     const API_URL = import.meta.env.VITE_API_URL || "";
     const res = await fetch(`${API_URL}/api/vault/${vaultId}/versions/${ver.id}/view`, {
@@ -795,14 +824,14 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
                     <div><span style={{ color: "var(--text3)" }}>Date: </span>{formatDate(selectedDetail.uploadedAt)}</div>
                   </div>
 
-                  {selectedDetail.storagePath && canDownload && (
-                    <button className="btn btn-primary" style={{ width: "100%", marginBottom: 8 }} onClick={() => handleDownload(selectedDetail)}>
-                      ↓ Download Current Version
+                  {selectedDetail.storagePath && (
+                    <button className="btn btn-ghost" style={{ width: "100%", marginBottom: 8 }} onClick={() => handleViewInBrowser(selectedDetail)}>
+                      ↗ View file in browser
                     </button>
                   )}
-                  {selectedDetail.storagePath && !canDownload && (
-                    <button className="btn btn-ghost" style={{ width: "100%", marginBottom: 8 }} onClick={() => handleView(selectedDetail)}>
-                      ↗ View File
+                  {selectedDetail.storagePath && canDownload && (
+                    <button className="btn btn-primary" style={{ width: "100%", marginBottom: 8 }} onClick={() => handleDownload(selectedDetail)}>
+                      ↓ Download
                     </button>
                   )}
                   {canWrite && (
@@ -1231,6 +1260,28 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
                 </button>
                 <button className="btn btn-ghost" onClick={() => setDeleteConfirm(null)}>Cancel</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* File viewer modal — in-app PDF/image preview for the detail panel */}
+      {showFileViewer && selectedDetail && (
+        <div className="modal-overlay" onClick={closeFileViewer}>
+          <div className="module-modal" style={{ maxWidth: 860, width: "90vw" }} onClick={e => e.stopPropagation()}>
+            <div className="module-modal-header">
+              <div className="module-modal-title">{selectedDetail.fileName || selectedDetail.title}</div>
+              <button className="modal-close" onClick={closeFileViewer}>×</button>
+            </div>
+            <div className="module-modal-content" style={{ padding: 0, height: "75vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg3)" }}>
+              {viewerLoading ? (
+                <div style={{ color: "var(--text3)" }}>Loading…</div>
+              ) : viewerUrl ? (
+                selectedDetail.fileType?.startsWith("image/") ? (
+                  <img src={viewerUrl} alt={selectedDetail.title} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                ) : (
+                  <iframe src={viewerUrl} title={selectedDetail.fileName || selectedDetail.title} style={{ width: "100%", height: "100%", border: "none" }} />
+                )
+              ) : null}
             </div>
           </div>
         </div>
