@@ -9,6 +9,11 @@ async function fetchToken({ tenantId, clientId, clientSecret, resource }) {
       resource,
     }),
   });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to acquire Purview token: ${res.status} ${errorText}`);
+  }
+
   const body = await res.json();
   return body.access_token;
 }

@@ -7,6 +7,7 @@ describe("resolvePurviewCredentials", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
+        ok: true,
         json: async () => ({ token_type: "Bearer", expires_in: 3600, access_token: "fake-token" }),
       }))
     );
@@ -118,5 +119,26 @@ describe("resolvePurviewCredentials", () => {
     expect(url).toBe("https://login.microsoftonline.com/tenant-1/oauth2/token");
     const body = new URLSearchParams(options.body);
     expect(body.get("resource")).toBe("https://manage.office.com");
+  });
+
+  test("throws a descriptive error when the token request fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 401,
+        text: async () => "AADSTS7000215: Invalid client secret provided.",
+      }))
+    );
+
+    const credentials = await resolvePurviewCredentials({
+      authType: "oauth2",
+      config: { tenantId: "tenant-1", purviewAccountName: "acct-1" },
+      secret: { clientId: "client-1", clientSecret: "shh" },
+    });
+
+    await expect(credentials.getDataMapToken()).rejects.toThrow(
+      "Failed to acquire Purview token: 401 AADSTS7000215: Invalid client secret provided."
+    );
   });
 });
