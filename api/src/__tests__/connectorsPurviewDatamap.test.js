@@ -127,6 +127,17 @@ describe("checkSourcesScanned", () => {
     expect(results[0].evidencePayload.mostRecentScanTime).toBe(isoDaysAgo(10));
   });
 
+  // 6c: resourceId must never resolve to undefined/empty (evidence_test_results.resource_id is NOT NULL).
+  test("falls back to 'unknown' resourceId when a source has neither id nor name", async () => {
+    const dataMap = {
+      get: async () => ({
+        value: [{ kind: "AzureStorage", scans: [{ scanResults: [{ status: "Completed", endTime: isoDaysAgo(1) }] }] }],
+      }),
+    };
+    const results = await checkSourcesScanned(dataMap);
+    expect(results[0].resourceId).toBe("unknown");
+  });
+
   test("evaluates each remaining source independently", async () => {
     const dataMap = {
       get: async () => ({
@@ -148,6 +159,15 @@ describe("checkScanScheduleConfigured", () => {
     const dataMap = { get: async () => ({ value: [{ id: "s1", name: "sub", kind: "AzureSubscription", scans: [] }] }) };
     const results = await checkScanScheduleConfigured(dataMap);
     expect(results).toEqual([{ resourceId: "account", status: "not_applicable", message: "No registered data sources found", evidencePayload: {} }]);
+  });
+
+  // 6c: resourceId must never resolve to undefined/empty (evidence_test_results.resource_id is NOT NULL).
+  test("falls back to 'unknown' resourceId when a source has neither id nor name", async () => {
+    const dataMap = {
+      get: async () => ({ value: [{ kind: "AzureStorage", scans: [{ scanResults: [{ status: "Completed", runType: "Scheduled", endTime: isoDaysAgo(1) }] }] }] }),
+    };
+    const results = await checkScanScheduleConfigured(dataMap);
+    expect(results[0].resourceId).toBe("unknown");
   });
 
   test("passes a source with a Scheduled scan run", async () => {
@@ -254,6 +274,13 @@ describe("checkClassificationApplied", () => {
     expect(results[0].resourceId).toBe("byid");
   });
 
+  // 6c: resourceId must never resolve to undefined/empty (evidence_test_results.resource_id is NOT NULL).
+  test("falls back to 'unknown' resourceId when an entity has none of guid/id/qualifiedName/name", async () => {
+    const dataMap = { post: async () => ({ value: [{ typeName: "azure_sql_table" }] }) };
+    const results = await checkClassificationApplied(dataMap);
+    expect(results[0].resourceId).toBe("unknown");
+  });
+
   test.each([
     ["azure_data_explorer_table", "AzureDataExplorer family"],
     ["azure_kusto_table", "AzureDataExplorer family (kusto alt prefix)"],
@@ -285,6 +312,31 @@ describe("checkClassificationApplied", () => {
     const dataMap = { post: async () => ({ value: [{ guid: "e1", typeName, classification: [{ typeName: "PII" }] }] }) };
     const results = await checkClassificationApplied(dataMap);
     expect(results[0].status).toBe("pass");
+  });
+
+  // 6a: azure_blob_path/azure_blob_account/azure_blob_service are the Atlas
+  // typeNames actually observed for blob-storage assets — they should match
+  // the Azure Storage rule via the "azure_blob" prefix.
+  test.each([
+    ["azure_blob_path", "azure_blob_path"],
+    ["azure_blob_account", "azure_blob_account"],
+    ["azure_blob_service", "azure_blob_service"],
+  ])("supports classification for the %s typeName (azure_blob prefix)", async (typeName) => {
+    const dataMap = { post: async () => ({ value: [{ guid: "e1", typeName, classification: [{ typeName: "PII" }] }] }) };
+    const results = await checkClassificationApplied(dataMap);
+    expect(results[0].status).toBe("pass");
+  });
+
+  // 6b: bare "mysql"/"rds" prefixes were removed so an unqualified,
+  // non-Azure/Amazon source type doesn't wrongly match and produce a false
+  // `fail` — it should fall through to not_applicable instead.
+  test.each([
+    ["mysql_database_table", "bare mysql (not azure_mysql-qualified)"],
+    ["rds_instance_table", "bare rds (not amazon_rds-qualified)"],
+  ])("does NOT match the %s typeName (%s) — falls through to not_applicable", async (typeName) => {
+    const dataMap = { post: async () => ({ value: [{ guid: "e1", typeName, classification: [{ typeName: "PII" }] }] }) };
+    const results = await checkClassificationApplied(dataMap);
+    expect(results[0].status).toBe("not_applicable");
   });
 });
 

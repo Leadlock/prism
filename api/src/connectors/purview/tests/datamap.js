@@ -32,7 +32,7 @@ export async function checkSourcesScanned(dataMap) {
   const now = Date.now();
 
   return sources.map((source) => {
-    const resourceId = source.id || source.name;
+    const resourceId = source.id || source.name || "unknown";
     const successResults = allScanResults(source).filter((r) => (r.status || "").toLowerCase() === "completed");
 
     if (successResults.length === 0) {
@@ -73,7 +73,7 @@ export async function checkScanScheduleConfigured(dataMap) {
   }
 
   return sources.map((source) => {
-    const resourceId = source.id || source.name;
+    const resourceId = source.id || source.name || "unknown";
     // Inferred from scan-run history (`runType`) rather than a direct
     // trigger-configuration read, since the triggers endpoint's response
     // shape wasn't confirmed by research (see task-3a-research-supplement.md).
@@ -124,8 +124,10 @@ const TYPE_CAPABILITY_RULES = [
   // AzureSqlDatabase, AzureSqlDatabaseManagedInstance: Yes/Yes).
   { prefixes: ["azure_sql", "azure_sql_mi", "sql_managed_instance"], classification: true, label: true },
   // Azure Storage (Blob) and Azure Files: both supported (matrix
-  // AzureStorage, AzureFileService: Yes/Yes).
-  { prefixes: ["azure_storage", "azure_file", "azurefile"], classification: true, label: true },
+  // AzureStorage, AzureFileService: Yes/Yes). "azure_blob" covers the Atlas
+  // typeNames actually observed for blob-storage assets (azure_blob_path,
+  // azure_blob_account, azure_blob_service).
+  { prefixes: ["azure_storage", "azure_file", "azurefile", "azure_blob"], classification: true, label: true },
   // Azure Data Lake Storage Gen1/Gen2: both supported (matrix AdlsGen1
   // (flagged assumption in the matrix itself), AdlsGen2: Yes/Yes).
   { prefixes: ["azure_datalake", "adls"], classification: true, label: true },
@@ -147,9 +149,13 @@ const TYPE_CAPABILITY_RULES = [
   // type): both supported (matrix SqlServerDatabase: Yes/Yes).
   { prefixes: ["sqlserver", "sql_server", "mssql"], classification: true, label: true },
   // Azure Database for MySQL: both supported (matrix AzureMySql: Yes/Yes).
-  { prefixes: ["azure_mysql", "mysql"], classification: true, label: true },
+  // Deliberately not a bare "mysql" prefix — same reasoning as the Postgres
+  // rule above: a bare prefix could over-match an unsupported non-Azure
+  // MySQL source type, producing a false `fail` rather than `not_applicable`.
+  { prefixes: ["azure_mysql"], classification: true, label: true },
   // Amazon RDS (SQL): classification only (matrix AmazonSql: Yes/No).
-  { prefixes: ["amazon_rds", "amazon_sql", "rds"], classification: true, label: false },
+  // Deliberately not bare "rds" — same over-matching concern as above.
+  { prefixes: ["amazon_rds", "amazon_sql"], classification: true, label: false },
   // Amazon S3: classification only (matrix AmazonS3: Yes/No).
   { prefixes: ["amazon_s3"], classification: true, label: false },
   // Oracle: classification only (matrix Oracle: Yes/No).
@@ -178,7 +184,7 @@ function sourceTypeSupportsSensitivityLabeling(typeName) {
 }
 
 function entityResourceId(entity) {
-  return entity.guid || entity.id || entity.qualifiedName || entity.name;
+  return entity.guid || entity.id || entity.qualifiedName || entity.name || "unknown";
 }
 
 async function searchEntities(dataMap) {

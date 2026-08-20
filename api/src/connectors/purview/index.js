@@ -14,7 +14,6 @@ function buildClients(purviewCreds) {
     },
     audit: {
       get: (path) => authedFetch(purviewCreds.auditBaseUrl + path, purviewCreds.getAuditToken, "GET"),
-      post: (path, body) => authedFetch(purviewCreds.auditBaseUrl + path, purviewCreds.getAuditToken, "POST", body),
     },
   };
 }
