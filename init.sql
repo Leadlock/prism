@@ -607,6 +607,8 @@ CREATE INDEX IF NOT EXISTS findings_company_idx ON findings(company_id);
 CREATE INDEX IF NOT EXISTS findings_status_idx ON findings(company_id, status);
 
 ALTER TABLE actions ADD COLUMN IF NOT EXISTS finding_id INT REFERENCES findings(id) ON DELETE SET NULL;
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS evidence_vault_id INT REFERENCES evidence_vault(id) ON DELETE SET NULL;
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS payload_hash TEXT;
 
 -- ===== Automated Evidence Collection: catalog seed data =====
 
