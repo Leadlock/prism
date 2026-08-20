@@ -4901,15 +4901,6 @@ body {
   overflow: hidden;
 }
 
-/* Alternating section backgrounds for visual distinction */
-.hp-section:nth-child(even) {
-  background: var(--bg3);
-}
-
-.hp-section:nth-child(odd) {
-  background: var(--bg);
-}
-
 /* Hero section — dramatic gradient with animated mesh */
 .hp-hero {
   position: relative;
@@ -4933,16 +4924,16 @@ body {
 }
 
 /* Platform section */
-.hp-section:nth-child(3) {
+.hp-platform-section {
   background: var(--bg) !important;
 }
 
-/* Roles section (child 5) — dot grid pattern */
-.hp-section:nth-child(5) {
+/* Roles section — dot grid pattern */
+.hp-roles-section {
   background: var(--bg) !important;
 }
 
-.hp-section:nth-child(5)::before {
+.hp-roles-section::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -4952,17 +4943,17 @@ body {
   pointer-events: none;
 }
 
-/* Score section (child 6) — glass card feel */
-.hp-section:nth-child(6) {
+/* Score section — glass card feel */
+.hp-score-section {
   background: linear-gradient(170deg, var(--bg3) 0%, var(--bg4) 100%) !important;
 }
 
-/* Pricing section (child 7) — gradient background with glow */
-.hp-section:nth-child(7) {
+/* Pricing section — gradient background with glow */
+.hp-pricing-section {
   background: linear-gradient(135deg, var(--bg4) 0%, var(--bg) 50%, var(--bg3) 100%) !important;
 }
 
-.hp-section:nth-child(7)::before {
+.hp-pricing-section::before {
   content: "";
   position: absolute;
   top: 50%;
@@ -4974,6 +4965,85 @@ body {
   background: radial-gradient(ellipse, var(--accent) 0%, transparent 70%);
   opacity: 0.04;
   pointer-events: none;
+}
+
+/* About section */
+.hp-about-section {
+  background: var(--bg) !important;
+}
+
+/* Penalties section (DPDPA cost of non-compliance) */
+.hp-penalties-section {
+  background: var(--bg3) !important;
+}
+
+.hp-penalty-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 720px;
+  margin: 0 auto 40px;
+}
+
+.hp-penalty-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.hp-penalty-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: left;
+}
+
+.hp-penalty-amount {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.hp-penalty-bar-track {
+  width: 100%;
+  height: 16px;
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--neu-inset-sm);
+  overflow: hidden;
+}
+
+.hp-penalty-bar-fill {
+  height: 100%;
+  border-radius: 10px;
+  background: var(--accent-gradient-warm);
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hp-penalty-cta {
+  display: flex;
+  justify-content: center;
+}
+
+@media (max-width: 480px) {
+  .hp-penalty-row-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .hp-penalty-amount {
+    font-size: 14px;
+  }
+}
+
+/* Integrations section (background/layout only — card styling lives after .hp-fw-grid below, so cascade order wins over .hp-fw-grid's own grid-template-columns) */
+.hp-integrations-section {
+  background: var(--bg3) !important;
 }
 
 /* Final CTA section — immersive background image */
@@ -5473,6 +5543,53 @@ body {
   .hp-fw-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Integrations grid — reuses .hp-fw-grid/.hp-fw-card, only overrides column width */
+.hp-integrations-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.hp-integration-icon {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--neu-radius-xs);
+  background: var(--bg);
+  box-shadow: var(--neu-inset-sm);
+  flex-shrink: 0;
+}
+
+.hp-integration-card {
+  padding-bottom: 24px;
+}
+
+.hp-integration-teaser {
+  border: 2px dashed var(--text3);
+  box-shadow: none;
+  background: transparent;
+  opacity: 0.75;
+}
+
+.hp-integration-teaser:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.hp-integration-icon-teaser {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text3);
+  background: var(--bg);
+}
+
+.hp-integration-teaser-text {
+  font-size: 13px;
+  color: var(--text3);
+  text-align: left;
+  line-height: 1.6;
 }
 
 /* Roles Grid */

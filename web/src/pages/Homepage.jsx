@@ -1,9 +1,58 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
+import { FaAws, FaMicrosoft, FaGithub } from "react-icons/fa";
 import PrismBg from "../components/PrismBg";
 import Logo from "../components/Logo";
 
 const CURRENT_YEAR = new Date().getFullYear();
+
+const DPDP_PENALTIES = [
+  { label: "Failure to notify a personal data breach", amountCrore: 200, amountLabel: "₹200 Cr" },
+  { label: "Violations related to children's data", amountCrore: 200, amountLabel: "₹200 Cr" },
+  { label: "Non-compliance by Significant Data Fiduciaries (SDFs)", amountCrore: 150, amountLabel: "₹150 Cr" },
+  { label: "Other violations under the Act", amountCrore: 50, amountLabel: "₹50 Cr" },
+];
+const DPDP_MAX_PENALTY_CRORE = Math.max(...DPDP_PENALTIES.map(p => p.amountCrore));
+
+const CONNECTORS = [
+  {
+    key: "aws",
+    name: "AWS",
+    Icon: FaAws,
+    color: "#FF9900",
+    tagline: "Live connector",
+    bullets: [
+      "IAM users have multi-factor authentication enabled",
+      "CloudTrail logging enabled across all regions",
+      "S3 buckets block public access",
+    ],
+  },
+  {
+    key: "azure",
+    name: "Microsoft Azure",
+    Icon: FaMicrosoft,
+    color: "#0078D4",
+    tagline: "Live connector",
+    bullets: [
+      "Storage accounts block public blob access",
+      "Activity Log diagnostics configured",
+      "Network security groups don't expose management ports publicly",
+    ],
+  },
+  {
+    key: "github",
+    name: "GitHub",
+    Icon: FaGithub,
+    color: "#181717",
+    darkColor: "#f0f6fc",
+    tagline: "Live connector",
+    bullets: [
+      "Organization-wide two-factor authentication enforced",
+      "Branch protection requires review before merging",
+      "Secret scanning enabled",
+    ],
+  },
+];
 
 function ContactModal({ open, onClose, subject }) {
   const [form, setForm] = useState({ name: "", email: "", company: "", message: "" });
@@ -169,8 +218,37 @@ export default function Homepage() {
         </div>
       </section>
 
+      {/* SECTION — Cost of Non-Compliance (DPDPA penalties) */}
+      <section className="hp-section hp-penalties-section" id="penalties">
+        <div className="hp-container">
+          <h2 className="hp-section-title">The Cost of Getting It Wrong</h2>
+          <p className="hp-section-sub">
+            The DPDP Act 2023 empowers the Data Protection Board of India to levy penalties per instance of non-compliance — here's what's at stake.
+          </p>
+          <div className="hp-penalty-list">
+            {DPDP_PENALTIES.map((p, i) => {
+              const pct = (p.amountCrore / DPDP_MAX_PENALTY_CRORE) * 100;
+              return (
+                <div key={i} className="hp-penalty-row">
+                  <div className="hp-penalty-row-head">
+                    <span className="hp-penalty-label">{p.label}</span>
+                    <span className="hp-penalty-amount">Up to {p.amountLabel}</span>
+                  </div>
+                  <div className="hp-penalty-bar-track">
+                    <div className="hp-penalty-bar-fill" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="hp-penalty-cta">
+            <button className="hp-btn hp-btn-primary" onClick={() => openContact("Assess DPDP Exposure")}>Assess Your DPDP Exposure</button>
+          </div>
+        </div>
+      </section>
+
       {/* SECTION 2 — Platform Overview */}
-      <section className="hp-section" id="platform">
+      <section className="hp-section hp-platform-section" id="platform">
         <div className="hp-container">
           <h2 className="hp-section-title">One structured place for everything compliance</h2>
           <p className="hp-section-sub">Maintain policies, documents, screenshots, approvals and implementation records in one structured place.</p>
@@ -266,8 +344,51 @@ export default function Homepage() {
         </div>
       </section>
 
+      {/* SECTION — Integrations / evidence sources */}
+      <section className="hp-section hp-integrations-section" id="integrations">
+        <div className="hp-container">
+          <h2 className="hp-section-title">Where PRISM Pulls Its Evidence</h2>
+          <p className="hp-section-sub">
+            Connect the systems you already run. PRISM continuously pulls evidence so your team isn't screenshotting consoles before every audit.
+          </p>
+          <div className="hp-fw-grid hp-integrations-grid">
+            {CONNECTORS.map((c) => (
+              <div key={c.key} className="hp-fw-card hp-integration-card">
+                <div className="hp-fw-card-header">
+                  <div className="hp-integration-icon">
+                    <c.Icon size={26} color={dark && c.darkColor ? c.darkColor : c.color} />
+                  </div>
+                  <div>
+                    <h3>{c.name}</h3>
+                    <p className="hp-fw-tagline">{c.tagline}</p>
+                  </div>
+                </div>
+                <ul className="hp-fw-list">
+                  {c.bullets.map((b, i) => (
+                    <li key={i}>{b}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+
+            <div className="hp-fw-card hp-integration-card hp-integration-teaser">
+              <div className="hp-fw-card-header">
+                <div className="hp-integration-icon hp-integration-icon-teaser">+</div>
+                <div>
+                  <h3>More on the way</h3>
+                  <p className="hp-fw-tagline">New connectors added regularly</p>
+                </div>
+              </div>
+              <p className="hp-integration-teaser-text">
+                We're continuously expanding coverage across cloud, identity, and DevOps tooling.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* SECTION 5 — Designed for Every Owner */}
-      <section className="hp-section">
+      <section className="hp-section hp-roles-section">
         <div className="hp-container">
           <h2 className="hp-section-title">Designed for Every Owner of Compliance</h2>
           <p className="hp-section-sub">PRISM gives every stakeholder clarity on their compliance responsibilities.</p>
@@ -292,7 +413,7 @@ export default function Homepage() {
       </section>
 
       {/* SECTION 8 — Compliance Score Is Only the Beginning */}
-      <section className="hp-section">
+      <section className="hp-section hp-score-section">
         <div className="hp-container">
           <h2 className="hp-section-title">Your Compliance Score Is Only the Beginning</h2>
           <p className="hp-section-sub">PRISM goes beyond a number — actionable intelligence for continuous improvement.</p>
@@ -314,7 +435,7 @@ export default function Homepage() {
       </section>
 
       {/* SECTION 9 — Pricing */}
-      <section className="hp-section" id="pricing">
+      <section className="hp-section hp-pricing-section" id="pricing">
         <div className="hp-container">
           <h2 className="hp-section-title">Simple, Transparent Pricing</h2>
           <p className="hp-section-sub">Choose the plan that fits your compliance journey.</p>
@@ -419,7 +540,7 @@ export default function Homepage() {
       </section>
 
       {/* SECTION — About Us */}
-      <section className="hp-section" id="about">
+      <section className="hp-section hp-about-section" id="about">
         <div className="hp-container">
           <div style={{ marginBottom: 48 }}>
             <h2 className="hp-section-title" style={{ textAlign: "left" }}>About PRISM</h2>
