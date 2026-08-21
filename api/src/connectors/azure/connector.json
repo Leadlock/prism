@@ -1,0 +1,12 @@
+{
+  "key": "azure",
+  "title": "Microsoft Azure",
+  "category": "cloud",
+  "authTypes": ["oauth2"],
+  "tests": [
+    { "testKey": "azure.security.defender_enabled", "title": "Microsoft Defender for Cloud is enabled", "severityDefault": "medium", "isoReferences": ["A.12.1.1"] },
+    { "testKey": "azure.logging.activity_log_diagnostics_enabled", "title": "Activity Log diagnostic settings are configured", "severityDefault": "critical", "isoReferences": ["A.12.4.1"] },
+    { "testKey": "azure.storage.public_access_blocked", "title": "Storage accounts block public blob access", "severityDefault": "critical", "isoReferences": ["A.8.2.3"] },
+    { "testKey": "azure.network.nsg_no_open_ingress", "title": "Network security groups do not expose management ports publicly", "severityDefault": "critical", "isoReferences": ["A.13.1.1"] }
+  ]
+}

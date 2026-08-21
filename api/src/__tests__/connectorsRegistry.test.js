@@ -1,5 +1,34 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi, afterEach } from "vitest";
+import fs from "fs";
+import path from "path";
 import { getConnector, listConnectorTests } from "../connectors/registry.js";
+
+const REGISTRY_PATH = "../connectors/registry.js";
+const realReadFileSync = fs.readFileSync;
+
+// Builds an `fs` mock factory whose `readFileSync` rewrites just the named
+// connector's connector.json (via `transformManifest`) and delegates every
+// other read straight to the real filesystem.
+function mockManifestFor(connectorKey, transformManifest) {
+  const manifestSuffix = path.join(connectorKey, "connector.json");
+  vi.doMock("fs", async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+      ...actual,
+      default: {
+        ...actual.default,
+        readFileSync: (filePath, ...args) => {
+          if (typeof filePath === "string" && filePath.endsWith(manifestSuffix)) {
+            const manifest = JSON.parse(realReadFileSync(filePath, "utf8"));
+            transformManifest(manifest);
+            return JSON.stringify(manifest);
+          }
+          return realReadFileSync(filePath, ...args);
+        },
+      },
+    };
+  });
+}
 
 describe("connector registry", () => {
   test("resolves the aws connector", () => {
@@ -99,5 +128,40 @@ describe("connector registry", () => {
   // accidentally wires it up as if it were a real, testable connector.
   test("throws for purview_compliance (catalog-only placeholder, no connector module)", () => {
     expect(() => getConnector("purview_compliance")).toThrow("Unknown integration: purview_compliance");
+  });
+});
+
+describe("connector manifest validation (connector.json vs. JS tests)", () => {
+  afterEach(() => {
+    vi.doUnmock("fs");
+    vi.resetModules();
+  });
+
+  test("loads cleanly when every connector's manifest matches its JS tests", async () => {
+    vi.resetModules();
+    await expect(import(REGISTRY_PATH)).resolves.toBeDefined();
+  });
+
+  test("throws when a manifest is missing a test key present in the JS tests array", async () => {
+    vi.resetModules();
+    mockManifestFor("azure", (manifest) => {
+      manifest.tests = manifest.tests.filter((t) => t.testKey !== "azure.security.defender_enabled");
+    });
+
+    await expect(import(REGISTRY_PATH)).rejects.toThrow(/azure.*azure\.security\.defender_enabled/s);
+  });
+
+  test("throws when a manifest has an extra test key not present in the JS tests array", async () => {
+    vi.resetModules();
+    mockManifestFor("github", (manifest) => {
+      manifest.tests.push({
+        testKey: "github.repo.nonexistent_check",
+        title: "Bogus test not defined in JS",
+        severityDefault: "low",
+        isoReferences: [],
+      });
+    });
+
+    await expect(import(REGISTRY_PATH)).rejects.toThrow(/github.*github\.repo\.nonexistent_check/s);
   });
 });
