@@ -59,3 +59,7 @@ export function getConnector(integrationKey) {
 export function listConnectorTests(integrationKey) {
   return getConnector(integrationKey).tests;
 }
+
+export function listConnectorKeys() {
+  return Object.keys(connectors);
+}
