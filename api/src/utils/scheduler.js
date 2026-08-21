@@ -2,6 +2,7 @@ import { query } from "../db/index.js";
 import { sendEmail } from "./email.js";
 import { buildEmailHtml } from "./emailTemplate.js";
 import { writeAuditLog } from "./auditLog.js";
+import { runCollection } from "../utils/collectionRunner.js";
 
 // ─── Recurrence helpers ───────────────────────────────────────────────────────
 
@@ -311,6 +312,32 @@ async function markOverdueActions() {
   }
 }
 
+// ─── Scheduled evidence collection ─────────────────────────────────────────────
+
+export async function runScheduledCollections() {
+  try {
+    const result = await query(`
+      SELECT id, company_id FROM integration_connections
+      WHERE auto_collect_enabled = TRUE AND status = 'connected'
+        AND (last_run_at IS NULL OR last_run_at < NOW() - (collection_frequency_hours || ' hours')::INTERVAL)
+    `);
+
+    for (const row of result.rows) {
+      try {
+        await runCollection({ connectionId: row.id, companyId: row.company_id, triggeredBy: null, triggerType: "scheduled" });
+      } catch (e) {
+        console.error(`[scheduler] runScheduledCollections failed for connection ${row.id}:`, e.message);
+      }
+    }
+
+    if (result.rowCount > 0) {
+      console.log(`[scheduler] processed ${result.rowCount} scheduled collection(s)`);
+    }
+  } catch (e) {
+    console.error("[scheduler] runScheduledCollections failed:", e.message);
+  }
+}
+
 // ─── Scheduler entry point ────────────────────────────────────────────────────
 
 const MS_PER_HOUR = 60 * 60 * 1000;
@@ -323,6 +350,7 @@ export function startScheduler() {
   processReminders();
   processRecurrence();
   markOverdueActions();
+  runScheduledCollections();
 
   // Daily tasks
   setInterval(deactivateExpiredAuditors, MS_PER_DAY);
@@ -332,4 +360,5 @@ export function startScheduler() {
 
   // Reminders checked every hour for more precise datetime targeting
   setInterval(processReminders, MS_PER_HOUR);
+  setInterval(runScheduledCollections, MS_PER_HOUR);
 }
