@@ -400,8 +400,32 @@ router.post("/:id/run", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandl
     const run = await runCollection({ connectionId, companyId: req.user.companyId, triggeredBy: req.user.userId, triggerType: "manual" });
     res.json(run);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 400).json({ error: err.message });
   }
+}));
+
+router.patch("/:id/schedule", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  const connectionId = parseInt(req.params.id);
+  const { collectionFrequencyHours, autoCollectEnabled } = req.body;
+
+  if (!Number.isInteger(collectionFrequencyHours) || collectionFrequencyHours <= 0) {
+    return res.status(400).json({ error: "collectionFrequencyHours must be a positive integer" });
+  }
+  if (typeof autoCollectEnabled !== "boolean") {
+    return res.status(400).json({ error: "autoCollectEnabled must be a boolean" });
+  }
+
+  const result = await query(
+    `UPDATE integration_connections
+     SET collection_frequency_hours = $1, auto_collect_enabled = $2, updated_at = NOW()
+     WHERE id = $3 AND company_id = $4
+     RETURNING *`,
+    [collectionFrequencyHours, autoCollectEnabled, connectionId, req.user.companyId]
+  );
+  const connection = mapRow(result);
+  if (!connection) return res.status(404).json({ error: "Connection not found" });
+
+  res.json(connection);
 }));
 
 router.delete("/:id", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {

@@ -507,6 +507,59 @@ describe("POST /api/integrations/:id/run", () => {
     expect(runRes.body.testsPassed).toBe(1);
     expect(runRes.body.testsFailed).toBe(0);
   });
+
+  // runCollection() (utils/collectionRunner.js) throws an Error with .status = 409
+  // when a run is already in progress for the connection (enforced by the
+  // evidence_collection_runs_running_uq partial unique index in init.sql). The
+  // route's catch must forward that .status rather than flattening every
+  // failure to 400, so API clients can tell "already running" apart from a
+  // generic bad request.
+  test("returns 409 (not 400) when a collection is already running for the connection", async () => {
+    const company = await createCompany({ domain: "runconflict1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+    await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ authType: "iam_role", secret: { externalId: "ext-1" } });
+
+    // Seed an in-progress run directly so the unique partial index rejects the
+    // route's own INSERT with a 23505, which runCollection() turns into the
+    // 409 error.
+    await query(
+      `INSERT INTO evidence_collection_runs (company_id, connection_id, trigger_type, status) VALUES ($1, $2, 'manual', 'running')`,
+      [company.id, conn.rows[0].id]
+    );
+
+    const res = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/run`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/already in progress/i);
+  });
+
+  // A plain Error (no .status set) — e.g. no active credential — must still
+  // fall back to 400, confirming the err.status forwarding fix didn't change
+  // the default for ordinary failures.
+  test("still returns 400 for a run failure with no .status (no active credential)", async () => {
+    const company = await createCompany({ domain: "runconflict2.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+
+    const res = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/run`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/no active credential/i);
+  });
 });
 
 describe("GET /api/integrations", () => {
@@ -660,6 +713,85 @@ describe("GET /api/integrations/:id", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.authType).toBeNull();
+  });
+});
+
+describe("PATCH /api/integrations/:id/schedule", () => {
+  test("updates the collection frequency and auto-collect flag, returning the updated connection", async () => {
+    const company = await createCompany({ domain: "schedule1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+
+    const res = await request(app)
+      .patch(`/api/integrations/${conn.rows[0].id}/schedule`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ collectionFrequencyHours: 12, autoCollectEnabled: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body.collectionFrequencyHours).toBe(12);
+    expect(res.body.autoCollectEnabled).toBe(false);
+
+    const updated = await query(`SELECT collection_frequency_hours, auto_collect_enabled FROM integration_connections WHERE id = $1`, [conn.rows[0].id]);
+    expect(updated.rows[0].collection_frequency_hours).toBe(12);
+    expect(updated.rows[0].auto_collect_enabled).toBe(false);
+  });
+
+  test.each([
+    ["zero", 0],
+    ["negative", -5],
+    ["non-integer", 3.5],
+    ["non-numeric", "daily"],
+    ["missing", undefined],
+  ])("rejects a %s collectionFrequencyHours with 400", async (_label, value) => {
+    const company = await createCompany({ domain: `schedulebad-${_label}.com` });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+
+    const res = await request(app)
+      .patch(`/api/integrations/${conn.rows[0].id}/schedule`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ collectionFrequencyHours: value, autoCollectEnabled: true });
+
+    expect(res.status).toBe(400);
+  });
+
+  test("404s for a connection belonging to a different company", async () => {
+    const companyA = await createCompany({ domain: "schedulea.com" });
+    const companyB = await createCompany({ domain: "scheduleb.com" });
+    const adminB = await createUser(companyB.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Not yours') RETURNING *`,
+      [companyA.id]
+    );
+
+    const res = await request(app)
+      .patch(`/api/integrations/${conn.rows[0].id}/schedule`)
+      .set("Authorization", `Bearer ${adminB.token}`)
+      .send({ collectionFrequencyHours: 6, autoCollectEnabled: true });
+
+    expect(res.status).toBe(404);
+  });
+
+  test("is not accessible to CONTRIBUTOR", async () => {
+    const company = await createCompany({ domain: "schedulec.com" });
+    const contributor = await createUser(company.id, "CONTRIBUTOR");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+
+    const res = await request(app)
+      .patch(`/api/integrations/${conn.rows[0].id}/schedule`)
+      .set("Authorization", `Bearer ${contributor.token}`)
+      .send({ collectionFrequencyHours: 6, autoCollectEnabled: true });
+
+    expect(res.status).toBe(403);
   });
 });
 
