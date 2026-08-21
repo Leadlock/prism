@@ -502,6 +502,8 @@ CREATE TABLE IF NOT EXISTS integration_connections (
   revoked_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS integration_connections_company_idx ON integration_connections(company_id);
+ALTER TABLE integration_connections ADD COLUMN IF NOT EXISTS collection_frequency_hours INT NOT NULL DEFAULT 24;
+ALTER TABLE integration_connections ADD COLUMN IF NOT EXISTS auto_collect_enabled BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS integration_credentials (
   id SERIAL PRIMARY KEY,
@@ -552,6 +554,7 @@ CREATE TABLE IF NOT EXISTS evidence_collection_runs (
 );
 CREATE INDEX IF NOT EXISTS evidence_collection_runs_company_idx ON evidence_collection_runs(company_id);
 CREATE INDEX IF NOT EXISTS evidence_collection_runs_connection_idx ON evidence_collection_runs(connection_id);
+CREATE UNIQUE INDEX IF NOT EXISTS evidence_collection_runs_running_uq ON evidence_collection_runs(connection_id) WHERE status = 'running';
 
 CREATE TABLE IF NOT EXISTS evidence_test_results (
   id SERIAL PRIMARY KEY,

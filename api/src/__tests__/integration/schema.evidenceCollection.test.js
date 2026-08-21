@@ -158,4 +158,35 @@ describe("automated evidence collection schema", () => {
     `);
     expect(result.rows.length).toBe(1);
   });
+
+  test("integration_connections defaults collection_frequency_hours to 24 and auto_collect_enabled to true", async () => {
+    const company = await createCompany();
+    const result = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+    expect(result.rows[0].collection_frequency_hours).toBe(24);
+    expect(result.rows[0].auto_collect_enabled).toBe(true);
+  });
+
+  test("evidence_collection_runs allows only one running run per connection at a time", async () => {
+    const company = await createCompany();
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+    const connectionId = conn.rows[0].id;
+
+    await query(
+      `INSERT INTO evidence_collection_runs (company_id, connection_id, status) VALUES ($1, $2, 'running')`,
+      [company.id, connectionId]
+    );
+
+    await expect(
+      query(
+        `INSERT INTO evidence_collection_runs (company_id, connection_id, status) VALUES ($1, $2, 'running')`,
+        [company.id, connectionId]
+      )
+    ).rejects.toThrow();
+  });
 });
