@@ -62,6 +62,8 @@ function StatusPill({ status }) {
   );
 }
 
+const CADENCE_OPTIONS = [6, 12, 24, 72, 168];
+
 function randomExternalId() {
   return `prism-${crypto.randomUUID().slice(0, 8)}`;
 }
@@ -435,6 +437,9 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [wizardProvider, setWizardProvider] = useState(null);
+  // Keyed by connection id — a schedule change on one row must not disable
+  // or otherwise affect the controls on any other row.
+  const [savingSchedule, setSavingSchedule] = useState({});
 
   const load = useCallback(async () => {
     const [catalogData, connData] = await Promise.all([
@@ -485,6 +490,26 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
     }
   };
 
+  // The PATCH route requires both fields together, so every call sends the
+  // connection's current value for whichever field didn't change alongside
+  // the one that did.
+  const handleScheduleChange = async (e, connectionId, patch) => {
+    e.stopPropagation();
+    setError("");
+    setSavingSchedule(s => ({ ...s, [connectionId]: true }));
+    try {
+      const updated = await apiFetch(`/api/integrations/${connectionId}/schedule`, {
+        token, method: "PATCH",
+        body: JSON.stringify(patch)
+      });
+      setConnections(cs => cs.map(c => c.id === connectionId ? updated : c));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingSchedule(s => ({ ...s, [connectionId]: false }));
+    }
+  };
+
   if (loading) {
     return <div className="admin-container"><div className="admin-card"><p>Loading…</p></div></div>;
   }
@@ -522,36 +547,72 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
         <section className="admin-section">
           <h2>Connections</h2>
           <div className="admin-table">
-            <div className="admin-row admin-row-header" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr" }}>
+            <div className="admin-row admin-row-header" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr 1fr" }}>
               <span>Name</span>
               <span>Provider</span>
               <span>Status</span>
               <span>Last run</span>
+              <span>Cadence</span>
+              <span>Auto-collect</span>
               <span></span>
             </div>
             {connections.length === 0 && (
               <div className="admin-row admin-row-empty"><span>No connections yet — pick a connector below to get started.</span></div>
             )}
-            {connections.map(c => (
-              <div
-                key={c.id}
-                className="admin-row"
-                style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", cursor: "pointer" }}
-                onClick={() => navigate(`/settings/integrations/${c.id}`)}
-              >
-                <span style={{ fontWeight: 600 }}>{c.name}</span>
-                <span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{c.integrationKey}</span>
-                <span><StatusPill status={c.status} /></span>
-                <span style={{ fontSize: 12, color: "var(--text3)" }}>
-                  {c.lastRunAt ? new Date(c.lastRunAt).toLocaleString() : "Never"}
-                </span>
-                <span>
-                  {isLeadOrAdmin && c.status === "error" && (
-                    <button className="btn btn-ghost" style={{ color: "var(--red)", fontSize: 12, padding: "4px 8px" }} onClick={(e) => handleDelete(e, c.id, c.name)}>Delete</button>
-                  )}
-                </span>
-              </div>
-            ))}
+            {connections.map(c => {
+              const cadence = c.collectionFrequencyHours ?? 24;
+              const autoCollect = c.autoCollectEnabled ?? true;
+              const savingThis = !!savingSchedule[c.id];
+              return (
+                <div
+                  key={c.id}
+                  className="admin-row"
+                  style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr 1fr", cursor: "pointer" }}
+                  onClick={() => navigate(`/settings/integrations/${c.id}`)}
+                >
+                  <span style={{ fontWeight: 600 }}>{c.name}</span>
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{c.integrationKey}</span>
+                  <span><StatusPill status={c.status} /></span>
+                  <span style={{ fontSize: 12, color: "var(--text3)" }}>
+                    {c.lastRunAt ? new Date(c.lastRunAt).toLocaleString() : "Never"}
+                  </span>
+                  <span onClick={e => e.stopPropagation()}>
+                    <select
+                      aria-label="Collection cadence"
+                      value={cadence}
+                      disabled={!isLeadOrAdmin || savingThis}
+                      style={{ fontSize: 12 }}
+                      onChange={(e) => handleScheduleChange(e, c.id, {
+                        collectionFrequencyHours: Number(e.target.value),
+                        autoCollectEnabled: autoCollect,
+                      })}
+                    >
+                      {CADENCE_OPTIONS.map(h => <option key={h} value={h}>Every {h}h</option>)}
+                    </select>
+                  </span>
+                  <span onClick={e => e.stopPropagation()}>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, cursor: isLeadOrAdmin ? "pointer" : "default" }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Auto-collect enabled"
+                        checked={autoCollect}
+                        disabled={!isLeadOrAdmin || savingThis}
+                        onChange={(e) => handleScheduleChange(e, c.id, {
+                          collectionFrequencyHours: cadence,
+                          autoCollectEnabled: e.target.checked,
+                        })}
+                      />
+                      Auto
+                    </label>
+                  </span>
+                  <span>
+                    {isLeadOrAdmin && c.status === "error" && (
+                      <button className="btn btn-ghost" style={{ color: "var(--red)", fontSize: 12, padding: "4px 8px" }} onClick={(e) => handleDelete(e, c.id, c.name)}>Delete</button>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </section>
 

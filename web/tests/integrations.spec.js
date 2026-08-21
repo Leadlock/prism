@@ -440,4 +440,56 @@ test.describe("Integrations settings", () => {
     await page.getByTitle("Amazon Web Services").click();
     await expect(page.getByText("Connect Amazon Web Services")).toHaveCount(0);
   });
+
+  test("cadence dropdown and auto-collect toggle round-trip through the schedule PATCH", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    await page.route("**/api/integrations/catalog", r => r.fulfill({ json: CATALOG }));
+
+    let current = {
+      id: 10, integrationKey: "aws", name: "Prod AWS", status: "connected",
+      lastRunAt: "2026-08-17T10:00:00Z", lastRunStatus: "success",
+      collectionFrequencyHours: 24, autoCollectEnabled: true,
+    };
+
+    await page.route("**/api/integrations", r => {
+      if (r.request().method() === "GET") return r.fulfill({ json: [current] });
+      return r.fulfill({ json: {} });
+    });
+    await page.route("**/api/integrations/10/schedule", r => {
+      const body = r.request().postDataJSON();
+      current = { ...current, ...body };
+      return r.fulfill({ json: current });
+    });
+
+    await page.goto("/settings/integrations");
+    await expect(page.getByText("Prod AWS")).toBeVisible({ timeout: 10_000 });
+
+    const cadenceSelect = page.getByLabel("Collection cadence");
+    await expect(cadenceSelect).toHaveValue("24");
+
+    const [patchReq1] = await Promise.all([
+      page.waitForRequest(req => req.url().includes("/api/integrations/10/schedule") && req.method() === "PATCH"),
+      cadenceSelect.selectOption("72"),
+    ]);
+    expect(patchReq1.postDataJSON()).toEqual({ collectionFrequencyHours: 72, autoCollectEnabled: true });
+    await expect(cadenceSelect).toHaveValue("72");
+
+    const autoToggle = page.getByLabel("Auto-collect enabled");
+    await expect(autoToggle).toBeChecked();
+
+    // Plain click rather than uncheck(): the checkbox is a controlled input
+    // bound to the connection's server-confirmed state, so it doesn't flip
+    // until the PATCH resolves — uncheck()'s built-in post-click state
+    // check would race that round-trip.
+    const [patchReq2] = await Promise.all([
+      page.waitForRequest(req => req.url().includes("/api/integrations/10/schedule") && req.method() === "PATCH"),
+      autoToggle.click(),
+    ]);
+    expect(patchReq2.postDataJSON()).toEqual({ collectionFrequencyHours: 72, autoCollectEnabled: false });
+    await expect(autoToggle).not.toBeChecked();
+
+    // Interacting with the controls must not trigger the row's
+    // navigate-to-detail-page click handler.
+    await expect(page).toHaveURL(/\/settings\/integrations$/);
+  });
 });
