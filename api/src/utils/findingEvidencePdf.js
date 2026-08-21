@@ -60,6 +60,25 @@ export function renderFindingEvidencePdf({
 
     field("Severity", severity);
     field("Resource", resourceId);
+
+    // ── Standardized evidence-payload fields (optional) ───────────────────
+    // Newer connectors may build `evidencePayload` via
+    // `connectors/shared/evidencePayload.js`'s `buildEvidencePayload()`, which
+    // includes `resourceType`/`resourceName`/`region` alongside a `details`
+    // object. Older/existing connectors' freeform payloads won't have these
+    // keys, so each is only rendered when present.
+    if (evidencePayload && typeof evidencePayload === "object") {
+      if (evidencePayload.resourceType != null) {
+        field("Resource type", evidencePayload.resourceType);
+      }
+      if (evidencePayload.resourceName != null) {
+        field("Resource name", evidencePayload.resourceName);
+      }
+      if (evidencePayload.region != null) {
+        field("Region", evidencePayload.region);
+      }
+    }
+
     field("Test key", testKey);
     field(
       "ISO 27001 reference(s)",
