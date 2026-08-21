@@ -119,11 +119,19 @@ export async function runCollection({ connectionId, companyId, triggeredBy, trig
   const credential = await getActiveCredential(connectionId, companyId);
   if (!credential) throw new Error("No active credential for this connection");
 
-  const runResult = await query(
-    `INSERT INTO evidence_collection_runs (company_id, connection_id, trigger_type, status, triggered_by)
-     VALUES ($1, $2, $3, 'running', $4) RETURNING *`,
-    [companyId, connectionId, triggerType, triggeredBy || null]
-  );
+  let runResult;
+  try {
+    runResult = await query(
+      `INSERT INTO evidence_collection_runs (company_id, connection_id, trigger_type, status, triggered_by)
+       VALUES ($1, $2, $3, 'running', $4) RETURNING *`,
+      [companyId, connectionId, triggerType, triggeredBy || null]
+    );
+  } catch (err) {
+    if (err.code === "23505") {
+      throw Object.assign(new Error("A collection run is already in progress for this connection"), { status: 409 });
+    }
+    throw err;
+  }
   const run = mapRow(runResult);
 
   let results = [];

@@ -160,4 +160,36 @@ describe("runCollection", () => {
     expect(findingRows.rows[0].title).toBe("Default branch requires pull request review before merging");
     expect(findingRows.rows[0].test_key).toBe("github.repo.branch_protection_required_reviews");
   });
+
+  test("rejects with a 409 when a run for the same connection is already 'running'", async () => {
+    const { company, admin, connection } = await setupConnection();
+
+    // Simulate another in-flight run by inserting a 'running' row directly —
+    // the partial unique index (evidence_collection_runs_running_uq) added in
+    // Task 5 only allows one 'running' row per connection_id.
+    await query(
+      `INSERT INTO evidence_collection_runs (company_id, connection_id, trigger_type, status, triggered_by)
+       VALUES ($1, $2, 'manual', 'running', $3)`,
+      [company.id, connection.id, admin.id]
+    );
+
+    let caught;
+    try {
+      await runCollection({ connectionId: connection.id, companyId: company.id, triggeredBy: admin.id, triggerType: "manual" });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect(caught.status).toBe(409);
+    expect(caught.message).toBe("A collection run is already in progress for this connection");
+
+    // Only the pre-existing 'running' row should exist — the second attempt never inserted one.
+    const runRows = await query(
+      `SELECT * FROM evidence_collection_runs WHERE company_id = $1 AND connection_id = $2`,
+      [company.id, connection.id]
+    );
+    expect(runRows.rows.length).toBe(1);
+    expect(runRows.rows[0].status).toBe("running");
+  });
 });
