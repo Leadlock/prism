@@ -425,6 +425,8 @@ router.patch("/:id/schedule", authenticate, requireRole(["ADMIN", "LEAD"]), asyn
   const connection = mapRow(result);
   if (!connection) return res.status(404).json({ error: "Connection not found" });
 
+  await writeAuditLog({ userId: req.user.userId, companyId: req.user.companyId, action: "CONNECTION_SCHEDULE_UPDATED", resource: "integration_connections", detail: { connectionId, collectionFrequencyHours, autoCollectEnabled } });
+
   res.json(connection);
 }));
 

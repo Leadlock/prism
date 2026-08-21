@@ -739,6 +739,35 @@ describe("PATCH /api/integrations/:id/schedule", () => {
     expect(updated.rows[0].auto_collect_enabled).toBe(false);
   });
 
+  // The audit trail is itself a customer-facing feature of this compliance
+  // product, so a cadence/auto-collect change must not happen silently — same
+  // discipline as CONNECTION_CREATED/CREDENTIAL_STORED/CONNECTION_DELETED
+  // elsewhere in this file.
+  test("writes a CONNECTION_SCHEDULE_UPDATED audit log entry", async () => {
+    const company = await createCompany({ domain: "scheduleaudit1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name) VALUES ($1, 'aws', 'Prod AWS') RETURNING *`,
+      [company.id]
+    );
+
+    const res = await request(app)
+      .patch(`/api/integrations/${conn.rows[0].id}/schedule`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ collectionFrequencyHours: 6, autoCollectEnabled: true });
+
+    expect(res.status).toBe(200);
+
+    const logs = await query(
+      `SELECT * FROM audit_logs WHERE company_id = $1 AND action = 'CONNECTION_SCHEDULE_UPDATED'`,
+      [company.id]
+    );
+    expect(logs.rows.length).toBe(1);
+    expect(logs.rows[0].user_id).toBe(admin.id);
+    expect(logs.rows[0].resource).toBe("integration_connections");
+    expect(logs.rows[0].detail).toEqual({ connectionId: conn.rows[0].id, collectionFrequencyHours: 6, autoCollectEnabled: true });
+  });
+
   test.each([
     ["zero", 0],
     ["negative", -5],
