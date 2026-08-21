@@ -75,10 +75,12 @@ ONE-TIME SERVER SETUP  (Skip this after first deployment)
     POSTGRES_PASSWORD=<strong_password>
     DATABASE_URL=postgresql://compliance:<strong_password>@db:5432/compliance
     JWT_SECRET=<32+_char_random_string>
+    CREDENTIAL_ENCRYPTION_KEY=<base64_32_byte_key>   # generate with: openssl rand -base64 32
 
     CORS_ORIGIN=https://prism.askthechamp.com
     VITE_API_URL=https://prism.askthechamp.com/api
     WEB_URL=https://prism.askthechamp.com
+    API_URL=https://prism.askthechamp.com
 
     API_PORT=4000
     WEB_PORT=5173

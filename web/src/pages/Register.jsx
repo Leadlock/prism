@@ -302,11 +302,17 @@ export default function Register({ onLogin }) {
               </div>
             </div>
 
+          <checkbox className="login-terms">
+            <input type="checkbox" required />
+            <span>    I agree to providing all the asked details for gap assessment of DPDPA for my organisation.</span>
+          </checkbox>
             {error && <p className="error-text">{error}</p>}
 
             <button type="submit" disabled={loading} className="login-btn">
               {loading ? "Submitting..." : "Register Company"} <span className="btn-arrow">→</span>
             </button>
+
+            
           </form>
 
           <p className="login-terms">

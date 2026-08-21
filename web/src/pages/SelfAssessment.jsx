@@ -709,7 +709,14 @@ export default function SelfAssessment({ user, token, onLogout }) {
 
   const currentDept = selectedDepts[deptIndex];
   const currentQuestions = currentDept
-    ? (DEPT_QUESTIONS[currentDept] || [{ id: `${currentDept}-1`, text: `Does your ${currentDept} department have documented data protection practices?` }])
+    ? (DEPT_QUESTIONS[currentDept] || [
+      { id: `${currentDept}-1`, text: `Do you share data / tasks with other departments??` }, 
+      { id: `${currentDept}-2`, text: `Does your department directly contact clients / vendors?` },
+      { id: `${currentDept}-3`, text: `Does ${currentDept} department enforce Role Based Access Control?` },
+      {id: `${currentDept}-4`, text: `Does ${currentDept} process personal data (name, phone number, card details)?` },
+      {id: `${currentDept}-5`, text: `Does ${currentDept} use third party software (ERP, SaaS, CRM) ?` },
+      {id: `${currentDept}-6`, text: `Does ${currentDept} handle employee / client / vendor data?` },
+      ])
     : [];
 
   const goToStep = (s, extra = {}) => {

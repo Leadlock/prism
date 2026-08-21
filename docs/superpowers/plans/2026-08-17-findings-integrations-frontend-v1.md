@@ -2348,6 +2348,226 @@ git commit -m "feat: add vault-backed Evidence PDF download and bulk Findings Ex
 
 ---
 
+### Task 14: Frontend — Evidence Vault detail panel: in-browser file viewer popup + unconditional download button
+
+**Why now, appended after Task 13 rather than inserted earlier:** the backend routes this task
+needs (`GET /api/vault/:id/view`, `GET /api/vault/:id/download`) already work generically off
+`storage_path` regardless of `uploaded_by` — no backend change is required here. But it's only
+*meaningful* once Task 12 gives some automated (fail-path) `evidence_vault` rows a real
+`storage_path`/`file_type='application/pdf'` for the first time. Placed after Task 13 so the doc's
+task numbering and cross-references in Self-Review Notes stay stable; its own tests are
+self-contained via Playwright mocks and don't require Task 12 to be implemented first to write or
+pass.
+
+**Files:**
+- Modify: `web/src/pages/EvidenceVault.jsx`
+- Test: `web/tests/evidence.spec.js`
+
+**Interfaces:**
+- Consumes: existing `GET /api/vault/:id` (detail), `GET /api/vault/:id/view` (inline stream),
+  `GET /api/vault/:id/download` (attachment) — all already shipped, no backend changes.
+- Produces: in the detail panel, above "Upload New Version": a **"↗ View file in browser"**
+  button (visible to everyone who can reach the panel, mirroring backend `VAULT_READERS`) that
+  opens an in-app modal previewing the file, and a **"↓ Download"** button (visible when
+  `canDownload`, mirroring backend `VAULT_DOWNLOADERS`) that keeps the existing blob-download
+  behavior — both shown together now, and both agnostic of `uploadedBy`/source.
+
+**What's wrong today (confirmed by reading the file directly):** lines 798-807 currently render
+*either* a "Download Current Version" button (if `canDownload`, i.e. role ≠ AUDITOR) *or* a "View
+File" button (only if `!canDownload`, i.e. AUDITOR-only) — never both. "View File" (`handleView`,
+lines 484-494) already fetches the blob and does `window.open(url, "_blank")` — a new tab, not an
+in-app popup. So for every non-AUDITOR role there is currently no "view in browser" option at all,
+only Download — that's the actual gap this task closes.
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `web/tests/evidence.spec.js`, inside the existing `test.describe("Evidence workflows", ...)`
+block:
+
+```js
+  test("Detail panel shows View file in browser (popup) and Download together, for an automated finding PDF", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+    const ITEM = {
+      id: 5, title: "aws.iam.mfa_enforced — account", description: "MFA not enforced for 2 users",
+      fileName: "finding-5.pdf", fileType: "application/pdf", fileSize: 18234,
+      storagePath: "uploads/1/vault/1699999999-123456789.pdf",
+      uploadedBy: "automated", uploadedAt: "2026-08-17T00:00:00Z", locked: false, linkedCount: 1,
+    };
+    await page.route("**/api/vault", r => r.fulfill({ json: [ITEM] }));
+    await page.route("**/api/vault/5", r => r.fulfill({ json: ITEM }));
+    await page.route("**/api/vault/5/view", r => r.fulfill({
+      status: 200, contentType: "application/pdf", body: Buffer.from("%PDF-1.4 fake"),
+    }));
+    await page.route("**/api/vault/5/download", r => r.fulfill({
+      status: 200, contentType: "application/pdf", body: Buffer.from("%PDF-1.4 fake"),
+    }));
+
+    await page.goto("/vault");
+    await expect(page.getByText("Evidence Vault")).toBeVisible({ timeout: 10_000 });
+    await page.getByText("aws.iam.mfa_enforced — account").click();
+
+    const viewBtn = page.getByRole("button", { name: "↗ View file in browser" });
+    const downloadBtn = page.getByRole("button", { name: "↓ Download" });
+    await expect(viewBtn).toBeVisible({ timeout: 10_000 });
+    await expect(downloadBtn).toBeVisible();
+
+    // "View file in browser" opens an in-app modal, not a new tab
+    let newPageOpened = false;
+    page.context().once("page", () => { newPageOpened = true; });
+    await viewBtn.click();
+    await expect(page.locator(".module-modal-title")).toHaveText("finding-5.pdf", { timeout: 10_000 });
+    const iframeSrc = await page.locator(".module-modal iframe").getAttribute("src");
+    expect(iframeSrc).toMatch(/^blob:/);
+    expect(newPageOpened).toBe(false);
+
+    await page.locator(".modal-close").click();
+    await expect(page.locator(".module-modal-title")).toHaveCount(0);
+
+    // Download still works and is a distinct action from the viewer
+    const [dlReq] = await Promise.all([
+      page.waitForRequest(req => req.url().includes("/api/vault/5/download")),
+      downloadBtn.click(),
+    ]);
+    expect(dlReq.url()).toContain("/api/vault/5/download");
+  });
+
+  test("AUDITOR sees View file in browser but not Download", async ({ page }) => {
+    await setAuth(page, "AUDITOR");
+    const ITEM = {
+      id: 5, title: "aws.iam.mfa_enforced — account", fileName: "finding-5.pdf",
+      fileType: "application/pdf", storagePath: "uploads/1/vault/x.pdf",
+      uploadedBy: "automated", uploadedAt: "2026-08-17T00:00:00Z", locked: false,
+    };
+    await page.route("**/api/vault", r => r.fulfill({ json: [ITEM] }));
+    await page.route("**/api/vault/5", r => r.fulfill({ json: ITEM }));
+
+    await page.goto("/vault");
+    await expect(page.getByText("Evidence Vault")).toBeVisible({ timeout: 10_000 });
+    await page.getByText("aws.iam.mfa_enforced — account").click();
+
+    await expect(page.getByRole("button", { name: "↗ View file in browser" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "↓ Download" })).toHaveCount(0);
+  });
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `cd web && npx playwright test tests/evidence.spec.js -g "View file in browser"`
+Expected: FAIL — no button named "↗ View file in browser" exists yet (today's button is either
+"↓ Download Current Version" or "↗ View File", never both, and "View File" opens a new tab via
+`window.open`, so `.module-modal-title` never appears and `newPageOpened` would be `true`).
+
+- [ ] **Step 3: Write the implementation**
+
+In `web/src/pages/EvidenceVault.jsx`:
+
+1. Add new state near the existing `previewUrl`/version-modal state declarations:
+
+```jsx
+const [showFileViewer, setShowFileViewer] = useState(false);
+const [viewerUrl, setViewerUrl] = useState(null);
+const [viewerLoading, setViewerLoading] = useState(false);
+```
+
+2. Add a new handler pair immediately after the existing `handleView` function (lines 484-494) —
+deliberately a **separate** function from `handleView` so the list-row "View" button (used
+elsewhere in the file) keeps its current new-tab behavior unchanged, scoping this change to the
+detail panel only:
+
+```jsx
+const handleViewInBrowser = async (item) => {
+  setViewerLoading(true);
+  setShowFileViewer(true);
+  const API_URL = import.meta.env.VITE_API_URL || "";
+  try {
+    const res = await fetch(`${API_URL}/api/vault/${item.id}/view`, {
+      headers: { Authorization: `Bearer ${token}`, ...vaultHeaders }
+    });
+    if (!res.ok) { setError("Could not open file"); setShowFileViewer(false); return; }
+    const blob = await res.blob();
+    setViewerUrl(URL.createObjectURL(blob));
+  } catch {
+    setError("Could not open file");
+    setShowFileViewer(false);
+  } finally {
+    setViewerLoading(false);
+  }
+};
+
+const closeFileViewer = () => {
+  if (viewerUrl) URL.revokeObjectURL(viewerUrl);
+  setViewerUrl(null);
+  setShowFileViewer(false);
+};
+```
+
+3. Replace the existing mutually-exclusive button block (lines 798-807) with both buttons shown
+together, unconditional on source:
+
+```jsx
+{selectedDetail.storagePath && (
+  <button className="btn btn-ghost" style={{ width: "100%", marginBottom: 8 }} onClick={() => handleViewInBrowser(selectedDetail)}>
+    ↗ View file in browser
+  </button>
+)}
+{selectedDetail.storagePath && canDownload && (
+  <button className="btn btn-primary" style={{ width: "100%", marginBottom: 8 }} onClick={() => handleDownload(selectedDetail)}>
+    ↓ Download
+  </button>
+)}
+```
+
+(The following `{canWrite && (...Upload New Version button...)}` block, lines 808-816, is
+unchanged and stays directly below.)
+
+4. Add the new viewer modal alongside the file's other modals (e.g. right after the "Upload new
+version modal" block, lines 1064-1125), following the exact `modal-overlay`/`module-modal`
+convention used there:
+
+```jsx
+{/* File viewer modal */}
+{showFileViewer && selectedDetail && (
+  <div className="modal-overlay" onClick={closeFileViewer}>
+    <div className="module-modal" style={{ maxWidth: 860, width: "90vw" }} onClick={e => e.stopPropagation()}>
+      <div className="module-modal-header">
+        <div className="module-modal-title">{selectedDetail.fileName || selectedDetail.title}</div>
+        <button className="modal-close" onClick={closeFileViewer}>×</button>
+      </div>
+      <div className="module-modal-content" style={{ padding: 0, height: "75vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg3)" }}>
+        {viewerLoading ? (
+          <div style={{ color: "var(--text3)" }}>Loading…</div>
+        ) : viewerUrl ? (
+          selectedDetail.fileType?.startsWith("image/") ? (
+            <img src={viewerUrl} alt={selectedDetail.title} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+          ) : (
+            <iframe src={viewerUrl} title={selectedDetail.fileName || selectedDetail.title} style={{ width: "100%", height: "100%", border: "none" }} />
+          )
+        ) : null}
+      </div>
+    </div>
+  </div>
+)}
+```
+
+PDFs (and anything else that isn't an `image/*` type) render via `<iframe>`, which Chromium (the
+only Playwright browser this repo tests against, per `npm run test:e2e`) renders using its native
+PDF viewer — matching the "viewed in a popup in the app" requirement without a new dependency.
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `cd web && npx playwright test tests/evidence.spec.js`
+Expected: PASS, including all pre-existing tests in the file (the button-block change doesn't
+touch list-row rendering or the `source`/tab logic from Task 8).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add web/src/pages/EvidenceVault.jsx web/tests/evidence.spec.js
+git commit -m "feat: add in-app file viewer popup and unconditional download to vault detail panel"
+```
+
+---
+
 ## Self-Review Notes
 
 - **Spec coverage:** all six §J screens are covered — "Settings → Integrations" (Task 5), "Connection detail" (Task 6, minus cadence selector/per-test toggles, explicitly deferred pending §I scheduling), "Evidence Sources" (Task 8), "Test results / Failed checks" i.e. Findings inbox (Task 7), "Collection history" (Task 6, backed by Task 2), "Dashboard" tile (Task 9, backed by Task 4). The OAuth auth-flow variant mentioned in §J's "Add Integration" wizard description is intentionally not built — no OAuth-based connector exists in the registry (`api/src/connectors/registry.js` has only `aws`, which is `iam_role`/`access_key`); the wizard's provider-picker step is written generically against the `integrations` catalog table so adding a real OAuth connector later doesn't require rewriting this page, but building an actual OAuth redirect flow now would be speculative.
