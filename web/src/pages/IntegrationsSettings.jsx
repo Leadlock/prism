@@ -19,6 +19,36 @@ const PROVIDER_ICON = {
   purview: { Icon: FaMicrosoft, color: "#8661C5" },
 };
 
+// Display order for known categories; anything else falls back to
+// alphabetical after these, so a new connector's category never needs a
+// code change here to show up — it just lands at the end.
+const CATEGORY_ORDER = ["cloud", "devops", "data_governance"];
+const CATEGORY_LABEL = {
+  cloud: "Cloud",
+  devops: "DevOps",
+  data_governance: "Data Governance",
+};
+
+function titleCase(value) {
+  return value.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function groupCatalogByCategory(catalog) {
+  const byCategory = new Map();
+  for (const c of catalog) {
+    if (!byCategory.has(c.category)) byCategory.set(c.category, []);
+    byCategory.get(c.category).push(c);
+  }
+  return [...byCategory.entries()].sort(([a], [b]) => {
+    const ai = CATEGORY_ORDER.indexOf(a);
+    const bi = CATEGORY_ORDER.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+}
+
 function StatusPill({ status }) {
   const color = STATUS_COLOR[status] || "var(--text3)";
   return (
@@ -527,32 +557,39 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
 
         <section className="admin-section">
           <h2>Available connectors</h2>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-            {catalog.map(c => {
-              const iconEntry = PROVIDER_ICON[c.key];
-              const clickable = isLeadOrAdmin && c.status === "active";
-              return (
-                <div
-                  key={c.key}
-                  className="card"
-                  title={c.name}
-                  style={{
-                    padding: 20, minWidth: 160, display: "flex", flexDirection: "column",
-                    alignItems: "center", gap: 8, cursor: clickable ? "pointer" : "default",
-                    opacity: c.status === "active" ? 1 : 0.5,
-                  }}
-                  onClick={() => clickable && setWizardProvider(c)}
-                >
-                  {iconEntry
-                    ? <iconEntry.Icon size={36} color={iconEntry.color} aria-label={c.name} />
-                    : <div style={{ fontWeight: 600 }}>{c.name}</div>}
-                  <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                    {c.status === "active" ? c.category : `${c.category} · ${c.status.replace("_", " ")}`}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {groupCatalogByCategory(catalog).map(([category, providers]) => (
+            <div key={category} style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 10 }}>
+                {CATEGORY_LABEL[category] || titleCase(category)}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                {providers.map(c => {
+                  const iconEntry = PROVIDER_ICON[c.key];
+                  const clickable = isLeadOrAdmin && c.status === "active";
+                  return (
+                    <div
+                      key={c.key}
+                      className="card"
+                      title={c.name}
+                      style={{
+                        padding: 20, minWidth: 160, display: "flex", flexDirection: "column",
+                        alignItems: "center", gap: 8, cursor: clickable ? "pointer" : "default",
+                        opacity: c.status === "active" ? 1 : 0.5,
+                      }}
+                      onClick={() => clickable && setWizardProvider(c)}
+                    >
+                      {iconEntry
+                        ? <iconEntry.Icon size={36} color={iconEntry.color} aria-label={c.name} />
+                        : <div style={{ fontWeight: 600 }}>{c.name}</div>}
+                      <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                        {c.status === "active" ? c.name : `${c.name} · ${c.status.replace("_", " ")}`}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </section>
       </div>
     </div>
