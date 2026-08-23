@@ -12,15 +12,32 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
     await writeAuditLog({ userId: req.user.userId, companyId: req.user.companyId, email: req.user.email, action: "READ", resource: "dashboard", ip: req.ip });
   }
   const cid = req.user.companyId;
-  const { month, priority, tag, owner, status } = req.query;
-  const hasFilter = !!(priority || tag || owner || status);
+  const { month, priority, tag, owner, status, framework } = req.query;
+  const hasFilter = !!(priority || tag || owner || status || framework);
 
-  // Step 1: Get filtered quest IDs when filters are active
+  // Step 1: Get filtered quest IDs when filters are active.
+  // The ?framework= param scopes to questions mapped to that framework via
+  // question_framework_controls; all other filters narrow by question attributes.
   let filteredQuestIds = null;
   if (hasFilter) {
-    let filterSql = "SELECT q.quest_id FROM questions q WHERE q.company_id = $1";
-    const filterParams = [cid];
-    let idx = 2;
+    let filterSql;
+    let filterParams;
+    let idx;
+
+    if (framework) {
+      // Scope to questions that belong to this framework for the company
+      filterSql = `SELECT DISTINCT q.quest_id FROM questions q
+                   JOIN question_framework_controls qfc
+                     ON qfc.quest_id = q.quest_id AND qfc.company_id = $1 AND qfc.framework_key = $2
+                   WHERE q.company_id = $1`;
+      filterParams = [cid, framework];
+      idx = 3;
+    } else {
+      filterSql = "SELECT q.quest_id FROM questions q WHERE q.company_id = $1";
+      filterParams = [cid];
+      idx = 2;
+    }
+
     if (priority) {
       filterSql += ` AND q.priority = $${idx++}`;
       filterParams.push(priority);

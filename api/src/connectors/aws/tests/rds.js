@@ -61,7 +61,7 @@ export async function checkRdsAutomatedBackupsEnabled(rds) {
 }
 
 export const rdsTests = [
-  { key: "aws.rds.publicly_accessible", title: "RDS instances are not publicly accessible", severityDefault: "critical", isoReferences: ["A.13.1.1"], run: (clients) => checkRdsPubliclyAccessible(clients.rds) },
-  { key: "aws.rds.storage_encrypted", title: "RDS instances have storage encryption enabled", severityDefault: "critical", isoReferences: ["A.8.2.3"], run: (clients) => checkRdsStorageEncrypted(clients.rds) },
-  { key: "aws.rds.automated_backups_enabled", title: "RDS instances have automated backups enabled", severityDefault: "high", isoReferences: ["A.12.3.1"], run: (clients) => checkRdsAutomatedBackupsEnabled(clients.rds) },
+  { key: "aws.rds.publicly_accessible", title: "RDS instances are not publicly accessible", failTitle: "RDS instance is publicly accessible", severityDefault: "critical", isoReferences: ["A.13.1.1"], run: (clients) => checkRdsPubliclyAccessible(clients.rds) },
+  { key: "aws.rds.storage_encrypted", title: "RDS instances have storage encryption enabled", failTitle: "RDS instance does not have storage encryption enabled", severityDefault: "critical", isoReferences: ["A.8.2.3"], run: (clients) => checkRdsStorageEncrypted(clients.rds) },
+  { key: "aws.rds.automated_backups_enabled", title: "RDS instances have automated backups enabled", failTitle: "RDS instance does not have automated backups enabled", severityDefault: "high", isoReferences: ["A.12.3.1"], run: (clients) => checkRdsAutomatedBackupsEnabled(clients.rds) },
 ];

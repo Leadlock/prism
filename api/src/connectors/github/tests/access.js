@@ -65,6 +65,6 @@ export async function checkBranchProtectionRequiredReviews(octokit, org, repos) 
 }
 
 export const accessTests = [
-  { key: "github.org.two_factor_required", title: "Organization requires two-factor authentication", severityDefault: "critical", isoReferences: ["A.9.4.2"], run: (clients) => checkTwoFactorRequired(clients.octokit, clients.org) },
-  { key: "github.repo.branch_protection_required_reviews", title: "Default branch requires pull request review before merging", severityDefault: "high", isoReferences: ["A.14.2.2"], run: (clients) => checkBranchProtectionRequiredReviews(clients.octokit, clients.org, clients.repos) },
+  { key: "github.org.two_factor_required", title: "Organization requires two-factor authentication", failTitle: "Organization does not require two-factor authentication", severityDefault: "critical", isoReferences: ["A.9.4.2"], run: (clients) => checkTwoFactorRequired(clients.octokit, clients.org) },
+  { key: "github.repo.branch_protection_required_reviews", title: "Default branch requires pull request review before merging", failTitle: "Default branch does not require pull request review before merging", severityDefault: "high", isoReferences: ["A.14.2.2"], run: (clients) => checkBranchProtectionRequiredReviews(clients.octokit, clients.org, clients.repos) },
 ];

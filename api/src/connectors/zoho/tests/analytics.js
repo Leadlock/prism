@@ -116,6 +116,7 @@ export const analyticsTests = [
   {
     key: "zoho.analytics.data_sharing_review",
     title: "Workspace/view sharing is scoped to intended users",
+    failTitle: "Analytics workspace is shared with everyone in the organization rather than specific users/groups",
     severityDefault: "high",
     isoReferences: ["A.13.2.1"],
     run: (clients) => checkDataSharingReview(clients),
@@ -123,6 +124,7 @@ export const analyticsTests = [
   {
     key: "zoho.analytics.public_view_link_restricted",
     title: "Public/embedded view links are disabled or reviewed",
+    failTitle: "Analytics workspace/view has a public/embedded link that requires no authentication",
     severityDefault: "critical",
     isoReferences: ["A.9.4.1"],
     run: (clients) => checkPublicViewLinkRestricted(clients),
@@ -130,6 +132,7 @@ export const analyticsTests = [
   {
     key: "zoho.analytics.workspace_permission_review",
     title: "Workspace admin/owner assignment is minimized",
+    failTitle: "Analytics workspace has an excessive number of admin/owner assignments",
     severityDefault: "medium",
     isoReferences: ["A.9.2.3"],
     run: (clients) => checkWorkspacePermissionReview(clients),

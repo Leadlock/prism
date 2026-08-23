@@ -123,6 +123,7 @@ export const projectsTests = [
   {
     key: "zoho.projects.external_user_review",
     title: "External/client users have scoped project access",
+    failTitle: "External/client user has portal-wide project access rather than scoped project access",
     severityDefault: "medium",
     isoReferences: ["A.9.1.1"],
     run: (clients) => checkExternalUserReview(clients),
@@ -130,6 +131,7 @@ export const projectsTests = [
   {
     key: "zoho.projects.client_portal_access_restricted",
     title: "Client portal access is restricted to intended projects",
+    failTitle: "Project client portal visibility is not restricted to intended clients",
     severityDefault: "medium",
     isoReferences: ["A.9.4.1"],
     run: (clients) => checkClientPortalAccessRestricted(clients),
@@ -137,6 +139,7 @@ export const projectsTests = [
   {
     key: "zoho.projects.role_based_permissions_enforced",
     title: "Role-based permissions are enforced per project",
+    failTitle: "Project has all users assigned the Manager role — role-based permission differentiation is missing",
     severityDefault: "medium",
     isoReferences: ["A.9.2.3"],
     run: (clients) => checkRoleBasedPermissionsEnforced(clients),

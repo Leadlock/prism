@@ -72,6 +72,6 @@ export async function checkEcsContainerInsightsEnabled(ecs) {
 }
 
 export const ecsTests = [
-  { key: "aws.ecs.no_privileged_containers", title: "ECS task definitions do not run privileged containers", severityDefault: "critical", isoReferences: ["A.9.4.4"], run: (clients) => checkEcsNoPrivilegedContainers(clients.ecs) },
-  { key: "aws.ecs.container_insights_enabled", title: "ECS clusters have Container Insights enabled", severityDefault: "medium", isoReferences: ["A.12.4.1"], run: (clients) => checkEcsContainerInsightsEnabled(clients.ecs) },
+  { key: "aws.ecs.no_privileged_containers", title: "ECS task definitions do not run privileged containers", failTitle: "ECS task definition runs a privileged container", severityDefault: "critical", isoReferences: ["A.9.4.4"], run: (clients) => checkEcsNoPrivilegedContainers(clients.ecs) },
+  { key: "aws.ecs.container_insights_enabled", title: "ECS clusters have Container Insights enabled", failTitle: "ECS cluster does not have Container Insights enabled", severityDefault: "medium", isoReferences: ["A.12.4.1"], run: (clients) => checkEcsContainerInsightsEnabled(clients.ecs) },
 ];

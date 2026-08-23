@@ -1,10 +1,13 @@
 import { resolveGithubCredentials } from "./credentials.js";
 import { accessTests } from "./tests/access.js";
 import { securityTests } from "./tests/security.js";
+import { orgManagementTests } from "./tests/orgManagement.js";
+import { actionsTests } from "./tests/actions.js";
+import { codeScanningTests } from "./tests/codeScanning.js";
 
 export const key = "github";
 
-export const tests = [...accessTests, ...securityTests];
+export const tests = [...accessTests, ...securityTests, ...orgManagementTests, ...actionsTests, ...codeScanningTests];
 
 // Octokit's RequestError carries the useful detail in `.status`/`.message`
 // (and, on rate-limit responses, `.response.headers["x-ratelimit-*"]`) — none
@@ -49,10 +52,10 @@ export async function runTests({ authType, config, secret }) {
       try {
         const results = await test.run(clients);
         for (const result of results) {
-          runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, ...result });
+          runResults.push({ testKey: test.key, title: test.title, failTitle: test.failTitle, severity: test.severityDefault, ...result });
         }
       } catch (err) {
-        runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, resourceId: "error", status: "error", message: describeGithubError(err), evidencePayload: {} });
+        runResults.push({ testKey: test.key, title: test.title, failTitle: test.failTitle, severity: test.severityDefault, resourceId: "error", status: "error", message: describeGithubError(err), evidencePayload: {} });
       }
     }
     return runResults;

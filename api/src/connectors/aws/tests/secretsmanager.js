@@ -72,7 +72,7 @@ export async function checkSecretsManagerNoStaleSecrets(secretsManager) {
 }
 
 export const secretsManagerTests = [
-  { key: "aws.secretsmanager.rotation_enabled", title: "Secrets Manager secrets have automatic rotation enabled", severityDefault: "high", isoReferences: ["A.9.2.4"], run: (clients) => checkSecretsManagerRotationEnabled(clients.secretsManager) },
-  { key: "aws.secretsmanager.encrypted_with_cmk", title: "Secrets Manager secrets are encrypted with a customer-managed key", severityDefault: "medium", isoReferences: ["A.10.1.2"], run: (clients) => checkSecretsManagerEncryptedWithCMK(clients.secretsManager) },
-  { key: "aws.secretsmanager.no_stale_secrets", title: "Secrets Manager secrets are rotated within policy", severityDefault: "medium", isoReferences: ["A.9.2.4"], run: (clients) => checkSecretsManagerNoStaleSecrets(clients.secretsManager) },
+  { key: "aws.secretsmanager.rotation_enabled", title: "Secrets Manager secrets have automatic rotation enabled", failTitle: "Secrets Manager secret does not have automatic rotation enabled", severityDefault: "high", isoReferences: ["A.9.2.4"], run: (clients) => checkSecretsManagerRotationEnabled(clients.secretsManager) },
+  { key: "aws.secretsmanager.encrypted_with_cmk", title: "Secrets Manager secrets are encrypted with a customer-managed key", failTitle: "Secrets Manager secret is not encrypted with a customer-managed key", severityDefault: "medium", isoReferences: ["A.10.1.2"], run: (clients) => checkSecretsManagerEncryptedWithCMK(clients.secretsManager) },
+  { key: "aws.secretsmanager.no_stale_secrets", title: "Secrets Manager secrets are rotated within policy", failTitle: "Secrets Manager secret rotation is stalled beyond policy", severityDefault: "medium", isoReferences: ["A.9.2.4"], run: (clients) => checkSecretsManagerNoStaleSecrets(clients.secretsManager) },
 ];

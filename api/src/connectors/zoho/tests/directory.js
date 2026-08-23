@@ -80,6 +80,7 @@ export const directoryTests = [
   {
     key: "zoho.directory.mfa_enforced",
     title: "Multi-factor authentication is enforced org-wide",
+    failTitle: "Org-wide MFA is not enforced in Zoho Directory",
     severityDefault: "critical",
     isoReferences: ["A.9.4.2"],
     run: (clients) => checkMfaEnforced(clients),
@@ -87,6 +88,7 @@ export const directoryTests = [
   {
     key: "zoho.directory.sso_enforced",
     title: "Single sign-on is enforced for all applications",
+    failTitle: "SSO is not enforced as the required sign-in method",
     severityDefault: "high",
     isoReferences: ["A.9.2.1"],
     run: (clients) => checkSsoEnforced(clients),
@@ -94,6 +96,7 @@ export const directoryTests = [
   {
     key: "zoho.directory.inactive_user_review",
     title: "Inactive or terminated users are deprovisioned",
+    failTitle: "User has not signed in for 90+ days but is still active",
     severityDefault: "medium",
     isoReferences: ["A.9.2.6"],
     run: (clients) => checkInactiveUserReview(clients),

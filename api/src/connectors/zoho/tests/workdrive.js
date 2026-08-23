@@ -80,6 +80,7 @@ export const workdriveTests = [
   {
     key: "zoho.workdrive.external_sharing_restricted",
     title: "External sharing is restricted at the team level",
+    failTitle: "WorkDrive external sharing is unrestricted at the team level",
     severityDefault: "critical",
     isoReferences: ["A.13.2.1"],
     run: (clients) => checkExternalSharingRestricted(clients),
@@ -87,6 +88,7 @@ export const workdriveTests = [
   {
     key: "zoho.workdrive.link_sharing_password_protected",
     title: "Public share links require a password and expiry",
+    failTitle: "WorkDrive public share links do not require a password and/or expiry date",
     severityDefault: "high",
     isoReferences: ["A.9.4.1"],
     run: (clients) => checkLinkSharingPasswordProtected(clients),
@@ -94,6 +96,7 @@ export const workdriveTests = [
   {
     key: "zoho.workdrive.admin_activity_log_enabled",
     title: "Admin activity logging is enabled",
+    failTitle: "WorkDrive admin activity logging is not enabled",
     severityDefault: "medium",
     isoReferences: ["A.12.4.1"],
     run: (clients) => checkAdminActivityLogEnabled(clients),

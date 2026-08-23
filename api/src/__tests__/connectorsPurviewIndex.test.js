@@ -123,7 +123,7 @@ describe("runTests", () => {
     expect(results.length).toBe(11);
   });
 
-  test("wraps a mid-run failure through describePurviewError", async () => {
+  test("wraps a mid-run failure through describePurviewError into status=error results", async () => {
     stubFetch((url) => {
       if (url.includes("login.microsoftonline.com")) return jsonResponse({ access_token: "tok" });
       if (url.includes("purview.azure.com")) return errorResponse(403, "forbidden by policy");
@@ -131,7 +131,10 @@ describe("runTests", () => {
       throw new Error(`unexpected fetch to ${url}`);
     });
 
-    await expect(runTests(BASE_CONFIG)).rejects.toThrow(/forbidden by policy/);
-    await expect(runTests(BASE_CONFIG)).rejects.toThrow(/If this looks like an authorization failure/);
+    const results = await runTests(BASE_CONFIG);
+    const errors = results.filter((r) => r.status === "error");
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0].message).toMatch(/forbidden by policy/);
+    expect(errors[0].message).toMatch(/If this looks like an authorization failure/);
   });
 });

@@ -128,6 +128,7 @@ export const deskTests = [
   {
     key: "zoho.desk.agent_role_audit",
     title: "Agent roles follow least privilege",
+    failTitle: "Desk agent is assigned the Administrator profile without documented justification",
     severityDefault: "medium",
     isoReferences: ["A.9.2.3"],
     run: (clients) => checkAgentRoleAudit(clients),
@@ -135,6 +136,7 @@ export const deskTests = [
   {
     key: "zoho.desk.customer_data_field_restricted",
     title: "Customer PII fields are profile-restricted",
+    failTitle: "Desk field containing customer PII is not profile-restricted",
     severityDefault: "high",
     isoReferences: ["A.9.4.1"],
     run: (clients) => checkCustomerDataFieldRestricted(clients),
@@ -142,6 +144,7 @@ export const deskTests = [
   {
     key: "zoho.desk.ticket_access_control_enabled",
     title: "Ticket access control (team/department scoping) is enabled",
+    failTitle: "Desk has no active departments — tickets may be visible org-wide to every agent",
     severityDefault: "medium",
     isoReferences: ["A.9.1.2"],
     run: (clients) => checkTicketAccessControlEnabled(clients),

@@ -81,6 +81,7 @@ export const vaultTests = [
   {
     key: "zoho.vault.secret_sharing_policy",
     title: "Secret sharing outside designated chambers is restricted",
+    failTitle: "Vault allows direct secret sharing outside designated chambers",
     severityDefault: "high",
     isoReferences: ["A.9.4.1"],
     run: (clients) => checkSecretSharingPolicy(clients),
@@ -88,6 +89,7 @@ export const vaultTests = [
   {
     key: "zoho.vault.password_policy_strength",
     title: "Vault-generated/stored passwords meet minimum strength policy",
+    failTitle: "Vault password policy does not meet minimum strength requirements",
     severityDefault: "high",
     isoReferences: ["A.9.4.3"],
     run: (clients) => checkPasswordPolicyStrength(clients),
@@ -95,6 +97,7 @@ export const vaultTests = [
   {
     key: "zoho.vault.access_log_review",
     title: "Vault access logs are enabled and retained",
+    failTitle: "Vault audit/access logging is not enabled",
     severityDefault: "medium",
     isoReferences: ["A.12.4.1"],
     run: (clients) => checkAccessLogReview(clients),

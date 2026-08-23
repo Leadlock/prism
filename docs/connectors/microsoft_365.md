@@ -46,6 +46,11 @@ Azure AD app registration, which this connector extends to three).
 2. **API permissions > Add a permission > Microsoft Graph > Application permissions**, add:
    - `SharePointTenantSettings.Read.All` — tenant-level SharePoint/OneDrive sharing settings
      (`GET /admin/sharepoint/settings`).
+   - `Sites.Read.All` — SharePoint site enumeration (`GET /sites?search=*`), used to determine
+     whether the tenant has any SharePoint sites in scope for the DLP policy check.
+   - `InformationProtectionPolicy.Read.All` — Data Loss Prevention policy existence
+     (`GET /informationProtection/dataLossPreventionPolicies`, beta) and sensitivity label
+     existence (`GET /security/informationProtection/sensitivityLabels`, beta).
    - `DeviceManagementManagedDevices.Read.All` — Intune managed device compliance state.
    - `DeviceManagementConfiguration.Read.All` — Intune device compliance policies and their
      assignments.
@@ -127,11 +132,30 @@ the Security & Compliance PowerShell-backed cmdlets — see the caveat below):
 | `microsoft_365.exchange.mailbox_audit_logging_enabled` | Mailbox audit logging is enabled | critical | A.12.4.1 | Checks the organization config (`Get-OrganizationConfig` via the Exchange Online Admin API) does not have mailbox audit logging disabled tenant-wide (`AuditDisabled: false`). | Run `Set-OrganizationConfig -AuditDisabled $false`, or clear the equivalent setting under the Microsoft Purview compliance portal's audit configuration. |
 | `microsoft_365.exchange.no_external_auto_forwarding` | Automatic forwarding to external domains is blocked | high | A.13.2.1 | Checks the remote domain default configuration (`Get-RemoteDomain` via the Exchange Online Admin API) has `AutoForwardEnabled: false` for the default remote domain, preventing silent mailbox exfiltration via forwarding rules. | Run `Set-RemoteDomain -Identity Default -AutoForwardEnabled $false`, and review/remove any existing user-created external forwarding rules. |
 | `microsoft_365.sharepoint.external_sharing_restricted` | SharePoint and OneDrive external sharing is restricted | critical | A.13.2.1 | Checks tenant SharePoint/OneDrive settings (`GET /admin/sharepoint/settings`) report `sharingCapability` is not `ExternalUserAndGuestSharing` (fully open), i.e. sharing is limited to existing guests or disabled. | Set the external sharing level to "Existing guests" or more restrictive under the SharePoint admin center > Policies > Sharing. |
-| `microsoft_365.sharepoint.default_sharing_link_not_anonymous` | Default sharing link is not anonymous "Anyone" | critical | A.9.4.1 | Checks tenant SharePoint/OneDrive settings report the default sharing link type/permission is not an anonymous "Anyone" edit link. | Change the default link type to "Specific people" or "Only people in your organization" under the SharePoint admin center > Policies > Sharing. |
-| `microsoft_365.intune.compliance_policy_assigned_all_platforms` | Device compliance policies are assigned for every managed platform | high | A.6.2.1 | Checks `GET /deviceManagement/deviceCompliancePolicies` includes at least one assigned policy covering each device platform present in `GET /deviceManagement/managedDevices` (Windows, iOS, Android, macOS). | Create and assign a device compliance policy for any platform found without one, under Intune admin center > Devices > Compliance policies. |
+| `microsoft_365.sharepoint.dlp_policy_configured` | Data Loss Prevention policies are configured for the tenant | critical | A.13.2.1 | Checks that at least one Data Loss Prevention policy exists (`GET /informationProtection/dataLossPreventionPolicies`, beta) when the tenant has SharePoint sites (`GET /sites?search=*`). Existence-only, tenant-wide — see the caveat below on per-site coverage. | Create and enable a Data Loss Prevention policy covering SharePoint/OneDrive under the Microsoft Purview compliance portal > Data loss prevention > Policies. |
+| `microsoft_365.sharepoint.sensitivity_label_policy_enforced` | Sensitivity label policies are configured | high | A.8.2.3 | Checks that at least one sensitivity label exists for the tenant (`GET /security/informationProtection/sensitivityLabels`, beta). Existence-only — Graph does not expose a mandatory-labeling enforcement flag on this endpoint. `not_applicable` if the tenant lacks Purview Information Protection licensing (request fails). | Create and publish a sensitivity label policy under the Microsoft Purview compliance portal > Information protection > Labels. |
+| `microsoft_365.intune.compliance_policy_assigned_all_platforms` | Device compliance policies are assigned for every managed platform | high | A.6.2.1 | Checks `GET /deviceManagement/deviceCompliancePolicies` (`@odata.type` per policy, `$expand=assignments`) includes at least one **assigned** policy whose platform (from `@odata.type`, e.g. `windows10CompliancePolicy`) covers each device platform present in `GET /deviceManagement/managedDevices` (Windows, iOS, Android, macOS). The base `deviceCompliancePolicy` resource has no generic "platforms" field — platform is only derivable from the polymorphic `@odata.type`. | Create and assign a device compliance policy for any platform found without one, under Intune admin center > Devices > Compliance policies. |
 | `microsoft_365.intune.noncompliant_devices_remediated` | Managed devices are compliant or being remediated | medium | A.6.2.1 | Checks the proportion of managed devices (`GET /deviceManagement/managedDevices`) with `complianceState: "noncompliant"` does not exceed a defined threshold (default 10%). | Investigate noncompliant devices in the Intune admin center and either remediate the underlying setting or confirm a remediation/grace-period action is in flight. |
 | `microsoft_365.defenderoffice.safe_links_enabled` | Safe Links protection is enabled for email and Office apps | high | A.12.2.1 | Checks at least one enabled Safe Links policy (`Get-SafeLinksPolicy`) applies time-of-click URL rewriting to email and Office documents tenant-wide. | Enable and assign a Safe Links policy covering email, Teams, and Office apps under the Microsoft Defender portal > Email & collaboration > Policies > Safe Links. |
 | `microsoft_365.defenderoffice.safe_attachments_enabled` | Safe Attachments protection is enabled | high | A.12.2.1 | Checks at least one enabled Safe Attachments policy (`Get-SafeAttachmentPolicy`) applies dynamic delivery/detonation scanning to inbound mail. | Enable and assign a Safe Attachments policy under the Microsoft Defender portal > Email & collaboration > Policies > Safe Attachments. |
+
+**Caveat — DLP policy check is existence-only, not per-site coverage**: Microsoft Graph's beta
+`informationProtection/dataLossPreventionPolicies` endpoint has no published documentation
+describing per-location (e.g. per-SharePoint-site) coverage fields — unlike the classic
+Security & Compliance PowerShell `Get-DlpCompliancePolicy` cmdlet, which does expose
+`SharePointLocation`/`OneDriveLocation` targeting. Because the Graph beta shape can't be verified
+against official docs, `dlp_policy_configured` checks tenant-wide policy existence rather than
+per-site coverage. If Graph later documents a reliable site-coverage shape (or the classic
+Security & Compliance endpoint is confirmed reachable via the same Exchange Online Admin API this
+connector already calls), tighten this to a per-site pass/fail.
+
+**Caveat — sensitivity label labels endpoint was deprecated**: the original design for
+`sensitivity_label_policy_enforced` targeted `GET /beta/informationProtection/policy/labels`,
+which Microsoft deprecated and stopped returning data for on January 1, 2023. Implemented against
+`GET /beta/security/informationProtection/sensitivityLabels` instead (same permission,
+non-deprecated, current resource).
+
+**Dropped from the original proposal**: `microsoft_365.sharepoint.default_sharing_link_not_anonymous` ("Default sharing link is not anonymous \"Anyone\"") was implemented and then removed. The tenant's default sharing link type (`Set-SPOTenant -DefaultSharingLinkType`) is a real, distinct setting from `sharingCapability` above, but it is **not exposed by Microsoft Graph** in v1.0 or beta — verified against Graph's `sharepointSettings` resource docs, which list no such property. It's only readable via the separate SharePoint Online Management Shell (`Get-SPOTenant`), a different API surface and auth audience (`https://<tenant>-admin.sharepoint.com`) than the Graph/Exchange tokens this connector acquires. If this check is wanted later, it needs a third credential resource added to `credentials.js`/`index.js` (mirroring the Graph/Exchange dual-resource pattern already in place) rather than a Graph call.
 
 ## 5. Seed SQL
 
@@ -144,7 +168,8 @@ INSERT INTO automated_tests (integration_key, test_key, title, description, seve
   ('microsoft_365', 'microsoft_365.exchange.mailbox_audit_logging_enabled', 'Mailbox audit logging is enabled', 'Checks the organization config does not have mailbox audit logging disabled tenant-wide.', 'critical', 'Clear the AuditDisabled organization setting via Set-OrganizationConfig or the Purview compliance portal.'),
   ('microsoft_365', 'microsoft_365.exchange.no_external_auto_forwarding', 'Automatic forwarding to external domains is blocked', 'Checks the default remote domain configuration has automatic forwarding to external domains disabled.', 'high', 'Set the default remote domain AutoForwardEnabled to false and review existing forwarding rules.'),
   ('microsoft_365', 'microsoft_365.sharepoint.external_sharing_restricted', 'SharePoint and OneDrive external sharing is restricted', 'Checks tenant SharePoint/OneDrive sharing settings are not fully open to any external user.', 'critical', 'Set the external sharing level to Existing guests or more restrictive under the SharePoint admin center.'),
-  ('microsoft_365', 'microsoft_365.sharepoint.default_sharing_link_not_anonymous', 'Default sharing link is not anonymous "Anyone"', 'Checks the default sharing link type is not an anonymous Anyone edit link.', 'critical', 'Change the default link type to Specific people or organization-only under the SharePoint admin center.'),
+  ('microsoft_365', 'microsoft_365.sharepoint.dlp_policy_configured', 'Data Loss Prevention policies are configured for the tenant', 'Checks that at least one Data Loss Prevention policy is configured for the tenant when SharePoint sites are present.', 'critical', 'Create and enable a Data Loss Prevention policy covering SharePoint/OneDrive under the Microsoft Purview compliance portal.'),
+  ('microsoft_365', 'microsoft_365.sharepoint.sensitivity_label_policy_enforced', 'Sensitivity label policies are configured', 'Checks that at least one sensitivity label is configured for the tenant.', 'high', 'Create and publish a sensitivity label policy under the Microsoft Purview compliance portal.'),
   ('microsoft_365', 'microsoft_365.intune.compliance_policy_assigned_all_platforms', 'Device compliance policies are assigned for every managed platform', 'Checks every device platform present in the tenant has at least one assigned compliance policy.', 'high', 'Create and assign a compliance policy for any platform found without one.'),
   ('microsoft_365', 'microsoft_365.intune.noncompliant_devices_remediated', 'Managed devices are compliant or being remediated', 'Checks the proportion of noncompliant managed devices does not exceed a defined threshold.', 'medium', 'Investigate noncompliant devices and remediate the underlying setting or confirm a grace-period action is in flight.'),
   ('microsoft_365', 'microsoft_365.defenderoffice.safe_links_enabled', 'Safe Links protection is enabled for email and Office apps', 'Checks at least one enabled Safe Links policy applies time-of-click URL rewriting tenant-wide.', 'high', 'Enable and assign a Safe Links policy covering email, Teams, and Office apps.'),
@@ -155,7 +180,8 @@ INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
   ('microsoft_365.exchange.mailbox_audit_logging_enabled', 'A.12.4.1'),
   ('microsoft_365.exchange.no_external_auto_forwarding', 'A.13.2.1'),
   ('microsoft_365.sharepoint.external_sharing_restricted', 'A.13.2.1'),
-  ('microsoft_365.sharepoint.default_sharing_link_not_anonymous', 'A.9.4.1'),
+  ('microsoft_365.sharepoint.dlp_policy_configured', 'A.13.2.1'),
+  ('microsoft_365.sharepoint.sensitivity_label_policy_enforced', 'A.8.2.3'),
   ('microsoft_365.intune.compliance_policy_assigned_all_platforms', 'A.6.2.1'),
   ('microsoft_365.intune.noncompliant_devices_remediated', 'A.6.2.1'),
   ('microsoft_365.defenderoffice.safe_links_enabled', 'A.12.2.1'),

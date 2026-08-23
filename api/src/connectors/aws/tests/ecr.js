@@ -92,7 +92,7 @@ export async function checkEcrNoWildcardRepositoryPolicy(ecr) {
 }
 
 export const ecrTests = [
-  { key: "aws.ecr.image_scanning_enabled", title: "ECR repositories scan images on push", severityDefault: "high", isoReferences: ["A.12.6.1"], run: (clients) => checkEcrImageScanningEnabled(clients.ecr) },
-  { key: "aws.ecr.tag_immutability_enabled", title: "ECR repositories enforce immutable image tags", severityDefault: "medium", isoReferences: ["A.12.5.1"], run: (clients) => checkEcrTagImmutabilityEnabled(clients.ecr) },
-  { key: "aws.ecr.no_wildcard_repository_policy", title: "ECR repository policies do not grant a wildcard principal", severityDefault: "critical", isoReferences: ["A.9.1.2"], run: (clients) => checkEcrNoWildcardRepositoryPolicy(clients.ecr) },
+  { key: "aws.ecr.image_scanning_enabled", title: "ECR repositories scan images on push", failTitle: "ECR repository does not scan images on push", severityDefault: "high", isoReferences: ["A.12.6.1"], run: (clients) => checkEcrImageScanningEnabled(clients.ecr) },
+  { key: "aws.ecr.tag_immutability_enabled", title: "ECR repositories enforce immutable image tags", failTitle: "ECR repository does not enforce immutable image tags", severityDefault: "medium", isoReferences: ["A.12.5.1"], run: (clients) => checkEcrTagImmutabilityEnabled(clients.ecr) },
+  { key: "aws.ecr.no_wildcard_repository_policy", title: "ECR repository policies do not grant a wildcard principal", failTitle: "ECR repository policy grants access to a wildcard principal", severityDefault: "critical", isoReferences: ["A.9.1.2"], run: (clients) => checkEcrNoWildcardRepositoryPolicy(clients.ecr) },
 ];

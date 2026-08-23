@@ -65,6 +65,6 @@ export async function checkSecurityHubCriticalFindingsResolved(securityHub) {
 }
 
 export const securityHubTests = [
-  { key: "aws.securityhub.enabled", title: "Security Hub is enabled with a standard subscribed", severityDefault: "high", isoReferences: ["A.12.6.1"], run: (clients) => checkSecurityHubEnabled(clients.securityHub) },
-  { key: "aws.securityhub.critical_findings_resolved", title: "No active critical/high Security Hub findings", severityDefault: "high", isoReferences: ["A.16.1.2"], run: (clients) => checkSecurityHubCriticalFindingsResolved(clients.securityHub) },
+  { key: "aws.securityhub.enabled", title: "Security Hub is enabled with a standard subscribed", failTitle: "Security Hub is not enabled or has no standard subscribed", severityDefault: "high", isoReferences: ["A.12.6.1"], run: (clients) => checkSecurityHubEnabled(clients.securityHub) },
+  { key: "aws.securityhub.critical_findings_resolved", title: "No active critical/high Security Hub findings", failTitle: "Security Hub has active critical/high findings", severityDefault: "high", isoReferences: ["A.16.1.2"], run: (clients) => checkSecurityHubCriticalFindingsResolved(clients.securityHub) },
 ];

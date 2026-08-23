@@ -54,6 +54,6 @@ export async function checkGuardDutyHighSeverityFindingsResolved(guardduty) {
 }
 
 export const guarddutyTests = [
-  { key: "aws.guardduty.enabled", title: "GuardDuty is enabled", severityDefault: "critical", isoReferences: ["A.12.6.1"], run: (clients) => checkGuardDutyEnabled(clients.guardduty) },
-  { key: "aws.guardduty.high_severity_findings_resolved", title: "No unresolved high-severity GuardDuty findings", severityDefault: "high", isoReferences: ["A.16.1.2"], run: (clients) => checkGuardDutyHighSeverityFindingsResolved(clients.guardduty) },
+  { key: "aws.guardduty.enabled", title: "GuardDuty is enabled", failTitle: "GuardDuty is not enabled", severityDefault: "critical", isoReferences: ["A.12.6.1"], run: (clients) => checkGuardDutyEnabled(clients.guardduty) },
+  { key: "aws.guardduty.high_severity_findings_resolved", title: "No unresolved high-severity GuardDuty findings", failTitle: "GuardDuty has unresolved high-severity findings", severityDefault: "high", isoReferences: ["A.16.1.2"], run: (clients) => checkGuardDutyHighSeverityFindingsResolved(clients.guardduty) },
 ];

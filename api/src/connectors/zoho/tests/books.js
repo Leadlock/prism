@@ -86,6 +86,7 @@ export const booksTests = [
   {
     key: "zoho.books.user_role_review",
     title: "User roles follow least privilege",
+    failTitle: "Books user is assigned the Admin role without being the org owner",
     severityDefault: "medium",
     isoReferences: ["A.9.2.2"],
     run: (clients) => checkUserRoleReview(clients),
@@ -93,6 +94,7 @@ export const booksTests = [
   {
     key: "zoho.books.two_factor_auth_enforced",
     title: "Two-factor authentication is enforced",
+    failTitle: "Books two-factor authentication is not enforced",
     severityDefault: "critical",
     isoReferences: ["A.9.4.2"],
     run: (clients) => checkTwoFactorAuthEnforced(clients),
@@ -100,6 +102,7 @@ export const booksTests = [
   {
     key: "zoho.books.audit_trail_enabled",
     title: "Audit trail is enabled and retained",
+    failTitle: "Books audit trail is not enabled or not accessible",
     severityDefault: "medium",
     isoReferences: ["A.12.4.1"],
     run: (clients) => checkAuditTrailEnabled(clients),

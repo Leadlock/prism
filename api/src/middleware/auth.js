@@ -1,6 +1,17 @@
 import jwt from "jsonwebtoken";
 import { query, mapRow } from "../db/index.js";
 
+// Endpoints a company can still reach while unverified — just enough to complete
+// the self-assessment, invite help with it, and keep the app shell (branding, profile) working.
+const UNVERIFIED_ALLOWLIST = [
+  { method: "GET",  path: "/api/auth/me" },
+  { method: "GET",  path: "/api/self-assessment" },
+  { method: "POST", path: "/api/self-assessment" },
+  { method: "POST", path: "/api/users/invite" },
+  { method: "PUT",  path: "/api/users/me" },
+  { method: "GET",  path: "/api/settings" },
+];
+
 export const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -53,6 +64,22 @@ export const authenticate = async (req, res, next) => {
     }
     if (user.companyStatus === "approved" && !user.companyIsVerified) {
       return res.status(403).json({ error: "Your company verification has been revoked. Please contact the platform administrator.", code: "COMPANY_NOT_VERIFIED" });
+    }
+
+    // Unverified companies (awaiting completion of the mandatory self-assessment) are
+    // restricted to the self-assessment flow — enforced here, not just in the frontend
+    // router, since the frontend guard can be bypassed by navigating directly.
+    if (!user.companyIsVerified && user.role !== "AUDITOR") {
+      const currentPath = req.originalUrl.split("?")[0];
+      const allowed = UNVERIFIED_ALLOWLIST.some(
+        (r) => r.method === req.method && currentPath === r.path
+      );
+      if (!allowed) {
+        return res.status(403).json({
+          error: "Please complete your company's self-assessment before accessing this feature.",
+          code: "COMPANY_UNVERIFIED",
+        });
+      }
     }
 
     if (user.billingStatus === "trial" && user.trialEndsAt && new Date(user.trialEndsAt) < new Date()) {

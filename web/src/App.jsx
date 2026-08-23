@@ -320,11 +320,11 @@ export default function App() {
         {/* Admin-only routes */}
         <Route
           path="/admin"
-          element={isAuthenticated && isAdmin ? <AdminPanel {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
+          element={isAuthenticated && isAdmin && isVerified ? <AdminPanel {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
         />
         <Route
           path="/auditors"
-          element={isAuthenticated && isAdmin ? <AuditorPanel {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
+          element={isAuthenticated && isAdmin && isVerified ? <AuditorPanel {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
         />
 
         {/* Super Admin route */}
@@ -333,17 +333,21 @@ export default function App() {
           element={isAuthenticated && isSuperAdmin ? <SuperAdminDashboard {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
         />
 
-        {/* Dashboard — all roles */}
+        {/* Dashboard — all roles (unverified companies stay on self-assess) */}
         <Route
           path="/dashboard"
-          element={isAuthenticated ? <Dashboard {...authProps} /> : <Navigate to="/login" replace />}
+          element={
+            isAuthenticated
+              ? (!isVerified && !isSuperAdmin && !isAuditor ? <Navigate to="/self-assess" replace /> : <Dashboard {...authProps} />)
+              : <Navigate to="/login" replace />
+          }
         />
 
         {/* Review — ADMIN, LEAD, VIEWER */}
         <Route
           path="/review"
           element={
-            isAuthenticated && (isLeadOrAdmin || isViewer)
+            isAuthenticated && (isLeadOrAdmin || isViewer) && isVerified
               ? <Review {...authProps} />
               : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />
           }
@@ -375,20 +379,20 @@ export default function App() {
         {/* Question detail — all authenticated company users */}
         <Route
           path="/questions/:questId"
-          element={isAuthenticated && !isSuperAdmin ? <QuestionDetail {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
+          element={isAuthenticated && !isSuperAdmin && (isVerified || isAuditor) ? <QuestionDetail {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
         />
 
         {/* Evidence Vault — all authenticated company users */}
         <Route
           path="/vault"
-          element={isAuthenticated && !isSuperAdmin ? <EvidenceVault {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
+          element={isAuthenticated && !isSuperAdmin && (isVerified || isAuditor) ? <EvidenceVault {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
         />
 
         {/* Evidence Requests — ADMIN, LEAD, CONTRIBUTOR */}
         <Route
           path="/requests"
           element={
-            isAuthenticated && !isSuperAdmin && !isViewer && !isAuditor
+            isAuthenticated && !isSuperAdmin && !isViewer && !isAuditor && isVerified
               ? <EvidenceRequests {...authProps} />
               : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />
           }
@@ -398,7 +402,7 @@ export default function App() {
         <Route
           path="/settings/integrations"
           element={
-            isAuthenticated && (isLeadOrAdmin || isAuditor)
+            isAuthenticated && (isLeadOrAdmin || isAuditor) && (isVerified || isAuditor)
               ? <IntegrationsSettings {...authProps} />
               : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />
           }
@@ -408,7 +412,7 @@ export default function App() {
         <Route
           path="/settings/integrations/:id"
           element={
-            isAuthenticated && (isLeadOrAdmin || isAuditor)
+            isAuthenticated && (isLeadOrAdmin || isAuditor) && (isVerified || isAuditor)
               ? <ConnectionDetail {...authProps} />
               : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />
           }
@@ -417,7 +421,7 @@ export default function App() {
         {/* Findings — all authenticated company users except SUPERADMIN */}
         <Route
           path="/findings"
-          element={isAuthenticated && !isSuperAdmin ? <Findings {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
+          element={isAuthenticated && !isSuperAdmin && (isVerified || isAuditor) ? <Findings {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
         />
 
         <Route path="*" element={<Navigate to={isAuthenticated ? defaultRoute() : "/"} replace />} />

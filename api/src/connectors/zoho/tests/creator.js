@@ -111,6 +111,7 @@ export const creatorTests = [
   {
     key: "zoho.creator.app_permission_review",
     title: "App-level permissions follow least privilege",
+    failTitle: "Creator app has Developer/Admin users exceeding the expected threshold",
     severityDefault: "medium",
     isoReferences: ["A.9.2.3"],
     run: (clients) => checkAppPermissionReview(clients),
@@ -118,6 +119,7 @@ export const creatorTests = [
   {
     key: "zoho.creator.public_form_data_exposure",
     title: "Public forms do not expose sensitive existing records",
+    failTitle: "Creator app has public-facing forms that may expose other users' data",
     severityDefault: "critical",
     isoReferences: ["A.13.2.1"],
     run: (clients) => checkPublicFormDataExposure(clients),
@@ -125,6 +127,7 @@ export const creatorTests = [
   {
     key: "zoho.creator.deluge_script_access_review",
     title: "Custom (Deluge) script edit access is restricted",
+    failTitle: "Creator app has an excessive number of users with Deluge script edit access",
     severityDefault: "medium",
     isoReferences: ["A.14.2.5"],
     run: (clients) => checkDelugeScriptAccessReview(clients),

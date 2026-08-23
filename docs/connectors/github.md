@@ -1,28 +1,30 @@
 # GitHub Connector
 
-> **This extends the existing `github` connector** (`api/src/connectors/github/`). It does not introduce a new `integrations` row, a new registry key, or a new auth model — it adds checks to the connector that already ships in Prism. Everything under "Proposed Checks" and "Seed SQL" below is additive to the 4 checks already live today.
+> **This extends the existing `github` connector** (`api/src/connectors/github/`). It does not introduce a new `integrations` row, a new registry key, or a new auth model — it adds checks to the connector that already ships in Prism. Everything under "Proposed Checks" and "Seed SQL" below has been implemented and is now live (9 checks total) — this doc is kept as the design record for that work rather than an open proposal.
 
 ## 1. Overview
 
 - **Category**: `devops` (matches the existing `integrations.category` value for `github`)
 - **Connector key**: `github` (existing — see `api/src/connectors/registry.js`)
-- **Scope today**: Organization 2FA enforcement, default-branch PR review requirements, Dependabot vulnerability alerts, secret scanning.
-- **Scope this doc adds**: Organization/user/team management (default repo permission, owner count), GitHub Actions permissions/security (default workflow token permissions, allowed actions restriction), and code scanning (CodeQL default setup).
-- **Explicitly out of scope for this doc** (already implemented, not re-proposed): `github.org.two_factor_required`, `github.repo.branch_protection_required_reviews`, `github.repo.vulnerability_alerts_enabled`, `github.repo.secret_scanning_enabled`.
+- **Scope today (9 checks, all live)**: Organization 2FA enforcement, default-branch PR review requirements, Dependabot vulnerability alerts, secret scanning, default repo permission, organization owner count, Actions default workflow token permissions, Actions third-party restriction, and CodeQL default setup.
+- **Originally shipped** (Phase 1): `github.org.two_factor_required`, `github.repo.branch_protection_required_reviews`, `github.repo.vulnerability_alerts_enabled`, `github.repo.secret_scanning_enabled`.
+- **Added by this doc** (implemented in `tests/orgManagement.js`, `tests/actions.js`, `tests/codeScanning.js`): `github.org.default_repository_permission_restricted`, `github.org.owners_count_minimized`, `github.org.actions_default_workflow_permissions_readonly`, `github.org.actions_third_party_restricted`, `github.repo.code_scanning_default_setup_enabled`.
 
 Target coverage sheet vs. status:
 
 | Area | Status |
 |---|---|
-| Organization | Partial (2FA done; default repo permission, owner count proposed here) |
-| Users / Teams | Proposed here (owner count) |
+| Organization | Done (2FA, default repo permission) |
+| Users / Teams | Done (owner count) |
 | Repositories | Done (enumerated via `octokit.paginate(repos.listForOrg)`) |
 | Branch protection | Done |
 | Secrets (scanning) | Done — secret *exposure/rotation* is not in scope for this doc (GitHub has no API-exposed "secret age" concept the way AWS access keys do) |
-| Actions | Proposed here (workflow permissions, allowed actions) |
-| Security settings | Partial (2FA, secret scanning done; Actions settings proposed here) |
+| Actions | Done (workflow permissions, allowed actions) |
+| Security settings | Done (2FA, secret scanning, Actions settings) |
 | Dependabot | Done |
-| Code scanning | Proposed here (CodeQL default setup) |
+| Code scanning | Done (CodeQL default setup) |
+
+Note: the App's permissions must still be widened per the "Extending the existing GitHub App's permissions" section below before these 5 new checks can return real pass/fail data on a live connection — until an org owner approves the updated installation, they'll surface as `not_applicable`.
 
 ## 2. Authentication
 

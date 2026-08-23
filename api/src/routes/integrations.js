@@ -30,6 +30,13 @@ const AWS_READ_ONLY_POLICY = {
         "iam:ListMFADevices",
         "iam:ListAccessKeys",
         "iam:GetAccountPasswordPolicy",
+        "iam:GenerateCredentialReport",
+        "iam:GetCredentialReport",
+        "iam:ListGroups",
+        "iam:ListGroupPolicies",
+        "iam:ListUserPolicies",
+        "iam:ListAttachedUserPolicies",
+        "iam:ListAttachedGroupPolicies",
         // CloudTrail
         "cloudtrail:DescribeTrails",
         "cloudtrail:GetTrailStatus",
@@ -40,16 +47,23 @@ const AWS_READ_ONLY_POLICY = {
         "config:DescribeConfigRules",
         "config:DescribeComplianceByConfigRule",
         "config:GetComplianceDetailsByConfigRule",
-        // S3 / EC2
+        // S3
         "s3:ListAllMyBuckets",
         "s3:GetBucketPublicAccessBlock",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetBucketLogging",
+        // EC2 / VPC
         "ec2:DescribeSecurityGroups",
+        "ec2:GetEbsEncryptionByDefault",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeFlowLogs",
         // RDS
         "rds:DescribeDBInstances",
         // Lambda
         "lambda:ListFunctions",
         "lambda:GetFunctionUrlConfig",
         "lambda:GetPolicy",
+        "lambda:GetFunction",
         // DynamoDB
         "dynamodb:ListTables",
         "dynamodb:DescribeTable",
@@ -211,6 +225,86 @@ router.get("/azure/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"])
 
 router.get("/purview/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   res.json({ permissions: PURVIEW_REQUIRED_PERMISSIONS });
+}));
+
+// ── Microsoft connector setup-info ──────────────────────────────────────────
+// All four Microsoft connectors share the same tenantId + clientId + clientSecret
+// credential shape. Each setup-info endpoint returns the connector-specific list
+// of API permissions the customer must grant, plus any connector-specific notes
+// (extra consent steps, Entra role assignments, TCM enrollment, etc.).
+// Kept in code next to the routes so any permission change is a visible diff.
+
+const ENTRA_ID_PERMISSIONS = {
+  graphPermissions: [
+    { permission: "User.Read.All", note: "Read guest accounts and sign-in activity for staleness checks." },
+    { permission: "RoleManagement.Read.Directory", note: "Read directory role assignments — narrower than Directory.Read.All." },
+    { permission: "Policy.Read.All", note: "Read Conditional Access policies and authentication methods policy." },
+    { permission: "Policy.Read.AuthenticationMethod", note: "Read the tenant-level authentication methods policy (SMS/voice/FIDO2 enablement)." },
+    { permission: "Application.Read.All", note: "Read app registrations, service principals, and their permission grants and credential expiry." },
+    { permission: "AuditLog.Read.All", note: "Read sign-in and directory audit logs, and user.signInActivity for staleness data." },
+  ],
+  consentNote: "All permissions are Microsoft Graph Application permissions — select Grant admin consent after adding them.",
+  sharedAppNote: "If you already set up an app registration for another Prism Microsoft connector (M365, Teams, Defender), add these permissions to that same app registration instead of creating a new one.",
+};
+
+const M365_PERMISSIONS = {
+  graphPermissions: [
+    { permission: "SharePointTenantSettings.Read.All", note: "Tenant-level SharePoint/OneDrive external sharing settings." },
+    { permission: "DeviceManagementManagedDevices.Read.All", note: "Intune managed device compliance state." },
+    { permission: "DeviceManagementConfiguration.Read.All", note: "Intune device compliance policies and their platform assignments." },
+  ],
+  exchangePermission: {
+    resource: "Office 365 Exchange Online",
+    permission: "Exchange.ManageAsApp",
+    note: "Find this under API permissions → Add a permission → APIs my organization uses → search 'Office 365 Exchange Online'. This resource does not appear in the default list.",
+  },
+  entraRoleAssignment: {
+    role: "Global Reader",
+    note: "Exchange Online's own RBAC also gates what a token can read — holding Exchange.ManageAsApp alone is not sufficient. In Entra ID → Roles and administrators → Global Reader → Add assignments, add the app's service principal.",
+  },
+  consentNote: "Grant admin consent separately for each resource (Microsoft Graph and Office 365 Exchange Online — they appear as separate rows in the Permissions page).",
+  sharedAppNote: "If you already set up an app registration for another Prism Microsoft connector, add these permissions to that same app registration.",
+};
+
+const TEAMS_PERMISSIONS = {
+  graphPermissions: [
+    { permission: "TeamSettings.Read.All", note: "Per-team settings via GET /teams/{id}." },
+    { permission: "TeamMember.Read.All", note: "Team membership including guest members." },
+    { permission: "TeamsAppInstallation.Read.All", note: "Installed Teams apps per team/chat/user scope." },
+    { permission: "Organization.Read.All", note: "Required for all Tenant Configuration Management (TCM) policy reads — federation config, client config, meeting/messaging/app policies. NOT Policy.Read.All." },
+  ],
+  tcmNote: "After granting admin consent, the tenant's TCM service principal must also be enrolled (one-time setup). See Microsoft's 'Set up authentication for Tenant Configuration Management APIs' doc. This is separate from admin consent and required before Organization.Read.All unlocks policy reads.",
+  consentNote: "All permissions are Microsoft Graph Application permissions — select Grant admin consent after adding them.",
+  sharedAppNote: "If you already set up an app registration for another Prism Microsoft connector, add these permissions to that same app registration.",
+};
+
+const DEFENDER_PERMISSIONS = {
+  windowsDefenderATPPermissions: [
+    { permission: "Machine.Read.All", note: "Device/machine inventory — GET /api/machines." },
+    { permission: "Vulnerability.Read.All", note: "Discovered vulnerabilities per device." },
+    { permission: "SecurityRecommendation.Read.All", note: "Security recommendations — GET /api/recommendations." },
+    { permission: "Alert.Read.All", note: "Alerts — GET /api/alerts. If this is rejected in practice, fall back to Alert.ReadWrite.All (a documented Microsoft permission inconsistency)." },
+  ],
+  resourceNote: "Add these under API permissions → Add a permission → APIs my organization uses → search 'WindowsDefenderATP'. This is the internal name for the Defender for Endpoint API — it does not appear in the default Microsoft APIs tab.",
+  consentNote: "Grant admin consent for WindowsDefenderATP separately from Microsoft Graph — they are different API resources and each requires its own consent grant.",
+  tokenAudienceNote: "Defender for Endpoint tokens must be requested for resource https://api.securitycenter.microsoft.com even though API calls go to https://api.security.microsoft.com — these are two different strings. Prism handles this automatically; it is noted here only if you are troubleshooting 403 errors.",
+  sharedAppNote: "If you already set up an app registration for another Prism Microsoft connector, add these WindowsDefenderATP permissions to that same app registration.",
+};
+
+router.get("/entra_id/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({ permissions: ENTRA_ID_PERMISSIONS });
+}));
+
+router.get("/microsoft_365/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({ permissions: M365_PERMISSIONS });
+}));
+
+router.get("/microsoft_teams/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({ permissions: TEAMS_PERMISSIONS });
+}));
+
+router.get("/microsoft_defender/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({ permissions: DEFENDER_PERMISSIONS });
 }));
 
 // Data-center domain table for the Zoho wizard UI dropdown, and per-product

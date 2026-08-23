@@ -2,17 +2,22 @@ import { describe, test, expect, vi } from "vitest";
 
 vi.mock("@octokit/auth-app", () => ({ createAppAuth: vi.fn((auth) => auth) }));
 
-const orgsGet = vi.fn(async () => ({ data: { id: 555, two_factor_requirement_enabled: true } }));
+const orgsGet = vi.fn(async () => ({ data: { id: 555, two_factor_requirement_enabled: true, default_repository_permission: "read" } }));
 const getPullRequestReviewProtection = vi.fn(async () => { throw Object.assign(new Error("not protected"), { status: 404 }); });
 const checkVulnerabilityAlerts = vi.fn(async () => { throw Object.assign(new Error("disabled"), { status: 404 }); });
 const reposGet = vi.fn(async () => ({ data: {} }));
 const paginate = vi.fn(async () => []);
+const getGithubActionsDefaultWorkflowPermissionsOrganization = vi.fn(async () => ({ data: { default_workflow_permissions: "read" } }));
+const getGithubActionsPermissionsOrganization = vi.fn(async () => ({ data: { allowed_actions: "selected" } }));
+const getDefaultSetup = vi.fn(async () => ({ data: { state: "configured" } }));
 
 vi.mock("@octokit/rest", () => ({
   Octokit: vi.fn(function () {
     this.rest = {
-      orgs: { get: orgsGet },
+      orgs: { get: orgsGet, listMembers: vi.fn() },
       repos: { getPullRequestReviewProtection, checkVulnerabilityAlerts, get: reposGet, listForOrg: vi.fn() },
+      actions: { getGithubActionsDefaultWorkflowPermissionsOrganization, getGithubActionsPermissionsOrganization },
+      codeScanning: { getDefaultSetup },
     };
     this.paginate = paginate;
   }),
@@ -28,7 +33,7 @@ describe("runTests", () => {
       secret: { appId: "1", privateKey: "pem" },
     });
 
-    expect(results.length).toBe(4);
+    expect(results.length).toBe(9);
     for (const result of results) {
       const definition = tests.find((t) => t.key === result.testKey);
       expect(result.title).toBe(definition.title);

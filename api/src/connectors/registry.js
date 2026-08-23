@@ -6,10 +6,24 @@ import * as azure from "./azure/index.js";
 import * as github from "./github/index.js";
 import * as purview from "./purview/index.js";
 import * as zoho from "./zoho/index.js";
+import * as entraId from "./entra_id/index.js";
+import * as microsoft365 from "./microsoft_365/index.js";
+import * as microsoftTeams from "./microsoft_teams/index.js";
+import * as microsoftDefender from "./microsoft_defender/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const connectors = { [aws.key]: aws, [azure.key]: azure, [github.key]: github, [purview.key]: purview, [zoho.key]: zoho };
+const connectors = {
+  [aws.key]: aws,
+  [azure.key]: azure,
+  [github.key]: github,
+  [purview.key]: purview,
+  [zoho.key]: zoho,
+  [entraId.key]: entraId,
+  [microsoft365.key]: microsoft365,
+  [microsoftTeams.key]: microsoftTeams,
+  [microsoftDefender.key]: microsoftDefender,
+};
 
 function readManifest(connectorKey) {
   const manifestPath = path.join(__dirname, connectorKey, "connector.json");

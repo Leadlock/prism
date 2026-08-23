@@ -65,6 +65,6 @@ export async function checkWafLoggingEnabled(wafRegional, wafCloudfront) {
 }
 
 export const wafTests = [
-  { key: "aws.waf.web_acl_associated", title: "Internet-facing resources are protected by a WAF Web ACL", severityDefault: "high", isoReferences: ["A.13.1.1"], run: (clients) => checkWafWebAclAssociated(clients.wafRegional, clients.wafCloudfront) },
-  { key: "aws.waf.logging_enabled", title: "WAF Web ACLs have logging enabled", severityDefault: "medium", isoReferences: ["A.12.4.1"], run: (clients) => checkWafLoggingEnabled(clients.wafRegional, clients.wafCloudfront) },
+  { key: "aws.waf.web_acl_associated", title: "Internet-facing resources are protected by a WAF Web ACL", failTitle: "WAF Web ACL is not associated with any resources", severityDefault: "high", isoReferences: ["A.13.1.1"], run: (clients) => checkWafWebAclAssociated(clients.wafRegional, clients.wafCloudfront) },
+  { key: "aws.waf.logging_enabled", title: "WAF Web ACLs have logging enabled", failTitle: "WAF Web ACL does not have logging enabled", severityDefault: "medium", isoReferences: ["A.12.4.1"], run: (clients) => checkWafLoggingEnabled(clients.wafRegional, clients.wafCloudfront) },
 ];

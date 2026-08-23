@@ -90,6 +90,6 @@ export async function checkNsgNoOpenIngress(network) {
 }
 
 export const networkTests = [
-  { key: "azure.storage.public_access_blocked", title: "Storage accounts block public blob access", severityDefault: "critical", isoReferences: ["A.8.2.3"], run: (clients) => checkStoragePublicAccessBlocked(clients.storage) },
-  { key: "azure.network.nsg_no_open_ingress", title: "Network security groups do not expose management ports publicly", severityDefault: "critical", isoReferences: ["A.13.1.1"], run: (clients) => checkNsgNoOpenIngress(clients.network) },
+  { key: "azure.storage.public_access_blocked", title: "Storage accounts block public blob access", failTitle: "Storage account allows public blob access", severityDefault: "critical", isoReferences: ["A.8.2.3"], run: (clients) => checkStoragePublicAccessBlocked(clients.storage) },
+  { key: "azure.network.nsg_no_open_ingress", title: "Network security groups do not expose management ports publicly", failTitle: "Network security group exposes management ports (SSH/RDP) publicly", severityDefault: "critical", isoReferences: ["A.13.1.1"], run: (clients) => checkNsgNoOpenIngress(clients.network) },
 ];

@@ -175,6 +175,7 @@ export const auditTests = [
   {
     key: "purview.audit.unified_logging_enabled",
     title: "Unified audit logging is enabled",
+    failTitle: "Unified audit logging is disabled",
     severityDefault: "critical",
     isoReferences: ["A.12.4.1"],
     run: (clients) => checkUnifiedLoggingEnabled(clients.audit),
@@ -182,6 +183,7 @@ export const auditTests = [
   {
     key: "purview.audit.subscriptions_active",
     title: "Required audit log content-type subscriptions are active",
+    failTitle: "Required audit log content-type subscription is not active",
     severityDefault: "high",
     isoReferences: ["A.12.4.1"],
     run: (clients) => checkSubscriptionsActive(clients.audit),
@@ -189,6 +191,7 @@ export const auditTests = [
   {
     key: "purview.audit.dlp_alerts_available",
     title: "DLP audit content is available",
+    failTitle: "DLP audit content is not available",
     severityDefault: "high",
     isoReferences: ["A.13.2.1"],
     run: (clients) => checkDlpAlertsAvailable(clients.audit),
@@ -196,6 +199,7 @@ export const auditTests = [
   {
     key: "purview.audit.content_recently_available",
     title: "Audit content is actively flowing",
+    failTitle: "Audit content is not actively flowing",
     severityDefault: "medium",
     isoReferences: ["A.12.4.1"],
     run: (clients) => checkContentRecentlyAvailable(clients.audit),

@@ -7,6 +7,7 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import { parseExcelImport } from "../utils/excelParser.js";
+import { deleteCompanyFiles } from "../utils/deleteCompanyFiles.js";
 
 const router = Router();
 
@@ -73,15 +74,16 @@ router.patch("/companies/:id/status", authenticate, requireSuperAdmin, asyncHand
       const template = tplResult.rows[0];
       const modules = typeof template.module_data === "string" ? JSON.parse(template.module_data) : template.module_data;
       const questions = typeof template.question_data === "string" ? JSON.parse(template.question_data) : template.question_data;
+      const frameworkKey = template.framework_key || null;
       const tplClient = await getClient();
       try {
         await tplClient.query("BEGIN");
         for (const mod of modules) {
           const sortOrder = deriveSortOrder(mod.module_id);
           await tplClient.query(
-            `INSERT INTO modules (module_id, company_id, name, primary_owner, frequency, total_quests, purpose, sort_order)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (company_id, module_id) DO NOTHING`,
-            [mod.module_id, company.id, mod.name, mod.primary_owner, mod.frequency, mod.total_quests, mod.purpose, sortOrder]
+            `INSERT INTO modules (module_id, company_id, name, primary_owner, frequency, total_quests, purpose, sort_order, framework_key)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (company_id, module_id) DO UPDATE SET framework_key = EXCLUDED.framework_key`,
+            [mod.module_id, company.id, mod.name, mod.primary_owner, mod.frequency, mod.total_quests, mod.purpose, sortOrder, frameworkKey]
           );
         }
         for (const q of questions) {
@@ -94,6 +96,22 @@ router.patch("/companies/:id/status", authenticate, requireSuperAdmin, asyncHand
              q.iso_reference, q.baseline_question, q.level3_yes_criteria,
              q.required_evidence, q.default_owner, q.frequency, normPriority(q.priority), q.tags || null]
           );
+        }
+        // Activate the framework for this company and insert control mappings
+        if (frameworkKey) {
+          await tplClient.query(
+            `INSERT INTO company_frameworks (company_id, framework_key) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [company.id, frameworkKey]
+          );
+          for (const q of questions) {
+            if (q.iso_reference) {
+              await tplClient.query(
+                `INSERT INTO question_framework_controls (company_id, quest_id, framework_key, control_reference)
+                 VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+                [company.id, q.quest_id, frameworkKey, q.iso_reference]
+              );
+            }
+          }
         }
         await tplClient.query("COMMIT");
         templateProvisioned = true;
@@ -174,6 +192,9 @@ router.delete("/companies/:id", authenticate, requireSuperAdmin, asyncHandler(as
     return res.status(404).json({ error: "Company not found" });
   }
   const companyName = companyCheck.rows[0].name;
+
+  // Remove uploaded files first — company_settings.logo_url disappears once the row cascades away
+  await deleteCompanyFiles(id);
 
   // Delete in dependency order inside a transaction so partial failure leaves no orphans
   const client = await getClient();
@@ -356,7 +377,7 @@ router.post("/import-modules", authenticate, requireSuperAdmin, upload.single('f
   }
 
   const filePath = req.file.path;
-  const { companyId, saveAsTemplate, templateName } = req.body;
+  const { companyId, saveAsTemplate, templateName, frameworkKey } = req.body;
 
   let result;
   const client = await getClient();
@@ -382,9 +403,9 @@ router.post("/import-modules", authenticate, requireSuperAdmin, upload.single('f
     if (saveAsTemplate === 'true' || saveAsTemplate === true) {
       const tplName = templateName || req.file.originalname;
       const tpl = await client.query(
-        `INSERT INTO module_templates (name, description, file_name, module_data, question_data, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-        [tplName, '', req.file.originalname, JSON.stringify(parsed.modules), JSON.stringify(parsed.questions), req.user.userId || null]
+        `INSERT INTO module_templates (name, description, file_name, module_data, question_data, framework_key, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+        [tplName, '', req.file.originalname, JSON.stringify(parsed.modules), JSON.stringify(parsed.questions), frameworkKey || null, req.user.userId || null]
       );
       templateId = tpl.rows[0].id;
     }
@@ -394,11 +415,11 @@ router.post("/import-modules", authenticate, requireSuperAdmin, upload.single('f
       for (const mod of parsed.modules) {
         const sortOrder = deriveSortOrder(mod.module_id);
         const insertResult = await client.query(
-          `INSERT INTO modules (module_id, company_id, name, primary_owner, frequency, total_quests, purpose, sort_order)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           ON CONFLICT (company_id, module_id) DO NOTHING
+          `INSERT INTO modules (module_id, company_id, name, primary_owner, frequency, total_quests, purpose, sort_order, framework_key)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (company_id, module_id) DO UPDATE SET framework_key = EXCLUDED.framework_key
            RETURNING id`,
-          [mod.module_id, companyId, mod.name, mod.primary_owner, mod.frequency, mod.total_quests, mod.purpose, sortOrder]
+          [mod.module_id, companyId, mod.name, mod.primary_owner, mod.frequency, mod.total_quests, mod.purpose, sortOrder, frameworkKey || null]
         );
         if (insertResult.rows.length > 0) modulesInserted++;
       }
@@ -410,12 +431,29 @@ router.post("/import-modules", authenticate, requireSuperAdmin, upload.single('f
            default_owner, frequency, priority, tags)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
            ON CONFLICT (company_id, quest_id) DO NOTHING
-           RETURNING id`,
+           RETURNING quest_id`,
           [q.quest_id, companyId, q.module_id, q.module_name, q.control_area,
            q.iso_reference, q.baseline_question, q.level3_yes_criteria,
            q.required_evidence, q.default_owner, q.frequency, normPriority(q.priority), q.tags || null]
         );
         if (insertResult.rows.length > 0) questionsInserted++;
+      }
+
+      // Activate framework and insert control mappings when frameworkKey is supplied
+      if (frameworkKey) {
+        await client.query(
+          `INSERT INTO company_frameworks (company_id, framework_key) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [companyId, frameworkKey]
+        );
+        for (const q of parsed.questions) {
+          if (q.iso_reference) {
+            await client.query(
+              `INSERT INTO question_framework_controls (company_id, quest_id, framework_key, control_reference)
+               VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+              [companyId, q.quest_id, frameworkKey, q.iso_reference]
+            );
+          }
+        }
       }
     }
 
@@ -497,7 +535,7 @@ router.delete("/templates/:templateId", authenticate, requireSuperAdmin, asyncHa
 // POST /api/superadmin/templates/:templateId/assign — assign template to company
 router.post("/templates/:templateId/assign", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
   const { templateId } = req.params;
-  const { companyId } = req.body;
+  const { companyId, frameworkKey: bodyFrameworkKey } = req.body;
 
   if (!companyId) {
     return res.status(400).json({ error: "companyId is required" });
@@ -518,6 +556,8 @@ router.post("/templates/:templateId/assign", authenticate, requireSuperAdmin, as
   const template = tplResult.rows[0];
   const modules = typeof template.module_data === 'string' ? JSON.parse(template.module_data) : template.module_data;
   const questions = typeof template.question_data === 'string' ? JSON.parse(template.question_data) : template.question_data;
+  // frameworkKey: caller can override; else fall back to what's stored on the template
+  const frameworkKey = bodyFrameworkKey || template.framework_key || null;
 
   const client = await getClient();
   let moduleCount = 0;
@@ -529,11 +569,11 @@ router.post("/templates/:templateId/assign", authenticate, requireSuperAdmin, as
     for (const mod of modules) {
       const sortOrder = deriveSortOrder(mod.module_id);
       const insertResult = await client.query(
-        `INSERT INTO modules (module_id, company_id, name, primary_owner, frequency, total_quests, purpose, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT (company_id, module_id) DO NOTHING
+        `INSERT INTO modules (module_id, company_id, name, primary_owner, frequency, total_quests, purpose, sort_order, framework_key)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (company_id, module_id) DO UPDATE SET framework_key = EXCLUDED.framework_key
          RETURNING id`,
-        [mod.module_id, companyId, mod.name, mod.primary_owner, mod.frequency, mod.total_quests, mod.purpose, sortOrder]
+        [mod.module_id, companyId, mod.name, mod.primary_owner, mod.frequency, mod.total_quests, mod.purpose, sortOrder, frameworkKey]
       );
       if (insertResult.rows.length > 0) moduleCount++;
     }
@@ -545,12 +585,29 @@ router.post("/templates/:templateId/assign", authenticate, requireSuperAdmin, as
          default_owner, frequency, priority, tags)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          ON CONFLICT (company_id, quest_id) DO NOTHING
-         RETURNING id`,
+         RETURNING quest_id`,
         [q.quest_id, companyId, q.module_id, q.module_name, q.control_area,
          q.iso_reference, q.baseline_question, q.level3_yes_criteria,
          q.required_evidence, q.default_owner, q.frequency, normPriority(q.priority), q.tags || null]
       );
       if (insertResult.rows.length > 0) questionCount++;
+    }
+
+    // Activate framework and insert control mappings when frameworkKey is supplied
+    if (frameworkKey) {
+      await client.query(
+        `INSERT INTO company_frameworks (company_id, framework_key) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [companyId, frameworkKey]
+      );
+      for (const q of questions) {
+        if (q.iso_reference) {
+          await client.query(
+            `INSERT INTO question_framework_controls (company_id, quest_id, framework_key, control_reference)
+             VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+            [companyId, q.quest_id, frameworkKey, q.iso_reference]
+          );
+        }
+      }
     }
 
     await client.query('COMMIT');

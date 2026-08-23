@@ -92,6 +92,7 @@ export const signTests = [
   {
     key: "zoho.sign.audit_trail_enabled",
     title: "Document audit trail is enabled",
+    failTitle: "Zoho Sign does not include an audit trail with completed documents",
     severityDefault: "high",
     isoReferences: ["A.12.4.1"],
     run: (clients) => checkAuditTrailEnabled(clients),
@@ -99,6 +100,7 @@ export const signTests = [
   {
     key: "zoho.sign.template_access_restricted",
     title: "Template access is restricted to authorized users",
+    failTitle: "Sign template is shared with the entire organization rather than specific users/groups",
     severityDefault: "medium",
     isoReferences: ["A.9.4.1"],
     run: (clients) => checkTemplateAccessRestricted(clients),
@@ -106,6 +108,7 @@ export const signTests = [
   {
     key: "zoho.sign.completed_document_retention",
     title: "Completed document retention meets policy",
+    failTitle: "Sign documents may be auto-deleted before the required evidence retention period",
     severityDefault: "medium",
     isoReferences: ["A.18.1.3"],
     run: (clients) => checkCompletedDocumentRetention(clients),

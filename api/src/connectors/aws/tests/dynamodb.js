@@ -50,6 +50,6 @@ export async function checkDynamoDbEncryptionUsesCmk(dynamodb) {
 }
 
 export const dynamodbTests = [
-  { key: "aws.dynamodb.point_in_time_recovery_enabled", title: "DynamoDB tables have point-in-time recovery enabled", severityDefault: "high", isoReferences: ["A.12.3.1"], run: (clients) => checkDynamoDbPitrEnabled(clients.dynamodb) },
-  { key: "aws.dynamodb.encryption_uses_cmk", title: "DynamoDB tables are encrypted with a customer-managed key", severityDefault: "medium", isoReferences: ["A.8.2.3"], run: (clients) => checkDynamoDbEncryptionUsesCmk(clients.dynamodb) },
+  { key: "aws.dynamodb.point_in_time_recovery_enabled", title: "DynamoDB tables have point-in-time recovery enabled", failTitle: "DynamoDB table does not have point-in-time recovery enabled", severityDefault: "high", isoReferences: ["A.12.3.1"], run: (clients) => checkDynamoDbPitrEnabled(clients.dynamodb) },
+  { key: "aws.dynamodb.encryption_uses_cmk", title: "DynamoDB tables are encrypted with a customer-managed key", failTitle: "DynamoDB table is not encrypted with a customer-managed key", severityDefault: "medium", isoReferences: ["A.8.2.3"], run: (clients) => checkDynamoDbEncryptionUsesCmk(clients.dynamodb) },
 ];

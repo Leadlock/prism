@@ -90,8 +90,8 @@ export async function checkCloudTrailDataEventsLogged(cloudtrail) {
 }
 
 export const loggingTests = [
-  { key: "aws.logging.cloudtrail_enabled", title: "CloudTrail is enabled and multi-region", severityDefault: "critical", isoReferences: ["A.12.4.1"], run: (clients) => checkCloudTrailEnabled(clients.cloudtrail) },
-  { key: "aws.logging.config_enabled", title: "AWS Config is recording", severityDefault: "medium", isoReferences: ["A.12.1.1"], run: (clients) => checkConfigEnabled(clients.configService) },
-  { key: "aws.cloudtrail.log_file_validation_enabled", title: "CloudTrail trails have log file validation enabled", severityDefault: "high", isoReferences: ["A.12.4.2"], run: (clients) => checkCloudTrailLogFileValidation(clients.cloudtrail) },
-  { key: "aws.cloudtrail.data_events_logged", title: "CloudTrail records data-plane events for S3 and Lambda", severityDefault: "medium", isoReferences: ["A.12.4.1"], run: (clients) => checkCloudTrailDataEventsLogged(clients.cloudtrail) },
+  { key: "aws.logging.cloudtrail_enabled", title: "CloudTrail is enabled and multi-region", failTitle: "CloudTrail is not enabled and multi-region", severityDefault: "critical", isoReferences: ["A.12.4.1"], run: (clients) => checkCloudTrailEnabled(clients.cloudtrail) },
+  { key: "aws.logging.config_enabled", title: "AWS Config is recording", failTitle: "AWS Config is not recording", severityDefault: "medium", isoReferences: ["A.12.1.1"], run: (clients) => checkConfigEnabled(clients.configService) },
+  { key: "aws.cloudtrail.log_file_validation_enabled", title: "CloudTrail trails have log file validation enabled", failTitle: "CloudTrail trail does not have log file validation enabled", severityDefault: "high", isoReferences: ["A.12.4.2"], run: (clients) => checkCloudTrailLogFileValidation(clients.cloudtrail) },
+  { key: "aws.cloudtrail.data_events_logged", title: "CloudTrail records data-plane events for S3 and Lambda", failTitle: "CloudTrail does not record data-plane events for S3 and Lambda", severityDefault: "medium", isoReferences: ["A.12.4.1"], run: (clients) => checkCloudTrailDataEventsLogged(clients.cloudtrail) },
 ];

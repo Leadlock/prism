@@ -3,13 +3,24 @@ import { NetworkManagementClient } from "@azure/arm-network";
 import { SecurityCenter } from "@azure/arm-security";
 import { MonitorClient } from "@azure/arm-monitor";
 import { ResourceManagementClient } from "@azure/arm-resources";
+import { SqlManagementClient } from "@azure/arm-sql";
+import { KeyVaultManagementClient } from "@azure/arm-keyvault";
+import { PolicyInsightsClient } from "@azure/arm-policyinsights";
+import { ComputeManagementClient } from "@azure/arm-compute";
+import { AuthorizationManagementClient } from "@azure/arm-authorization";
 import { resolveAzureCredentials } from "./credentials.js";
 import { networkTests } from "./tests/network.js";
 import { loggingTests } from "./tests/logging.js";
+import { sqlTests } from "./tests/sql.js";
+import { keyVaultTests } from "./tests/keyVault.js";
+import { monitorTests } from "./tests/monitor.js";
+import { policyTests } from "./tests/policy.js";
+import { computeTests } from "./tests/compute.js";
+import { subscriptionTests } from "./tests/subscription.js";
 
 export const key = "azure";
 
-export const tests = [...loggingTests, ...networkTests];
+export const tests = [...loggingTests, ...networkTests, ...sqlTests, ...keyVaultTests, ...monitorTests, ...policyTests, ...computeTests, ...subscriptionTests];
 
 function buildClients(credential, subscriptionId) {
   return {
@@ -17,6 +28,11 @@ function buildClients(credential, subscriptionId) {
     network: new NetworkManagementClient(credential, subscriptionId),
     security: new SecurityCenter(credential, subscriptionId),
     monitor: new MonitorClient(credential, subscriptionId),
+    sql: new SqlManagementClient(credential, subscriptionId),
+    keyVault: new KeyVaultManagementClient(credential, subscriptionId),
+    policyInsights: new PolicyInsightsClient(credential, subscriptionId),
+    compute: new ComputeManagementClient(credential, subscriptionId),
+    authorization: new AuthorizationManagementClient(credential, subscriptionId),
     subscriptionId,
   };
 }
@@ -69,10 +85,10 @@ export async function runTests({ authType, config, secret }) {
       try {
         const results = await test.run(clients);
         for (const result of results) {
-          runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, ...result });
+          runResults.push({ testKey: test.key, title: test.title, failTitle: test.failTitle, severity: test.severityDefault, ...result });
         }
       } catch (err) {
-        runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, resourceId: "error", status: "error", message: describeAzureError(err), evidencePayload: {} });
+        runResults.push({ testKey: test.key, title: test.title, failTitle: test.failTitle, severity: test.severityDefault, resourceId: "error", status: "error", message: describeAzureError(err), evidencePayload: {} });
       }
     }
   } catch (err) {

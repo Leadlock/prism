@@ -94,6 +94,7 @@ export const crmTests = [
   {
     key: "zoho.crm.mfa_enforced",
     title: "CRM users have multi-factor authentication enabled",
+    failTitle: "CRM user does not have MFA enabled",
     severityDefault: "critical",
     isoReferences: ["A.9.4.2"],
     run: (clients) => checkCrmMfaEnforced(clients),
@@ -101,6 +102,7 @@ export const crmTests = [
   {
     key: "zoho.crm.data_sharing_rules_restricted",
     title: "Data sharing rules do not grant org-wide read/write",
+    failTitle: "CRM data sharing rule is set to Public Read/Write",
     severityDefault: "high",
     isoReferences: ["A.13.1.1"],
     run: (clients) => checkDataSharingRulesRestricted(clients),
@@ -108,6 +110,7 @@ export const crmTests = [
   {
     key: "zoho.crm.audit_log_enabled",
     title: "Audit log tracking is enabled",
+    failTitle: "CRM audit log tracking is not enabled",
     severityDefault: "medium",
     isoReferences: ["A.12.4.1"],
     run: (clients) => checkAuditLogEnabled(clients),

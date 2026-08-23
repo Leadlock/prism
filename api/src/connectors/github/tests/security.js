@@ -45,6 +45,6 @@ export async function checkSecretScanningEnabled(octokit, org, repos) {
 }
 
 export const securityTests = [
-  { key: "github.repo.vulnerability_alerts_enabled", title: "Dependabot vulnerability alerts are enabled", severityDefault: "high", isoReferences: ["A.12.6.1"], run: (clients) => checkVulnerabilityAlertsEnabled(clients.octokit, clients.org, clients.repos) },
-  { key: "github.repo.secret_scanning_enabled", title: "Secret scanning is enabled", severityDefault: "medium", isoReferences: ["A.9.4.3"], run: (clients) => checkSecretScanningEnabled(clients.octokit, clients.org, clients.repos) },
+  { key: "github.repo.vulnerability_alerts_enabled", title: "Dependabot vulnerability alerts are enabled", failTitle: "Dependabot vulnerability alerts are not enabled", severityDefault: "high", isoReferences: ["A.12.6.1"], run: (clients) => checkVulnerabilityAlertsEnabled(clients.octokit, clients.org, clients.repos) },
+  { key: "github.repo.secret_scanning_enabled", title: "Secret scanning is enabled", failTitle: "Secret scanning is disabled", severityDefault: "medium", isoReferences: ["A.9.4.3"], run: (clients) => checkSecretScanningEnabled(clients.octokit, clients.org, clients.repos) },
 ];

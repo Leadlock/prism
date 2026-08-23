@@ -66,6 +66,6 @@ export async function checkKmsNoWildcardKeyPolicy(kms) {
 }
 
 export const kmsTests = [
-  { key: "aws.kms.key_rotation_enabled", title: "Customer-managed KMS keys have rotation enabled", severityDefault: "high", isoReferences: ["A.10.1.2"], run: (clients) => checkKmsKeyRotationEnabled(clients.kms) },
-  { key: "aws.kms.no_wildcard_key_policy", title: "KMS key policies do not grant a wildcard principal", severityDefault: "critical", isoReferences: ["A.9.1.2"], run: (clients) => checkKmsNoWildcardKeyPolicy(clients.kms) },
+  { key: "aws.kms.key_rotation_enabled", title: "Customer-managed KMS keys have rotation enabled", failTitle: "Customer-managed KMS key does not have rotation enabled", severityDefault: "high", isoReferences: ["A.10.1.2"], run: (clients) => checkKmsKeyRotationEnabled(clients.kms) },
+  { key: "aws.kms.no_wildcard_key_policy", title: "KMS key policies do not grant a wildcard principal", failTitle: "KMS key policy grants access to a wildcard principal", severityDefault: "critical", isoReferences: ["A.9.1.2"], run: (clients) => checkKmsNoWildcardKeyPolicy(clients.kms) },
 ];

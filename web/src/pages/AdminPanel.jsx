@@ -182,6 +182,85 @@ function BillingSection({ company, user }) {
   );
 }
 
+function DangerZoneSection({ token, company, onDeleted }) {
+  const [password, setPassword] = useState("");
+  const [confirmName, setConfirmName] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  const companyName = company?.name || "";
+  const canDelete = password.length > 0 && confirmName.trim() === companyName && !deleting;
+
+  const handleDelete = async () => {
+    if (!canDelete) return;
+    const reallySure = window.confirm(
+      `This permanently deletes "${companyName}" — every user, assessment, evidence file, integration, and uploaded document. This cannot be undone. Continue?`
+    );
+    if (!reallySure) return;
+
+    setDeleting(true);
+    setError("");
+    try {
+      await apiFetch("/api/settings/company", {
+        token,
+        method: "DELETE",
+        body: { password, companyName: confirmName.trim() },
+      });
+      onDeleted();
+    } catch (err) {
+      setError(err.message || "Could not delete company.");
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <section className="admin-section">
+      <h2>Danger Zone</h2>
+      <div style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: 20 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--red)", marginBottom: 4 }}>Delete company</div>
+        <p style={{ fontSize: 13, color: "var(--text2)", margin: "0 0 16px", lineHeight: 1.5, maxWidth: 480 }}>
+          Permanently deletes <strong>{companyName}</strong> — every user, assessment, evidence file, integration, and uploaded document. This action cannot be undone.
+        </p>
+
+        <div className="form-group">
+          <label htmlFor="dangerPassword">Your password</label>
+          <input
+            id="dangerPassword"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            autoComplete="current-password"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="dangerConfirmName">Type <strong>{companyName}</strong> to confirm</label>
+          <input
+            id="dangerConfirmName"
+            type="text"
+            value={confirmName}
+            onChange={(e) => setConfirmName(e.target.value)}
+            placeholder={companyName}
+            autoComplete="off"
+          />
+        </div>
+
+        {error && <p className="error-text">{error}</p>}
+
+        <button
+          className="btn btn-danger"
+          onClick={handleDelete}
+          disabled={!canDelete}
+          style={{ marginTop: 4 }}
+        >
+          {deleting ? "Deleting…" : "Delete Company"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export default function AdminPanel({ token, company, user, onLogout, theme, onThemeToggle, isVerified }) {
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
@@ -489,7 +568,16 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
     { key: "module-deps", label: "Module Order" },
     { key: "tech-stack",  label: "Tech Stack" },
     { key: "billing",     label: "Billing & Plan" },
+    { key: "danger",      label: "Danger Zone" },
   ].filter(item => isVerified !== false || !VERIFIED_ONLY_SECTIONS.has(item.key));
+
+  const handleCompanyDeleted = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("company");
+    localStorage.removeItem("branding");
+    window.location.href = "/";
+  };
 
   const navBtnStyle = (key) => ({
     display: "block", width: "100%", textAlign: "left",
@@ -961,6 +1049,10 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
 
             {section === "billing" && (
               <BillingSection company={company} user={user} />
+            )}
+
+            {section === "danger" && (
+              <DangerZoneSection token={token} company={company} onDeleted={handleCompanyDeleted} />
             )}
 
           </div>

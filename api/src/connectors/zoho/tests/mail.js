@@ -89,6 +89,7 @@ export const mailTests = [
   {
     key: "zoho.mail.forwarding_restricted",
     title: "Auto-forwarding to external domains is restricted",
+    failTitle: "Mail org policy does not restrict auto-forwarding to external domains",
     severityDefault: "high",
     isoReferences: ["A.13.2.3"],
     run: (clients) => checkForwardingRestricted(clients),
@@ -96,6 +97,7 @@ export const mailTests = [
   {
     key: "zoho.mail.two_factor_auth_enforced",
     title: "Two-factor authentication is enforced for mailboxes",
+    failTitle: "Mail org security policy does not enforce two-factor authentication",
     severityDefault: "critical",
     isoReferences: ["A.9.4.2"],
     run: (clients) => checkTwoFactorAuthEnforced(clients),
@@ -103,6 +105,7 @@ export const mailTests = [
   {
     key: "zoho.mail.spam_phishing_filters_enabled",
     title: "Spam and phishing filters are enabled",
+    failTitle: "Mail spam or phishing filters are not fully enabled",
     severityDefault: "medium",
     isoReferences: ["A.12.2.1"],
     run: (clients) => checkSpamPhishingFiltersEnabled(clients),

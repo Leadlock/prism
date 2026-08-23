@@ -290,8 +290,8 @@ export async function checkSensitivityLabelsApplied(dataMap) {
 }
 
 export const datamapTests = [
-  { key: "purview.datamap.sources_scanned", title: "Registered data sources have a recent successful scan", severityDefault: "high", isoReferences: ["A.8.1.1"], run: (clients) => checkSourcesScanned(clients.dataMap) },
-  { key: "purview.datamap.scan_schedule_configured", title: "Registered data sources have a recurring scan schedule", severityDefault: "medium", isoReferences: ["A.8.1.1"], run: (clients) => checkScanScheduleConfigured(clients.dataMap) },
-  { key: "purview.datamap.classification_applied", title: "Scanned assets have classifications applied", severityDefault: "medium", isoReferences: ["A.8.2.1"], run: (clients) => checkClassificationApplied(clients.dataMap) },
-  { key: "purview.datamap.sensitivity_labels_applied", title: "Scanned assets have sensitivity labels applied", severityDefault: "medium", isoReferences: ["A.8.2.3"], run: (clients) => checkSensitivityLabelsApplied(clients.dataMap) },
+  { key: "purview.datamap.sources_scanned", title: "Registered data sources have a recent successful scan", failTitle: "Registered data source has no recent successful scan", severityDefault: "high", isoReferences: ["A.8.1.1"], run: (clients) => checkSourcesScanned(clients.dataMap) },
+  { key: "purview.datamap.scan_schedule_configured", title: "Registered data sources have a recurring scan schedule", failTitle: "Registered data source has no recurring scan schedule configured", severityDefault: "medium", isoReferences: ["A.8.1.1"], run: (clients) => checkScanScheduleConfigured(clients.dataMap) },
+  { key: "purview.datamap.classification_applied", title: "Scanned assets have classifications applied", failTitle: "Scanned asset has no classifications applied", severityDefault: "medium", isoReferences: ["A.8.2.1"], run: (clients) => checkClassificationApplied(clients.dataMap) },
+  { key: "purview.datamap.sensitivity_labels_applied", title: "Scanned assets have sensitivity labels applied", failTitle: "Scanned asset has no sensitivity label applied", severityDefault: "medium", isoReferences: ["A.8.2.3"], run: (clients) => checkSensitivityLabelsApplied(clients.dataMap) },
 ];

@@ -1,9 +1,11 @@
 import { Router } from "express";
+import bcrypt from "bcryptjs";
 import multer from "multer";
 import path from "path";
 import { authenticate } from "../middleware/auth.js";
 import { query, mapRow } from "../db/index.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { deleteCompanyFiles } from "../utils/deleteCompanyFiles.js";
 
 const logoStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, process.env.UPLOAD_DIR || "./uploads"),
@@ -120,6 +122,37 @@ router.put("/", authenticate, asyncHandler(async (req, res) => {
   );
 
   res.json({ success: true });
+}));
+
+// DELETE /api/settings/company — permanently delete the caller's own company (ADMIN only)
+router.delete("/company", authenticate, asyncHandler(async (req, res) => {
+  const companyId = req.user?.companyId;
+  if (!companyId) return res.status(400).json({ error: "No company context" });
+  if (req.user.role !== "ADMIN") return res.status(403).json({ error: "Admin only" });
+
+  const { password, companyName } = req.body;
+  if (!password || !companyName) {
+    return res.status(400).json({ error: "Password and company name confirmation are required" });
+  }
+
+  const userResult = await query("SELECT password_hash FROM users WHERE id = $1", [req.user.userId]);
+  const passwordHash = userResult.rows[0]?.password_hash;
+  if (!passwordHash) return res.status(401).json({ error: "Unable to verify password" });
+
+  const valid = await bcrypt.compare(password, passwordHash);
+  if (!valid) return res.status(401).json({ error: "Incorrect password" });
+
+  const companyResult = await query("SELECT name FROM companies WHERE id = $1", [companyId]);
+  const company = companyResult.rows[0];
+  if (!company) return res.status(404).json({ error: "Company not found" });
+  if (companyName.trim() !== company.name) {
+    return res.status(400).json({ error: "Company name confirmation does not match" });
+  }
+
+  await deleteCompanyFiles(companyId);
+  await query("DELETE FROM companies WHERE id = $1", [companyId]);
+
+  res.json({ deleted: true });
 }));
 
 export default router;

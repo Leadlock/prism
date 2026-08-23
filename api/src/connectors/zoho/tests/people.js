@@ -141,6 +141,7 @@ export const peopleTests = [
   {
     key: "zoho.people.data_access_review",
     title: "Employee data access is restricted by role",
+    failTitle: "People form allows access to all employees rather than HR-admin roles only",
     severityDefault: "high",
     isoReferences: ["A.9.1.1"],
     run: (clients) => checkDataAccessReview(clients),
@@ -148,6 +149,7 @@ export const peopleTests = [
   {
     key: "zoho.people.sensitive_field_encryption",
     title: "Sensitive HR fields are access-restricted",
+    failTitle: "Sensitive People form does not have field-level role-based permissions",
     severityDefault: "high",
     isoReferences: ["A.8.2.3"],
     run: (clients) => checkSensitiveFieldEncryption(clients),
@@ -155,6 +157,7 @@ export const peopleTests = [
   {
     key: "zoho.people.admin_role_review",
     title: "Admin role assignment is minimized",
+    failTitle: "People Admin role is assigned to more users than acceptable",
     severityDefault: "medium",
     isoReferences: ["A.9.2.3"],
     run: (clients) => checkAdminRoleReview(clients),

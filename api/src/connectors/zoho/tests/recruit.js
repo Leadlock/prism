@@ -44,7 +44,7 @@ async function checkDataRetentionPolicyConfigured(clients) {
   const settings = data?.settings || data;
   const retentionConfigured =
     settings?.data_retention_enabled === true ||
-    settings?.candidate_data_retention !== null ||
+    settings?.candidate_data_retention != null ||
     settings?.retention_policy_configured === true;
   return [
     {
@@ -107,6 +107,7 @@ export const recruitTests = [
   {
     key: "zoho.recruit.candidate_data_access_review",
     title: "Candidate data access is restricted by role",
+    failTitle: "Recruit candidate data sharing rule allows org-wide access, not restricted to requisition assignment",
     severityDefault: "high",
     isoReferences: ["A.9.1.1"],
     run: (clients) => checkCandidateDataAccessReview(clients),
@@ -114,6 +115,7 @@ export const recruitTests = [
   {
     key: "zoho.recruit.data_retention_policy_configured",
     title: "Candidate data retention/deletion policy is configured",
+    failTitle: "Recruit does not have a candidate data retention/deletion policy configured",
     severityDefault: "medium",
     isoReferences: ["A.18.1.3"],
     run: (clients) => checkDataRetentionPolicyConfigured(clients),
@@ -121,6 +123,7 @@ export const recruitTests = [
   {
     key: "zoho.recruit.job_posting_visibility_review",
     title: "Job posting visibility matches intended audience",
+    failTitle: "Job opening is marked internal but published to external/public channels",
     severityDefault: "low",
     isoReferences: ["A.13.2.1"],
     run: (clients) => checkJobPostingVisibilityReview(clients),

@@ -68,7 +68,7 @@ async function generateFindingEvidenceVaultItem({ companyId, connectionId, resul
   const conn = mapRow(connRow);
 
   const pdfBuffer = await renderFindingEvidencePdf({
-    title: result.title || result.testKey,
+    title: result.failTitle || result.title || result.testKey,
     testKey: result.testKey,
     resourceId: result.resourceId,
     severity: result.severity,
@@ -117,10 +117,11 @@ async function upsertFinding({ companyId, connectionId, result, sourceResultId }
        status = CASE WHEN findings.status = 'resolved' THEN 'open' ELSE findings.status END,
        last_detected_at = NOW(),
        source_result_id = EXCLUDED.source_result_id,
+       title = EXCLUDED.title,
        description = EXCLUDED.description,
        evidence_vault_id = EXCLUDED.evidence_vault_id,
        payload_hash = EXCLUDED.payload_hash`,
-    [companyId, connectionId, result.testKey, result.resourceId, result.severity, result.title || result.testKey, result.message, sourceResultId, vaultId, payloadHash]
+    [companyId, connectionId, result.testKey, result.resourceId, result.severity, result.failTitle || result.title || result.testKey, result.message, sourceResultId, vaultId, payloadHash]
   );
 }
 

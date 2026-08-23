@@ -49,6 +49,6 @@ export async function checkConfigAllResourceTypesRecorded(configService) {
 }
 
 export const configTests = [
-  { key: "aws.config.rules_compliant", title: "AWS Config rules report compliant resources", severityDefault: "medium", isoReferences: ["A.12.1.2"], run: (clients) => checkConfigRulesCompliant(clients.configService) },
-  { key: "aws.config.all_resource_types_recorded", title: "AWS Config recorder tracks all supported resource types", severityDefault: "medium", isoReferences: ["A.12.1.1"], run: (clients) => checkConfigAllResourceTypesRecorded(clients.configService) },
+  { key: "aws.config.rules_compliant", title: "AWS Config rules report compliant resources", failTitle: "AWS Config rule reports non-compliant resources", severityDefault: "medium", isoReferences: ["A.12.1.2"], run: (clients) => checkConfigRulesCompliant(clients.configService) },
+  { key: "aws.config.all_resource_types_recorded", title: "AWS Config recorder tracks all supported resource types", failTitle: "AWS Config recorder does not track all supported resource types", severityDefault: "medium", isoReferences: ["A.12.1.1"], run: (clients) => checkConfigAllResourceTypesRecorded(clients.configService) },
 ];

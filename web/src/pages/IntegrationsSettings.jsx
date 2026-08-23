@@ -19,15 +19,22 @@ const PROVIDER_ICON = {
   github: { Icon: FaGithub, color: "#181717" },
   purview: { Icon: FaMicrosoft, color: "#8661C5" },
   zoho: { Icon: SiZoho, color: "#E61E25" },
+  entra_id: { Icon: FaMicrosoft, color: "#0078D4" },
+  microsoft_365: { Icon: FaMicrosoft, color: "#D83B01" },
+  microsoft_teams: { Icon: FaMicrosoft, color: "#6264A7" },
+  microsoft_defender: { Icon: FaMicrosoft, color: "#0D6EFD" },
 };
 
 // Display order for known categories; anything else falls back to
 // alphabetical after these, so a new connector's category never needs a
 // code change here to show up — it just lands at the end.
-const CATEGORY_ORDER = ["cloud", "devops", "data_governance", "business_apps"];
+const CATEGORY_ORDER = ["cloud", "devops", "identity", "collaboration", "endpoint_security", "data_governance", "business_apps"];
 const CATEGORY_LABEL = {
   cloud: "Cloud",
   devops: "DevOps",
+  identity: "Identity",
+  collaboration: "Collaboration",
+  endpoint_security: "Endpoint Security",
   data_governance: "Data Governance",
   business_apps: "Business Apps",
 };
@@ -340,6 +347,117 @@ function PurviewWalkthrough({ token, tenantId, setTenantId, purviewAccountName, 
   );
 }
 
+// Shared walkthrough for all four Microsoft connectors that share the same
+// tenantId + clientId + clientSecret credential shape (Entra ID, M365, Teams, Defender).
+
+const MS_CONNECTOR_NAME = {
+  entra_id: "Microsoft Entra ID",
+  microsoft_365: "Microsoft 365",
+  microsoft_teams: "Microsoft Teams",
+  microsoft_defender: "Microsoft Defender for Endpoint",
+};
+
+function MicrosoftWalkthrough({ providerKey, tenantId, setTenantId, token }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch(`/api/integrations/${providerKey}/setup-info`, { token })
+      .then(info => setSetupInfo(info))
+      .catch(e => setSetupError(e.message));
+  }, [token, providerKey]);
+
+  const p = setupInfo?.permissions;
+  const name = MS_CONNECTOR_NAME[providerKey] || providerKey;
+  const isDefender = providerKey === "microsoft_defender";
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect — {name}</div>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        <li>
+          In <strong>Microsoft Entra ID → App registrations → New registration</strong>, name it (e.g. <code>prism-compliance</code>).{" "}
+          {p?.sharedAppNote && <span style={{ color: "var(--text3)" }}>{p.sharedAppNote}</span>}
+        </li>
+        <li>
+          Under <strong>Certificates &amp; secrets → New client secret</strong> — copy the value immediately (shown only once).
+          Note the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong> from the app's Overview page.
+        </li>
+
+        {/* Graph permissions (all connectors except Defender show this block) */}
+        {p?.graphPermissions && (
+          <li>
+            <strong>API permissions → Add a permission → Microsoft Graph → Application permissions</strong>, add:
+            <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+              {p.graphPermissions.map(({ permission, note }) => (
+                <li key={permission}><code>{permission}</code>{note && <span style={{ color: "var(--text3)" }}> — {note}</span>}</li>
+              ))}
+            </ul>
+          </li>
+        )}
+
+        {/* Exchange permission (M365 only) */}
+        {p?.exchangePermission && (
+          <li>
+            <strong>API permissions → Add a permission → APIs my organization uses → {p.exchangePermission.resource} → Application permissions</strong>, add <code>{p.exchangePermission.permission}</code>.
+            {" "}<span style={{ color: "var(--text3)" }}>{p.exchangePermission.note}</span>
+          </li>
+        )}
+
+        {/* WindowsDefenderATP permissions (Defender only) */}
+        {p?.windowsDefenderATPPermissions && (
+          <li>
+            <strong>API permissions → Add a permission → APIs my organization uses → WindowsDefenderATP → Application permissions</strong>, add:
+            {p.resourceNote && <span style={{ color: "var(--text3)" }}> ({p.resourceNote})</span>}
+            <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+              {p.windowsDefenderATPPermissions.map(({ permission, note }) => (
+                <li key={permission}><code>{permission}</code>{note && <span style={{ color: "var(--text3)" }}> — {note}</span>}</li>
+              ))}
+            </ul>
+          </li>
+        )}
+
+        {/* Admin consent */}
+        <li>
+          Click <strong>Grant admin consent for &lt;tenant&gt;</strong>.
+          {p?.consentNote && <span style={{ color: "var(--text3)" }}> {p.consentNote}</span>}
+        </li>
+
+        {/* Entra role assignment (M365 only) */}
+        {p?.entraRoleAssignment && (
+          <li>
+            <strong>Assign the <code>{p.entraRoleAssignment.role}</code> Entra ID role</strong> to the app's service principal.
+            {" "}<span style={{ color: "var(--text3)" }}>{p.entraRoleAssignment.note}</span>
+          </li>
+        )}
+
+        {/* TCM enrollment (Teams only) */}
+        {p?.tcmNote && (
+          <li>
+            <strong>Enroll the TCM service principal</strong> (one-time tenant setup).{" "}
+            <span style={{ color: "var(--text3)" }}>{p.tcmNote}</span>
+          </li>
+        )}
+
+        {/* Defender token-audience note */}
+        {p?.tokenAudienceNote && (
+          <li style={{ color: "var(--text3)" }}><em>Note: {p.tokenAudienceNote}</em></li>
+        )}
+
+        <li>Paste the Tenant ID, Client ID, and Client Secret into the fields below and click Connect.</li>
+      </ol>
+
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label htmlFor="conn-tenant-id">Tenant ID</label>
+        <input id="conn-tenant-id" required value={tenantId} onChange={e => setTenantId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000 or contoso.onmicrosoft.com" />
+      </div>
+    </div>
+  );
+}
+
 function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
   const [name, setName] = useState("");
   const [region, setRegion] = useState("us-east-1");
@@ -397,7 +515,9 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
           ? { dataCenter, orgId }
           : provider.key === "purview"
             ? { tenantId, purviewAccountName }
-            : { tenantId, subscriptionId }
+            : provider.key === "azure"
+              ? { tenantId, subscriptionId }
+              : { tenantId }
         : authType === "iam_role" ? { region, roleArn } : { region };
       const secret = authType === "oauth2"
         ? provider.key === "zoho"
@@ -467,7 +587,8 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                 </div>
               ) : null}
 
-              {provider.key !== "azure" && provider.key !== "github" && provider.key !== "purview" && provider.key !== "zoho" && (
+              {provider.key !== "azure" && provider.key !== "github" && provider.key !== "purview" && provider.key !== "zoho" &&
+               !["entra_id", "microsoft_365", "microsoft_teams", "microsoft_defender"].includes(provider.key) && (
                 <div className="form-group">
                   <label htmlFor="conn-region">Region</label>
                   <input id="conn-region" value={region} onChange={e => setRegion(e.target.value)} />
@@ -496,6 +617,12 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                       token={token}
                       tenantId={tenantId} setTenantId={setTenantId}
                       purviewAccountName={purviewAccountName} setPurviewAccountName={setPurviewAccountName}
+                    />
+                  ) : ["entra_id", "microsoft_365", "microsoft_teams", "microsoft_defender"].includes(provider.key) ? (
+                    <MicrosoftWalkthrough
+                      providerKey={provider.key}
+                      token={token}
+                      tenantId={tenantId} setTenantId={setTenantId}
                     />
                   ) : (
                     <AzureServicePrincipalWalkthrough

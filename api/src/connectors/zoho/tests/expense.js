@@ -81,6 +81,7 @@ export const expenseTests = [
   {
     key: "zoho.expense.approval_policy_enforced",
     title: "Expense approval requires a separate approver",
+    failTitle: "Expense approval policy may allow self-approval",
     severityDefault: "medium",
     isoReferences: ["A.6.1.2"],
     run: (clients) => checkApprovalPolicyEnforced(clients),
@@ -88,6 +89,7 @@ export const expenseTests = [
   {
     key: "zoho.expense.receipt_data_retention",
     title: "Receipt/expense data retention meets policy",
+    failTitle: "Expense records or receipts may be auto-deleted before the required retention period",
     severityDefault: "medium",
     isoReferences: ["A.18.1.3"],
     run: (clients) => checkReceiptDataRetention(clients),
@@ -95,6 +97,7 @@ export const expenseTests = [
   {
     key: "zoho.expense.card_data_masking",
     title: "Corporate card numbers are masked",
+    failTitle: "Corporate card numbers may not be fully masked",
     severityDefault: "high",
     isoReferences: ["A.8.2.3"],
     run: (clients) => checkCardDataMasking(clients),

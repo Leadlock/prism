@@ -32,6 +32,6 @@ export async function checkActivityLogDiagnosticsEnabled(monitor, subscriptionId
 }
 
 export const loggingTests = [
-  { key: "azure.security.defender_enabled", title: "Microsoft Defender for Cloud is enabled", severityDefault: "medium", isoReferences: ["A.12.1.1"], run: (clients) => checkDefenderForCloudEnabled(clients.security) },
-  { key: "azure.logging.activity_log_diagnostics_enabled", title: "Activity Log diagnostic settings are configured", severityDefault: "critical", isoReferences: ["A.12.4.1"], run: (clients) => checkActivityLogDiagnosticsEnabled(clients.monitor, clients.subscriptionId) },
+  { key: "azure.security.defender_enabled", title: "Microsoft Defender for Cloud is enabled", failTitle: "Microsoft Defender for Cloud is not enabled", severityDefault: "medium", isoReferences: ["A.12.1.1"], run: (clients) => checkDefenderForCloudEnabled(clients.security) },
+  { key: "azure.logging.activity_log_diagnostics_enabled", title: "Activity Log diagnostic settings are configured", failTitle: "No diagnostic settings are configured for the subscription Activity Log", severityDefault: "critical", isoReferences: ["A.12.4.1"], run: (clients) => checkActivityLogDiagnosticsEnabled(clients.monitor, clients.subscriptionId) },
 ];

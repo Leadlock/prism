@@ -48,6 +48,6 @@ export async function checkCloudWatchLogGroupRetention(cloudwatchLogs) {
 }
 
 export const cloudwatchTests = [
-  { key: "aws.cloudwatch.alarms_configured", title: "CloudWatch alarms exist for account activity", severityDefault: "medium", isoReferences: ["A.12.4.1"], run: (clients) => checkCloudWatchAlarmsConfigured(clients.cloudwatch) },
-  { key: "aws.cloudwatch.log_group_retention_configured", title: "CloudWatch Logs groups have a retention period set", severityDefault: "medium", isoReferences: ["A.12.4.1"], run: (clients) => checkCloudWatchLogGroupRetention(clients.cloudwatchLogs) },
+  { key: "aws.cloudwatch.alarms_configured", title: "CloudWatch alarms exist for account activity", failTitle: "No CloudWatch alarms are configured for account activity", severityDefault: "medium", isoReferences: ["A.12.4.1"], run: (clients) => checkCloudWatchAlarmsConfigured(clients.cloudwatch) },
+  { key: "aws.cloudwatch.log_group_retention_configured", title: "CloudWatch Logs groups have a retention period set", failTitle: "CloudWatch Logs group has no retention period set", severityDefault: "medium", isoReferences: ["A.12.4.1"], run: (clients) => checkCloudWatchLogGroupRetention(clients.cloudwatchLogs) },
 ];

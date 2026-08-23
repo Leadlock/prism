@@ -23,6 +23,32 @@ vi.mock("@azure/arm-monitor", () => ({
     diagnosticSettings: { list: async () => ({ value: [] }) },
   })),
 }));
+vi.mock("@azure/arm-sql", () => ({
+  SqlManagementClient: vi.fn(() => ({
+    servers: { list: () => ({ [Symbol.asyncIterator]: async function* () {} }) },
+  })),
+}));
+vi.mock("@azure/arm-keyvault", () => ({
+  KeyVaultManagementClient: vi.fn(() => ({
+    vaults: { list: () => ({ [Symbol.asyncIterator]: async function* () {} }) },
+  })),
+}));
+vi.mock("@azure/arm-policyinsights", () => ({
+  PolicyInsightsClient: vi.fn(() => ({
+    policyStates: { summarizeForSubscription: async () => ({ value: [] }) },
+  })),
+}));
+vi.mock("@azure/arm-compute", () => ({
+  ComputeManagementClient: vi.fn(() => ({
+    virtualMachines: { listAll: () => ({ [Symbol.asyncIterator]: async function* () {} }) },
+  })),
+}));
+vi.mock("@azure/arm-authorization", () => ({
+  AuthorizationManagementClient: vi.fn(() => ({
+    classicAdministrators: { list: () => ({ [Symbol.asyncIterator]: async function* () {} }) },
+    roleAssignments: { listForScope: () => ({ [Symbol.asyncIterator]: async function* () {} }) },
+  })),
+}));
 
 let resourceGroupsListImpl = () => ({ next: async () => ({ done: true }) });
 vi.mock("@azure/arm-resources", () => ({
@@ -41,7 +67,7 @@ describe("runTests", () => {
       secret: { clientId: "client-1", clientSecret: "shh" },
     });
 
-    expect(results.length).toBe(4);
+    expect(results.length).toBe(15);
     for (const result of results) {
       const definition = tests.find((t) => t.key === result.testKey);
       expect(result.title).toBe(definition.title);

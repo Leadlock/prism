@@ -202,10 +202,10 @@ export async function checkNoOverlyBroadManagedPolicies(iam) {
 }
 
 export const iamTests = [
-  { key: "aws.iam.mfa_enforced", title: "IAM users have MFA enabled", severityDefault: "critical", isoReferences: ["A.9.4.2"], run: (clients) => checkMfaEnforced(clients.iam) },
-  { key: "aws.iam.password_policy", title: "Account password policy meets minimum strength", severityDefault: "high", isoReferences: ["A.9.4.3"], run: (clients) => checkPasswordPolicy(clients.iam) },
-  { key: "aws.iam.access_key_age", title: "IAM access keys are rotated within 90 days", severityDefault: "high", isoReferences: ["A.9.2.4"], run: (clients) => checkAccessKeyAge(clients.iam) },
-  { key: "aws.iam.no_root_access_keys", title: "Root account has no active access keys", severityDefault: "critical", isoReferences: ["A.9.2.3"], run: (clients) => checkNoRootAccessKeys(clients.iam) },
-  { key: "aws.iam.no_inline_policies", title: "IAM users and groups have no inline policies", severityDefault: "medium", isoReferences: ["A.9.1.2"], run: (clients) => checkNoInlinePolicies(clients.iam) },
-  { key: "aws.iam.no_overly_broad_managed_policies", title: "No IAM users or groups have admin-level managed policies attached", severityDefault: "high", isoReferences: ["A.9.1.2"], run: (clients) => checkNoOverlyBroadManagedPolicies(clients.iam) },
+  { key: "aws.iam.mfa_enforced", title: "IAM users have MFA enabled", failTitle: "MFA is not enabled for this IAM user", severityDefault: "critical", isoReferences: ["A.9.4.2"], run: (clients) => checkMfaEnforced(clients.iam) },
+  { key: "aws.iam.password_policy", title: "Account password policy meets minimum strength", failTitle: "Account password policy does not meet minimum strength requirements", severityDefault: "high", isoReferences: ["A.9.4.3"], run: (clients) => checkPasswordPolicy(clients.iam) },
+  { key: "aws.iam.access_key_age", title: "IAM access keys are rotated within 90 days", failTitle: "IAM access key has not been rotated within 90 days", severityDefault: "high", isoReferences: ["A.9.2.4"], run: (clients) => checkAccessKeyAge(clients.iam) },
+  { key: "aws.iam.no_root_access_keys", title: "Root account has no active access keys", failTitle: "Root account has active access keys", severityDefault: "critical", isoReferences: ["A.9.2.3"], run: (clients) => checkNoRootAccessKeys(clients.iam) },
+  { key: "aws.iam.no_inline_policies", title: "IAM users and groups have no inline policies", failTitle: "IAM user or group has inline policies attached", severityDefault: "medium", isoReferences: ["A.9.1.2"], run: (clients) => checkNoInlinePolicies(clients.iam) },
+  { key: "aws.iam.no_overly_broad_managed_policies", title: "No IAM users or groups have admin-level managed policies attached", failTitle: "IAM user or group has an admin-level managed policy attached", severityDefault: "high", isoReferences: ["A.9.1.2"], run: (clients) => checkNoOverlyBroadManagedPolicies(clients.iam) },
 ];

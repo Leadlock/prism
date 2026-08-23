@@ -703,6 +703,30 @@ INSERT INTO test_control_mappings (test_key, framework, iso_reference) VALUES
   ('aws.ecs.container_insights_enabled', 'ISO27001', 'A.12.4.1')
 ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('aws', 'aws.iam.no_root_access_keys', 'Root account has no active access keys', 'Checks the AWS root account credential report to confirm neither access_key_1 nor access_key_2 is active for the root user.', 'critical', 'Delete root account access keys under IAM > Security credentials. Use an IAM role or IAM user with least-privilege permissions for programmatic access instead.'),
+  ('aws', 'aws.iam.no_inline_policies', 'IAM users and groups have no inline policies', 'Checks that no IAM user or group has inline policies attached — inline policies are harder to audit and reuse than managed policies.', 'medium', 'Convert inline policies to customer-managed IAM policies and attach them to groups or roles instead of directly to users.'),
+  ('aws', 'aws.iam.no_overly_broad_managed_policies', 'No IAM users or groups have admin-level managed policies attached', 'Checks that neither AdministratorAccess nor PowerUserAccess is attached directly to any IAM user or group.', 'high', 'Remove AdministratorAccess/PowerUserAccess from individual users and groups. Grant access via least-privilege roles, or restrict admin access to a dedicated break-glass role with MFA enforcement.'),
+  ('aws', 'aws.ec2.ebs_encryption_by_default', 'EBS encryption by default is enabled', 'Checks that the region-level EBS encryption-by-default setting is enabled so all new EBS volumes and snapshots are automatically encrypted.', 'high', 'Enable EBS encryption by default under EC2 > Settings > EBS encryption, or via EnableEbsEncryptionByDefault API.'),
+  ('aws', 'aws.vpc.flow_logs_enabled', 'VPC flow logs are enabled for all VPCs', 'Checks every VPC in the region has at least one flow log configured to capture accepted and rejected traffic.', 'medium', 'Enable VPC flow logs for the VPC under VPC > Flow logs > Create flow log, delivering to CloudWatch Logs or S3.'),
+  ('aws', 'aws.s3.bucket_encryption_enabled', 'S3 buckets have server-side encryption enabled', 'Checks every S3 bucket has a default server-side encryption configuration (SSE-S3 or SSE-KMS).', 'high', 'Enable default encryption on the bucket under S3 > Properties > Default encryption. AWS now enables SSE-S3 by default on new buckets, but older buckets may need an explicit setting.'),
+  ('aws', 'aws.s3.bucket_access_logging_enabled', 'S3 buckets have access logging enabled', 'Checks every S3 bucket has server access logging enabled so API requests are recorded for audit and forensic purposes.', 'medium', 'Enable server access logging on the bucket under S3 > Properties > Server access logging, specifying a target bucket for log delivery.'),
+  ('aws', 'aws.lambda.in_vpc', 'Lambda functions are deployed inside a VPC', 'Checks every Lambda function has a VPC configuration so outbound calls go through VPC network controls rather than over the public internet.', 'medium', 'Configure a VPC, subnets, and security group for the function under Lambda > Configuration > VPC.'),
+  ('aws', 'aws.lambda.env_vars_not_plaintext_secrets', 'Lambda environment variables do not contain plaintext secrets', 'Checks Lambda function environment variable names for patterns suggesting plaintext credentials (password, secret, token, api_key, etc.).', 'high', 'Remove plaintext secrets from environment variables. Store them in AWS Secrets Manager or SSM Parameter Store (SecureString) and retrieve them at runtime via SDK calls.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, framework, iso_reference) VALUES
+  ('aws.iam.no_root_access_keys', 'ISO27001', 'A.9.2.3'),
+  ('aws.iam.no_inline_policies', 'ISO27001', 'A.9.1.2'),
+  ('aws.iam.no_overly_broad_managed_policies', 'ISO27001', 'A.9.1.2'),
+  ('aws.ec2.ebs_encryption_by_default', 'ISO27001', 'A.8.2.3'),
+  ('aws.vpc.flow_logs_enabled', 'ISO27001', 'A.12.4.1'),
+  ('aws.s3.bucket_encryption_enabled', 'ISO27001', 'A.8.2.3'),
+  ('aws.s3.bucket_access_logging_enabled', 'ISO27001', 'A.12.4.1'),
+  ('aws.lambda.in_vpc', 'ISO27001', 'A.13.1.1'),
+  ('aws.lambda.env_vars_not_plaintext_secrets', 'ISO27001', 'A.9.2.4')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
 INSERT INTO integrations (key, name, category, auth_type, status) VALUES
   ('azure', 'Microsoft Azure', 'cloud', 'oauth2', 'active')
 ON CONFLICT (key) DO NOTHING;
@@ -721,6 +745,34 @@ INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
   ('azure.network.nsg_no_open_ingress', 'A.13.1.1')
 ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('azure', 'azure.sql.transparent_data_encryption_enabled', 'SQL databases have transparent data encryption enabled', 'Checks every Azure SQL database has transparent data encryption enabled.', 'critical', 'Enable Transparent Data Encryption under the database''s Transparent data encryption settings blade.'),
+  ('azure', 'azure.sql.public_network_access_disabled', 'SQL servers do not allow public network access', 'Checks every Azure SQL logical server disables public network access or has no fully-open firewall rule.', 'critical', 'Disable public network access under the server''s Networking blade and use a private endpoint or VNet service endpoint.'),
+  ('azure', 'azure.sql.auditing_enabled', 'SQL server auditing is enabled', 'Checks every SQL server has an enabled auditing policy with a configured retention.', 'high', 'Enable auditing under the server''s Auditing blade and set a retention period.'),
+  ('azure', 'azure.keyvault.purge_protection_enabled', 'Key Vaults have purge protection enabled', 'Checks every Key Vault has purge protection enabled.', 'high', 'Enable purge protection under the vault''s Properties blade.'),
+  ('azure', 'azure.keyvault.rbac_authorization_enabled', 'Key Vaults use Azure RBAC instead of legacy access policies', 'Checks every Key Vault uses Azure RBAC for authorization instead of vault-local access policies.', 'medium', 'Migrate the vault''s permission model to Azure RBAC under Access configuration.'),
+  ('azure', 'azure.monitor.diagnostic_settings_cover_key_resources', 'Diagnostic settings are configured for key resource types', 'Checks SQL servers, Key Vaults, and NSGs each have at least one diagnostic setting forwarding logs.', 'medium', 'Add a diagnostic setting on the flagged resource forwarding logs to a Log Analytics workspace.'),
+  ('azure', 'azure.policy.assignments_compliant', 'Assigned Azure Policy definitions report a compliant state', 'Checks policy compliance summaries report no non-compliant resources above a defined threshold.', 'medium', 'Review non-compliant resources under Azure Policy > Compliance and remediate them.'),
+  ('azure', 'azure.compute.disk_encryption_enabled', 'Virtual machines have encryption at host enabled', 'Checks every virtual machine has encryption at host enabled so both OS and data disk caches are encrypted.', 'high', 'Enable encryption at host under the VM''s Disks blade (Additional settings), or via the securityProfile.encryptionAtHost property. Requires the subscription feature to be registered first.'),
+  ('azure', 'azure.compute.no_public_ip_association', 'Virtual machines are not directly exposed via a public IP address', 'Checks that no virtual machine''s network interface has a public IP address directly attached.', 'critical', 'Remove the public IP association from the network interface under Networking, and use a load balancer, Bastion, or VPN for access instead.'),
+  ('azure', 'azure.subscription.no_classic_administrators', 'Subscription has no classic (co-)administrators', 'Checks that no legacy classic Service Administrator or Co-Administrator roles are assigned on the subscription.', 'high', 'Remove classic administrators under Subscription > Access control (IAM) > Classic administrators, and grant equivalent access via Azure RBAC role assignments instead.'),
+  ('azure', 'azure.subscription.limited_owner_assignments', 'Subscription-scope Owner role assignments are limited', 'Checks that no more than a recommended maximum of principals hold the Owner role directly at subscription scope.', 'medium', 'Review Owner role assignments under Subscription > Access control (IAM), and replace unnecessary Owner grants with least-privilege roles.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
+  ('azure.sql.transparent_data_encryption_enabled', 'A.8.2.3'),
+  ('azure.sql.public_network_access_disabled', 'A.13.1.1'),
+  ('azure.sql.auditing_enabled', 'A.12.4.1'),
+  ('azure.keyvault.purge_protection_enabled', 'A.8.2.3'),
+  ('azure.keyvault.rbac_authorization_enabled', 'A.9.1.2'),
+  ('azure.monitor.diagnostic_settings_cover_key_resources', 'A.12.4.1'),
+  ('azure.policy.assignments_compliant', 'A.18.2.2'),
+  ('azure.compute.disk_encryption_enabled', 'A.8.2.3'),
+  ('azure.compute.no_public_ip_association', 'A.13.1.1'),
+  ('azure.subscription.no_classic_administrators', 'A.9.2.3'),
+  ('azure.subscription.limited_owner_assignments', 'A.9.1.2')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
 INSERT INTO integrations (key, name, category, auth_type, status) VALUES
   ('github', 'GitHub', 'devops', 'oauth2', 'active')
 ON CONFLICT (key) DO NOTHING;
@@ -737,6 +789,22 @@ INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
   ('github.repo.branch_protection_required_reviews', 'A.14.2.2'),
   ('github.repo.vulnerability_alerts_enabled', 'A.12.6.1'),
   ('github.repo.secret_scanning_enabled', 'A.9.4.3')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('github', 'github.org.default_repository_permission_restricted', 'Default repository permission is not admin', 'Checks the organization''s default repository permission is not admin, so new members don''t inherit admin access to every repo.', 'medium', 'Set the default repository permission to read or write under Organization settings > Member privileges.'),
+  ('github', 'github.org.owners_count_minimized', 'Organization owner role is limited to necessary personnel', 'Checks the number of organization owners does not exceed a defined threshold, flagging excessive standing privileged access.', 'medium', 'Review the organization owners list and demote accounts that don''t require full administrative access to a lower role.'),
+  ('github', 'github.org.actions_default_workflow_permissions_readonly', 'Actions default workflow token permissions are read-only', 'Checks the default GITHUB_TOKEN permissions for Actions workflows are read-only rather than read-write.', 'high', 'Set the default workflow permissions to read-only under Organization settings > Actions > General.'),
+  ('github', 'github.org.actions_third_party_restricted', 'Actions are restricted to verified or selected sources', 'Checks the organization restricts which third-party Actions and reusable workflows can run rather than allowing anything from the Marketplace.', 'medium', 'Set Actions permissions to allow only enterprise and selected non-enterprise actions under Organization settings > Actions > General.'),
+  ('github', 'github.repo.code_scanning_default_setup_enabled', 'Code scanning (CodeQL) default setup is enabled', 'Checks CodeQL default setup is configured for each repository.', 'high', 'Enable CodeQL default setup under Repository settings > Code security and analysis > Code scanning.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
+  ('github.org.default_repository_permission_restricted', 'A.9.2.3'),
+  ('github.org.owners_count_minimized', 'A.9.2.3'),
+  ('github.org.actions_default_workflow_permissions_readonly', 'A.9.4.1'),
+  ('github.org.actions_third_party_restricted', 'A.14.2.2'),
+  ('github.repo.code_scanning_default_setup_enabled', 'A.12.6.1')
 ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 
 -- ===== Purview connector: catalog seed data =====
@@ -882,6 +950,118 @@ INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
   ('zoho.recruit.job_posting_visibility_review', 'A.13.2.1')
 ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 
+-- ===== Microsoft Entra ID connector: catalog seed data =====
+
+INSERT INTO integrations (key, name, category, auth_type, status) VALUES
+  ('entra_id', 'Microsoft Entra ID', 'identity', 'oauth2', 'active')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('entra_id', 'entra_id.mfa.conditional_access_enforced', 'Multi-factor authentication is enforced tenant-wide', 'Checks at least one enabled Conditional Access policy requires MFA for all users, or that Security Defaults is enabled as a fallback.', 'critical', 'Create a Conditional Access policy requiring MFA for all users and all cloud apps, or enable Security Defaults if Conditional Access isn''t licensed.'),
+  ('entra_id', 'entra_id.conditionalaccess.legacy_auth_blocked', 'Conditional Access blocks legacy authentication', 'Checks an enabled Conditional Access policy blocks legacy (basic) authentication clients.', 'critical', 'Create a Conditional Access policy scoping legacy authentication clients and set the grant control to Block access.'),
+  ('entra_id', 'entra_id.authmethods.weak_methods_disabled', 'Weak authentication methods are disabled', 'Checks the tenant authentication methods policy has SMS and voice call methods disabled in favor of phishing-resistant methods.', 'medium', 'Disable SMS and Voice call authentication methods, and enable Authenticator/FIDO2/Passkey policies instead.'),
+  ('entra_id', 'entra_id.roles.privileged_role_assignments_limited', 'Global Administrator assignments are limited and not permanent', 'Checks the number of active Global Administrator role assignments does not exceed a defined threshold and flags non-PIM-eligible assignments.', 'high', 'Reduce standing Global Administrator assignments and move remaining assignments to PIM-eligible, time-bound assignments.'),
+  ('entra_id', 'entra_id.users.stale_guest_accounts_reviewed', 'Inactive guest accounts are disabled or removed', 'Checks guest users with no interactive sign-in within 90 days are disabled or removed.', 'high', 'Disable or remove guest accounts with no sign-in activity in the last 90 days.'),
+  ('entra_id', 'entra_id.enterpriseapps.high_privilege_grants_reviewed', 'Enterprise apps with high-privilege Graph permissions are reviewed', 'Checks service principals holding high-privilege application permissions are documented as reviewed.', 'high', 'Review each flagged application''s business justification and remove the grant if no longer needed.'),
+  ('entra_id', 'entra_id.appregistrations.credentials_not_expiring_soon', 'App registration secrets and certificates are rotated before expiry', 'Checks app registration credentials are not expired, not expiring within 30 days, and not issued with over 12 months'' validity.', 'medium', 'Rotate the flagged credential now and issue new credentials with a validity period of 12 months or less.'),
+  ('entra_id', 'entra_id.audit.signin_and_directory_logs_available', 'Sign-in and directory audit logs are actively retained', 'Checks sign-in and directory audit logs both show entries within the last 24 hours.', 'critical', 'Investigate why no recent log entries exist — check licensing and retention configuration.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
+  ('entra_id.mfa.conditional_access_enforced', 'A.9.4.2'),
+  ('entra_id.conditionalaccess.legacy_auth_blocked', 'A.9.4.2'),
+  ('entra_id.authmethods.weak_methods_disabled', 'A.9.4.2'),
+  ('entra_id.roles.privileged_role_assignments_limited', 'A.9.2.3'),
+  ('entra_id.users.stale_guest_accounts_reviewed', 'A.9.2.6'),
+  ('entra_id.enterpriseapps.high_privilege_grants_reviewed', 'A.9.4.1'),
+  ('entra_id.appregistrations.credentials_not_expiring_soon', 'A.9.2.4'),
+  ('entra_id.audit.signin_and_directory_logs_available', 'A.12.4.1')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
+-- ===== Microsoft 365 connector: catalog seed data =====
+
+INSERT INTO integrations (key, name, category, auth_type, status) VALUES
+  ('microsoft_365', 'Microsoft 365', 'collaboration', 'oauth2', 'active')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('microsoft_365', 'microsoft_365.exchange.mailbox_audit_logging_enabled', 'Mailbox audit logging is enabled', 'Checks the organization config does not have mailbox audit logging disabled tenant-wide.', 'critical', 'Clear the AuditDisabled organization setting via Set-OrganizationConfig or the Purview compliance portal.'),
+  ('microsoft_365', 'microsoft_365.exchange.no_external_auto_forwarding', 'Automatic forwarding to external domains is blocked', 'Checks the default remote domain configuration has automatic forwarding to external domains disabled.', 'high', 'Set the default remote domain AutoForwardEnabled to false and review existing forwarding rules.'),
+  ('microsoft_365', 'microsoft_365.sharepoint.external_sharing_restricted', 'SharePoint and OneDrive external sharing is restricted', 'Checks tenant SharePoint/OneDrive sharing settings are not fully open to any external user.', 'critical', 'Set the external sharing level to Existing guests or more restrictive under the SharePoint admin center.'),
+  ('microsoft_365', 'microsoft_365.sharepoint.dlp_policy_configured', 'Data Loss Prevention policies are configured for the tenant', 'Checks that at least one Data Loss Prevention policy is configured for the tenant when SharePoint sites are present.', 'critical', 'Create and enable a Data Loss Prevention policy covering SharePoint/OneDrive under the Microsoft Purview compliance portal.'),
+  ('microsoft_365', 'microsoft_365.sharepoint.sensitivity_label_policy_enforced', 'Sensitivity label policies are configured', 'Checks that at least one sensitivity label is configured for the tenant.', 'high', 'Create and publish a sensitivity label policy under the Microsoft Purview compliance portal.'),
+  ('microsoft_365', 'microsoft_365.intune.compliance_policy_assigned_all_platforms', 'Device compliance policies are assigned for every managed platform', 'Checks every device platform present in the tenant has at least one assigned compliance policy.', 'high', 'Create and assign a compliance policy for any platform found without one.'),
+  ('microsoft_365', 'microsoft_365.intune.noncompliant_devices_remediated', 'Managed devices are compliant or being remediated', 'Checks the proportion of noncompliant managed devices does not exceed a defined threshold.', 'medium', 'Investigate noncompliant devices and remediate the underlying setting or confirm a grace-period action is in flight.'),
+  ('microsoft_365', 'microsoft_365.defenderoffice.safe_links_enabled', 'Safe Links protection is enabled for email and Office apps', 'Checks at least one enabled Safe Links policy applies time-of-click URL rewriting tenant-wide.', 'high', 'Enable and assign a Safe Links policy covering email, Teams, and Office apps.'),
+  ('microsoft_365', 'microsoft_365.defenderoffice.safe_attachments_enabled', 'Safe Attachments protection is enabled', 'Checks at least one enabled Safe Attachments policy applies detonation scanning to inbound mail.', 'high', 'Enable and assign a Safe Attachments policy under the Defender portal.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
+  ('microsoft_365.exchange.mailbox_audit_logging_enabled', 'A.12.4.1'),
+  ('microsoft_365.exchange.no_external_auto_forwarding', 'A.13.2.1'),
+  ('microsoft_365.sharepoint.external_sharing_restricted', 'A.13.2.1'),
+  ('microsoft_365.sharepoint.dlp_policy_configured', 'A.13.2.1'),
+  ('microsoft_365.sharepoint.sensitivity_label_policy_enforced', 'A.8.2.3'),
+  ('microsoft_365.intune.compliance_policy_assigned_all_platforms', 'A.6.2.1'),
+  ('microsoft_365.intune.noncompliant_devices_remediated', 'A.6.2.1'),
+  ('microsoft_365.defenderoffice.safe_links_enabled', 'A.12.2.1'),
+  ('microsoft_365.defenderoffice.safe_attachments_enabled', 'A.12.2.1')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
+-- ===== Microsoft Teams connector: catalog seed data =====
+
+INSERT INTO integrations (key, name, category, auth_type, status) VALUES
+  ('microsoft_teams', 'Microsoft Teams', 'collaboration', 'oauth2', 'active')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('microsoft_teams', 'microsoft_teams.externalaccess.federation_domains_restricted', 'External domain federation is restricted, not fully open', 'Checks the tenant federation configuration either blocks external federation or restricts it to an explicit allowed-domains list.', 'critical', 'Restrict external access to a defined list of allowed domains, or disable it entirely, under Teams admin center > Users > External access.'),
+  ('microsoft_teams', 'microsoft_teams.externalaccess.consumer_teams_blocked', 'Communication with unmanaged consumer Teams/Skype accounts is blocked', 'Checks federation with unmanaged personal Microsoft accounts is disabled tenant-wide.', 'high', 'Disable Teams accounts not managed by an organization under Teams admin center > Users > External access.'),
+  ('microsoft_teams', 'microsoft_teams.client.guest_access_reviewed', 'The Teams client tenant-wide guest access toggle is a reviewed, deliberate setting', 'Checks the Teams client guest access setting is either disabled or explicitly documented as an approved exception.', 'high', 'Disable Teams client guest access if not required, or document the business justification for audit evidence.'),
+  ('microsoft_teams', 'microsoft_teams.client.unsanctioned_storage_providers_disabled', 'Unsanctioned third-party cloud storage providers are disabled in the Teams client', 'Checks no unapproved third-party storage provider integration is enabled in the Teams client.', 'medium', 'Disable unapproved third-party storage providers under Teams admin center > Teams apps > Cloud storage options.'),
+  ('microsoft_teams', 'microsoft_teams.guests.meeting_capabilities_restricted', 'Guest meeting capabilities are limited to what is required', 'Checks guest meeting configuration restricts ad-hoc meeting creation and full-screen sharing for guests.', 'medium', 'Restrict guest meeting capabilities under Teams admin center > Meetings > Guest meeting policy.'),
+  ('microsoft_teams', 'microsoft_teams.policies.meeting_anonymous_join_restricted', 'The global meeting policy does not auto-admit anonymous or unknown external participants', 'Checks the global Teams meeting policy restricts automatic admission and disables anonymous join unless deliberately required.', 'critical', 'Restrict AutoAdmittedUsers and disable anonymous meeting join under Teams admin center > Meetings > Meeting policies.'),
+  ('microsoft_teams', 'microsoft_teams.policies.meeting_recording_retention_bounded', 'Meeting recording retention is bounded, not set to never expire', 'Checks meeting recording expiration is set to a finite value where cloud recording is enabled.', 'medium', 'Set a finite recording expiration period under Teams admin center > Meetings > Meeting policies.'),
+  ('microsoft_teams', 'microsoft_teams.policies.thirdparty_app_installation_restricted', 'Third-party Teams app installation is governed by an explicit allow-list', 'Checks the global Teams app permission policy restricts third-party app installation to an approved allow-list.', 'medium', 'Configure the global app permission policy to allow only reviewed, approved third-party apps.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
+  ('microsoft_teams.externalaccess.federation_domains_restricted', 'A.13.2.1'),
+  ('microsoft_teams.externalaccess.consumer_teams_blocked', 'A.13.2.1'),
+  ('microsoft_teams.client.guest_access_reviewed', 'A.9.2.6'),
+  ('microsoft_teams.client.unsanctioned_storage_providers_disabled', 'A.13.2.1'),
+  ('microsoft_teams.guests.meeting_capabilities_restricted', 'A.9.4.1'),
+  ('microsoft_teams.policies.meeting_anonymous_join_restricted', 'A.9.4.1'),
+  ('microsoft_teams.policies.meeting_recording_retention_bounded', 'A.18.1.3'),
+  ('microsoft_teams.policies.thirdparty_app_installation_restricted', 'A.12.5.1')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
+-- ===== Microsoft Defender connector: catalog seed data =====
+
+INSERT INTO integrations (key, name, category, auth_type, status) VALUES
+  ('microsoft_defender', 'Microsoft Defender', 'endpoint_security', 'oauth2', 'active')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('microsoft_defender', 'microsoft_defender.devices.onboarding_coverage_complete', 'Managed devices are onboarded to Defender for Endpoint', 'Checks no discoverable device is left un-onboarded (CanBeOnboarded or InsufficientInfo status).', 'high', 'Onboard the flagged devices via Intune, Group Policy, or the onboarding script under Defender portal > Settings > Endpoints > Onboarding.'),
+  ('microsoft_defender', 'microsoft_defender.devices.sensor_health_active', 'Onboarded devices report active sensor health', 'Checks onboarded devices do not report Inactive or ImpairedCommunication health status beyond a grace period.', 'medium', 'Investigate devices with impaired or inactive sensor health under Defender portal > Device inventory.'),
+  ('microsoft_defender', 'microsoft_defender.devices.high_exposure_devices_remediated', 'High-exposure devices have an active remediation plan', 'Checks devices with High exposure level are not left without remediation activity.', 'high', 'Prioritize remediation of security recommendations affecting high-exposure devices.'),
+  ('microsoft_defender', 'microsoft_defender.vulnerabilities.critical_cves_remediated', 'Critical vulnerabilities with a public exploit are remediated within SLA', 'Checks Critical severity vulnerabilities with a known public exploit are not older than the defined remediation SLA.', 'critical', 'Patch or remediate the affected software per the linked security recommendation, prioritizing public-exploit vulnerabilities.'),
+  ('microsoft_defender', 'microsoft_defender.recommendations.high_impact_open_reviewed', 'High-impact security recommendations are actioned or have a documented exception', 'Checks high-impact recommendations without an active exception are not left open beyond the review cadence.', 'high', 'Remediate the recommendation or file a documented exception under Defender Vulnerability Management > Recommendations.'),
+  ('microsoft_defender', 'microsoft_defender.alerts.high_severity_triaged_promptly', 'High and critical severity alerts are triaged within SLA', 'Checks High/Critical severity alerts do not remain in New status beyond the triage SLA.', 'critical', 'Assign and triage the flagged alerts under Defender portal > Incidents & alerts.'),
+  ('microsoft_defender', 'microsoft_defender.alerts.no_unassigned_critical_alerts', 'Critical alerts are assigned to an owner', 'Checks Critical severity alerts have a non-empty assignedTo field.', 'medium', 'Assign an owner to each unassigned critical alert, or configure automated investigation and response.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
+  ('microsoft_defender.devices.onboarding_coverage_complete', 'A.8.1.1'),
+  ('microsoft_defender.devices.sensor_health_active', 'A.12.2.1'),
+  ('microsoft_defender.devices.high_exposure_devices_remediated', 'A.12.6.1'),
+  ('microsoft_defender.vulnerabilities.critical_cves_remediated', 'A.12.6.1'),
+  ('microsoft_defender.recommendations.high_impact_open_reviewed', 'A.12.6.1'),
+  ('microsoft_defender.alerts.high_severity_triaged_promptly', 'A.16.1.5'),
+  ('microsoft_defender.alerts.no_unassigned_critical_alerts', 'A.16.1.2')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
 -- ===== Idempotent upgrade guards (existing databases) =====
 -- These are no-ops on a fresh install; safe to run repeatedly on upgrades.
 
@@ -915,5 +1095,49 @@ DO $$ BEGIN
       CHECK (priority IN ('Critical', 'High', 'Medium', 'Low'));
   END IF;
 END $$;
+
+-- ===== Compliance Frameworks =====
+
+CREATE TABLE IF NOT EXISTS frameworks (
+  key         TEXT PRIMARY KEY,   -- 'DPDPA', 'ISO27001', 'SOC2', 'HIPAA', 'GDPR'
+  name        TEXT NOT NULL,
+  description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS company_frameworks (
+  company_id    INT  NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  framework_key TEXT NOT NULL REFERENCES frameworks(key),
+  activated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (company_id, framework_key)
+);
+CREATE INDEX IF NOT EXISTS company_frameworks_company_idx ON company_frameworks(company_id);
+
+-- Maps a question to one or more framework controls (many-to-many).
+-- A question answered once satisfies every framework it is mapped to.
+-- For new modules this replaces the single iso_reference column on questions;
+-- the legacy iso_reference column is kept as a fallback.
+CREATE TABLE IF NOT EXISTS question_framework_controls (
+  id                SERIAL PRIMARY KEY,
+  company_id        INT  NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  quest_id          TEXT NOT NULL,
+  framework_key     TEXT NOT NULL REFERENCES frameworks(key),
+  control_reference TEXT NOT NULL,   -- e.g. 'A.9.4.2', 'DPDPA-7', 'CC6.1'
+  UNIQUE(company_id, quest_id, framework_key, control_reference)
+);
+CREATE INDEX IF NOT EXISTS qfc_company_framework_idx ON question_framework_controls(company_id, framework_key);
+CREATE INDEX IF NOT EXISTS qfc_quest_idx             ON question_framework_controls(company_id, quest_id);
+
+-- Seed framework catalog
+INSERT INTO frameworks (key, name, description) VALUES
+  ('ISO27001', 'ISO/IEC 27001',    'International standard for information security management systems'),
+  ('DPDPA',    'DPDPA 2023',       'Digital Personal Data Protection Act (India)'),
+  ('SOC2',     'SOC 2',            'Service Organisation Control 2 — Trust Services Criteria'),
+  ('HIPAA',    'HIPAA',            'Health Insurance Portability and Accountability Act'),
+  ('GDPR',     'GDPR',             'General Data Protection Regulation (EU)')
+ON CONFLICT (key) DO NOTHING;
+
+-- Framework key on modules and templates (upgrade guard — no-op on fresh install)
+ALTER TABLE modules          ADD COLUMN IF NOT EXISTS framework_key TEXT REFERENCES frameworks(key);
+ALTER TABLE module_templates ADD COLUMN IF NOT EXISTS framework_key TEXT;
 
 COMMIT;
