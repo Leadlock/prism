@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { FaAws, FaMicrosoft, FaGithub } from "react-icons/fa";
+import { SiZoho } from "react-icons/si";
 import { apiFetch } from "../api/client.js";
 import CredentialFields from "../components/CredentialFields.jsx";
 import GithubAppWalkthrough from "../components/GithubAppWalkthrough.jsx";
@@ -17,16 +18,18 @@ const PROVIDER_ICON = {
   azure: { Icon: FaMicrosoft, color: "#0078D4" },
   github: { Icon: FaGithub, color: "#181717" },
   purview: { Icon: FaMicrosoft, color: "#8661C5" },
+  zoho: { Icon: SiZoho, color: "#E61E25" },
 };
 
 // Display order for known categories; anything else falls back to
 // alphabetical after these, so a new connector's category never needs a
 // code change here to show up — it just lands at the end.
-const CATEGORY_ORDER = ["cloud", "devops", "data_governance"];
+const CATEGORY_ORDER = ["cloud", "devops", "data_governance", "business_apps"];
 const CATEGORY_LABEL = {
   cloud: "Cloud",
   devops: "DevOps",
   data_governance: "Data Governance",
+  business_apps: "Business Apps",
 };
 
 function titleCase(value) {
@@ -187,6 +190,102 @@ function AzureServicePrincipalWalkthrough({ token, tenantId, setTenantId, subscr
   );
 }
 
+function ZohoWalkthrough({ token, dataCenter, setDataCenter, orgId, setOrgId }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+  const [selectedProducts, setSelectedProducts] = useState(null); // null = not yet loaded
+
+  useEffect(() => {
+    apiFetch("/api/integrations/zoho/setup-info", { token })
+      .then(info => {
+        setSetupInfo(info);
+        // Default all products selected
+        setSelectedProducts(new Set(info.products.map(p => p.key)));
+      })
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const toggleProduct = (productKey) => {
+    setSelectedProducts(prev => {
+      const next = new Set(prev);
+      if (next.has(productKey)) next.delete(productKey);
+      else next.add(productKey);
+      return next;
+    });
+  };
+
+  const scopeString = setupInfo && selectedProducts
+    ? setupInfo.products
+        .filter(p => selectedProducts.has(p.key))
+        .flatMap(p => p.scopes)
+        .join(",")
+    : "";
+
+  const apiConsoleUrl = dataCenter === "cloud.ca"
+    ? "https://api-console.zohocloud.ca"
+    : dataCenter === "com" || !dataCenter
+      ? "https://api-console.zoho.com"
+      : `https://api-console.zoho.${dataCenter}`;
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        <li>Select your Zoho data center below — this must match the <code>zoho.&lt;tld&gt;</code> domain your org uses to sign in.</li>
+        <li>Go to <strong><a href={apiConsoleUrl} target="_blank" rel="noreferrer">{apiConsoleUrl}</a></strong> as an org admin and create a new <strong>Self Client</strong> (or Server-based Application). You will receive a Client ID and Client Secret.</li>
+        <li>In the client's <strong>Generate Code</strong> tab, paste the scope string below (select only the products Zoho has provisioned for your org), set the expiry, and generate a grant code.</li>
+        <li>Immediately exchange the grant code for tokens:<br />
+          <code style={{ fontSize: 10 }}>POST https://accounts.zoho.{'{'}dataCenter{'}'}/oauth/v2/token</code> with <code>grant_type=authorization_code</code>. The response contains an <strong>access_token</strong> and a <strong>refresh_token</strong> — copy the refresh token.
+        </li>
+        <li>Enter your Org ID (numeric, from the Zoho org settings), then paste the Client ID, Client Secret, and Refresh Token into the fields below and click Connect.</li>
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <div className="form-group">
+        <label htmlFor="zoho-dc">Data center</label>
+        <select id="zoho-dc" value={dataCenter} onChange={e => setDataCenter(e.target.value)}
+          style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg1)", color: "var(--text1)", fontSize: 13 }}>
+          {(setupInfo?.dataCenters || []).map(dc => (
+            <option key={dc.value} value={dc.value}>{dc.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="zoho-org-id">Org ID <span style={{ color: "var(--text3)", fontWeight: 400 }}>(numeric, from Zoho org settings)</span></label>
+        <input id="zoho-org-id" value={orgId} onChange={e => setOrgId(e.target.value)} placeholder="60012345678" />
+      </div>
+
+      {setupInfo?.products && selectedProducts && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>
+            Products to audit <span style={{ fontWeight: 400, color: "var(--text3)" }}>(uncheck products your org hasn't provisioned)</span>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", marginBottom: 8 }}>
+            {setupInfo.products.map(p => (
+              <label key={p.key} style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4, cursor: "pointer", color: "var(--text2)" }}>
+                <input type="checkbox" checked={selectedProducts.has(p.key)} onChange={() => toggleProduct(p.key)} />
+                {p.label}
+              </label>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Generated scope string (paste into Zoho API Console → Generate Code):</div>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <textarea
+              readOnly
+              value={scopeString}
+              rows={3}
+              style={{ flex: 1, fontSize: 11, fontFamily: "monospace", padding: 6, borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text1)", resize: "vertical" }}
+            />
+            <CopyButton text={scopeString} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PurviewWalkthrough({ token, tenantId, setTenantId, purviewAccountName, setPurviewAccountName }) {
   const [setupInfo, setSetupInfo] = useState(null);
   const [setupError, setSetupError] = useState("");
@@ -254,6 +353,10 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
   const [purviewAccountName, setPurviewAccountName] = useState("");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
+  // Zoho-specific state
+  const [dataCenter, setDataCenter] = useState("com");
+  const [orgId, setOrgId] = useState("");
+  const [refreshToken, setRefreshToken] = useState("");
   const [authType, setAuthType] = useState(provider.authType);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -290,10 +393,16 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
     setSubmitting(true);
     try {
       const config = authType === "oauth2"
-        ? (provider.key === "purview" ? { tenantId, purviewAccountName } : { tenantId, subscriptionId })
+        ? provider.key === "zoho"
+          ? { dataCenter, orgId }
+          : provider.key === "purview"
+            ? { tenantId, purviewAccountName }
+            : { tenantId, subscriptionId }
         : authType === "iam_role" ? { region, roleArn } : { region };
       const secret = authType === "oauth2"
-        ? { clientId, clientSecret }
+        ? provider.key === "zoho"
+          ? { clientId, clientSecret, refreshToken }
+          : { clientId, clientSecret }
         : authType === "iam_role" ? { externalId } : { accessKeyId, secretAccessKey, sessionToken: sessionToken || undefined };
 
       let connection = createdConnection;
@@ -358,7 +467,7 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                 </div>
               ) : null}
 
-              {provider.key !== "azure" && provider.key !== "github" && provider.key !== "purview" && (
+              {provider.key !== "azure" && provider.key !== "github" && provider.key !== "purview" && provider.key !== "zoho" && (
                 <div className="form-group">
                   <label htmlFor="conn-region">Region</label>
                   <input id="conn-region" value={region} onChange={e => setRegion(e.target.value)} />
@@ -376,7 +485,13 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                 )
               ) : authType === "oauth2" ? (
                 <>
-                  {provider.key === "purview" ? (
+                  {provider.key === "zoho" ? (
+                    <ZohoWalkthrough
+                      token={token}
+                      dataCenter={dataCenter} setDataCenter={setDataCenter}
+                      orgId={orgId} setOrgId={setOrgId}
+                    />
+                  ) : provider.key === "purview" ? (
                     <PurviewWalkthrough
                       token={token}
                       tenantId={tenantId} setTenantId={setTenantId}
@@ -394,6 +509,12 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                     clientId={clientId} setClientId={setClientId}
                     clientSecret={clientSecret} setClientSecret={setClientSecret}
                   />
+                  {provider.key === "zoho" && (
+                    <div className="form-group">
+                      <label htmlFor="conn-refresh-token">Refresh Token <span style={{ color: "var(--text3)", fontWeight: 400 }}>(from step 4 above)</span></label>
+                      <input id="conn-refresh-token" required type="password" value={refreshToken} onChange={e => setRefreshToken(e.target.value)} placeholder="1000.yyyy…zzzz…" />
+                    </div>
+                  )}
                 </>
               ) : (
                 <CredentialFields

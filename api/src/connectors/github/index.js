@@ -46,9 +46,13 @@ export async function runTests({ authType, config, secret }) {
     const clients = await buildClients(octokit, config.org);
     const runResults = [];
     for (const test of tests) {
-      const results = await test.run(clients);
-      for (const result of results) {
-        runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, ...result });
+      try {
+        const results = await test.run(clients);
+        for (const result of results) {
+          runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, ...result });
+        }
+      } catch (err) {
+        runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, resourceId: "error", status: "error", message: describeGithubError(err), evidencePayload: {} });
       }
     }
     return runResults;

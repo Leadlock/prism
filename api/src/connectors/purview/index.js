@@ -106,9 +106,13 @@ export async function runTests({ authType, config, secret }) {
   const runResults = [];
   try {
     for (const test of tests) {
-      const results = await test.run(clients);
-      for (const result of results) {
-        runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, ...result });
+      try {
+        const results = await test.run(clients);
+        for (const result of results) {
+          runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, ...result });
+        }
+      } catch (err) {
+        runResults.push({ testKey: test.key, title: test.title, severity: test.severityDefault, resourceId: "error", status: "error", message: describePurviewError(err), evidencePayload: {} });
       }
     }
   } catch (err) {

@@ -15,9 +15,9 @@ import { signGithubAppState, verifyGithubAppState } from "../utils/githubAppStat
 
 const router = Router();
 
-// The exact read-only permissions the AWS connector's Tier-1 checks call —
-// kept in lockstep with connectors/aws/tests/{iam,logging,network}.js so the
-// policy handed to customers never grants more (or less) than the code uses.
+// The exact read-only permissions the AWS connector's checks call —
+// kept in lockstep with connectors/aws/tests/*.js so the policy handed to
+// customers never grants more (or less) than the code uses.
 const AWS_READ_ONLY_POLICY = {
   Version: "2012-10-17",
   Statement: [
@@ -25,28 +25,69 @@ const AWS_READ_ONLY_POLICY = {
       Sid: "PrismReadOnlyEvidenceCollection",
       Effect: "Allow",
       Action: [
+        // IAM
         "iam:ListUsers",
         "iam:ListMFADevices",
         "iam:ListAccessKeys",
         "iam:GetAccountPasswordPolicy",
+        // CloudTrail
         "cloudtrail:DescribeTrails",
         "cloudtrail:GetTrailStatus",
+        "cloudtrail:GetEventSelectors",
+        // AWS Config
         "config:DescribeConfigurationRecorders",
         "config:DescribeConfigurationRecorderStatus",
+        "config:DescribeConfigRules",
+        "config:DescribeComplianceByConfigRule",
+        "config:GetComplianceDetailsByConfigRule",
+        // S3 / EC2
         "s3:ListAllMyBuckets",
         "s3:GetBucketPublicAccessBlock",
         "ec2:DescribeSecurityGroups",
+        // RDS
         "rds:DescribeDBInstances",
+        // Lambda
         "lambda:ListFunctions",
         "lambda:GetFunctionUrlConfig",
         "lambda:GetPolicy",
+        // DynamoDB
         "dynamodb:ListTables",
         "dynamodb:DescribeTable",
         "dynamodb:DescribeContinuousBackups",
+        // KMS
         "kms:ListKeys",
         "kms:DescribeKey",
         "kms:GetKeyRotationStatus",
         "kms:GetKeyPolicy",
+        // CloudWatch / CloudWatch Logs
+        "cloudwatch:DescribeAlarms",
+        "logs:DescribeLogGroups",
+        // WAFv2
+        "wafv2:ListWebACLs",
+        "wafv2:GetWebACL",
+        "wafv2:ListResourcesForWebACL",
+        "wafv2:GetLoggingConfiguration",
+        // Secrets Manager
+        "secretsmanager:ListSecrets",
+        "secretsmanager:DescribeSecret",
+        // GuardDuty
+        "guardduty:ListDetectors",
+        "guardduty:GetDetector",
+        "guardduty:ListFindings",
+        "guardduty:GetFindings",
+        // Security Hub
+        "securityhub:DescribeHub",
+        "securityhub:GetEnabledStandards",
+        "securityhub:GetFindings",
+        // ECR
+        "ecr:DescribeRepositories",
+        "ecr:GetRepositoryPolicy",
+        "ecr:DescribeImageScanFindings",
+        // ECS
+        "ecs:ListClusters",
+        "ecs:DescribeClusters",
+        "ecs:ListTaskDefinitions",
+        "ecs:DescribeTaskDefinition",
       ],
       Resource: "*",
     },
@@ -170,6 +211,41 @@ router.get("/azure/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"])
 
 router.get("/purview/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   res.json({ permissions: PURVIEW_REQUIRED_PERMISSIONS });
+}));
+
+// Data-center domain table for the Zoho wizard UI dropdown, and per-product
+// OAuth2 scope lists for the scope checklist. Kept in code (not DB) because
+// they're tightly coupled to what the connector actually calls — any new product
+// added to the connector should add its scopes here at the same time.
+const ZOHO_DATA_CENTERS = [
+  { label: "United States (zoho.com)", value: "com" },
+  { label: "Europe (zoho.eu)", value: "eu" },
+  { label: "India (zoho.in)", value: "in" },
+  { label: "Australia (zoho.com.au)", value: "com.au" },
+  { label: "China (zoho.com.cn)", value: "com.cn" },
+  { label: "Japan (zoho.jp)", value: "jp" },
+  { label: "Canada (zohocloud.ca)", value: "cloud.ca" },
+];
+
+const ZOHO_PRODUCTS = [
+  { key: "directory", label: "Zoho Directory", scopes: ["ZohoDirectory.org.READ", "ZohoDirectory.users.READ"] },
+  { key: "crm", label: "Zoho CRM", scopes: ["ZohoCRM.users.READ", "ZohoCRM.settings.READ"] },
+  { key: "books", label: "Zoho Books", scopes: ["ZohoBooks.settings.READ", "ZohoBooks.contacts.READ"] },
+  { key: "people", label: "Zoho People", scopes: ["ZohoPeople.forms.READ", "ZohoPeople.roles.READ"] },
+  { key: "workdrive", label: "Zoho WorkDrive", scopes: ["WorkDrive.team.READ", "WorkDrive.organization.READ"] },
+  { key: "desk", label: "Zoho Desk", scopes: ["Desk.agents.READ", "Desk.tickets.READ", "Desk.settings.READ"] },
+  { key: "mail", label: "Zoho Mail", scopes: ["ZohoMail.organization.READ", "ZohoMail.settings.READ"] },
+  { key: "vault", label: "Zoho Vault", scopes: ["ZohoVault.secrets.READ", "ZohoVault.settings.READ"] },
+  { key: "projects", label: "Zoho Projects", scopes: ["ZohoProjects.portals.READ", "ZohoProjects.projects.READ", "ZohoProjects.users.READ"] },
+  { key: "analytics", label: "Zoho Analytics", scopes: ["ZohoAnalytics.data.READ", "ZohoAnalytics.metadata.READ"] },
+  { key: "creator", label: "Zoho Creator", scopes: ["ZohoCreator.meta.READ", "ZohoCreator.data.READ"] },
+  { key: "sign", label: "Zoho Sign", scopes: ["ZohoSign.documents.READ", "ZohoSign.templates.READ"] },
+  { key: "expense", label: "Zoho Expense", scopes: ["ZohoExpense.settings.READ", "ZohoExpense.reports.READ"] },
+  { key: "recruit", label: "Zoho Recruit", scopes: ["ZohoRecruit.settings.READ", "ZohoRecruit.modules.READ"] },
+];
+
+router.get("/zoho/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({ dataCenters: ZOHO_DATA_CENTERS, products: ZOHO_PRODUCTS });
 }));
 
 router.get("/:id/github/setup-info", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {

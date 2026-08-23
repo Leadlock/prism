@@ -657,6 +657,52 @@ INSERT INTO test_control_mappings (test_key, framework, iso_reference) VALUES
   ('aws.kms.no_wildcard_key_policy', 'ISO27001', 'A.9.1.2')
 ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('aws', 'aws.config.rules_compliant', 'AWS Config rules report compliant resources', 'Checks every AWS Config rule''s compliance evaluation is COMPLIANT, flagging any rule with NON_COMPLIANT resources.', 'medium', 'Review the non-compliant resources listed under the Config rule and remediate them, or update the rule if it no longer reflects policy.'),
+  ('aws', 'aws.config.all_resource_types_recorded', 'AWS Config recorder tracks all supported resource types', 'Checks the AWS Config recorder is configured with allSupported: true rather than a scoped subset of resource types.', 'medium', 'Edit the Config recorder settings to record all resource types supported in the region.'),
+  ('aws', 'aws.cloudtrail.log_file_validation_enabled', 'CloudTrail trails have log file validation enabled', 'Checks every CloudTrail trail has log file integrity validation enabled, so log tampering can be detected.', 'high', 'Enable log file validation on the trail under CloudTrail > Trails > General details.'),
+  ('aws', 'aws.cloudtrail.data_events_logged', 'CloudTrail records data-plane events for S3 and Lambda', 'Checks at least one trail has event selectors (or advanced event selectors) configured to log S3 object-level and Lambda invoke data events.', 'medium', 'Add an event selector (or advanced event selector) to the trail covering S3 and Lambda data events.'),
+  ('aws', 'aws.cloudwatch.alarms_configured', 'CloudWatch alarms exist for account activity', 'Checks at least one CloudWatch alarm (metric or composite) is configured in the account/region.', 'medium', 'Create CloudWatch alarms for key security metrics (e.g. root account usage, unauthorized API calls, IAM policy changes).'),
+  ('aws', 'aws.cloudwatch.log_group_retention_configured', 'CloudWatch Logs groups have a retention period set', 'Checks every CloudWatch Logs log group has a finite retention period rather than "Never expire".', 'medium', 'Set a retention policy on the log group under CloudWatch > Log groups > Actions > Edit retention setting.'),
+  ('aws', 'aws.waf.web_acl_associated', 'Internet-facing resources are protected by a WAF Web ACL', 'Checks Application Load Balancers, API Gateway stages, and CloudFront distributions have an associated WAFv2 Web ACL.', 'high', 'Create a WAFv2 Web ACL with the AWS managed rule groups appropriate for the workload and associate it with the resource.'),
+  ('aws', 'aws.waf.logging_enabled', 'WAF Web ACLs have logging enabled', 'Checks every WAFv2 Web ACL has a logging configuration delivering to a log destination (Kinesis Firehose, S3, or CloudWatch Logs).', 'medium', 'Enable logging on the Web ACL and configure a log destination under WAF > Web ACLs > Logging and metrics.'),
+  ('aws', 'aws.secretsmanager.rotation_enabled', 'Secrets Manager secrets have automatic rotation enabled', 'Checks every secret in Secrets Manager has RotationEnabled set, so credentials are rotated on a schedule rather than manually.', 'high', 'Configure automatic rotation on the secret, using a rotation Lambda function appropriate to the credential type.'),
+  ('aws', 'aws.secretsmanager.encrypted_with_cmk', 'Secrets Manager secrets are encrypted with a customer-managed key', 'Checks every secret uses a customer-managed KMS key rather than the default aws/secretsmanager AWS-owned key.', 'medium', 'Re-encrypt the secret with a customer-managed KMS key under the secret''s Encryption configuration.'),
+  ('aws', 'aws.secretsmanager.no_stale_secrets', 'Secrets Manager secrets are rotated within policy', 'Checks that secrets with rotation enabled have actually rotated within their configured rotation interval (flags a configured-but-stalled rotation).', 'medium', 'Investigate why the rotation Lambda is failing (check CloudWatch Logs for the rotation function) and trigger a manual rotation to re-establish the schedule.'),
+  ('aws', 'aws.guardduty.enabled', 'GuardDuty is enabled', 'Checks a GuardDuty detector exists and its status is ENABLED in the account/region.', 'critical', 'Enable GuardDuty for the account/region under GuardDuty > Get started.'),
+  ('aws', 'aws.guardduty.high_severity_findings_resolved', 'No unresolved high-severity GuardDuty findings', 'Checks there are no active (unarchived) GuardDuty findings with severity >= 7.0 (High/Critical).', 'high', 'Triage the finding in GuardDuty, remediate the underlying issue, and archive the finding once resolved.'),
+  ('aws', 'aws.securityhub.enabled', 'Security Hub is enabled with a standard subscribed', 'Checks Security Hub is enabled in the account/region and at least one security standard (e.g. AWS Foundational Security Best Practices) is subscribed and READY.', 'high', 'Enable Security Hub and subscribe to at least the AWS Foundational Security Best Practices standard.'),
+  ('aws', 'aws.securityhub.critical_findings_resolved', 'No active critical/high Security Hub findings', 'Checks there are no ACTIVE, unresolved (WorkflowStatus = NEW) Security Hub findings with severity CRITICAL or HIGH.', 'high', 'Triage the finding in Security Hub, remediate the underlying resource misconfiguration, and update its workflow status once resolved.'),
+  ('aws', 'aws.ecr.image_scanning_enabled', 'ECR repositories scan images on push', 'Checks every ECR repository has scanOnPush enabled so images are scanned for known vulnerabilities automatically.', 'high', 'Enable "Scan on push" under the repository''s Image scanning settings, or enable enhanced scanning account-wide via Amazon Inspector.'),
+  ('aws', 'aws.ecr.tag_immutability_enabled', 'ECR repositories enforce immutable image tags', 'Checks every ECR repository has imageTagMutability set to IMMUTABLE, preventing a tag (e.g. latest, prod) from being silently repointed to a different image.', 'medium', 'Set the repository''s tag mutability setting to Immutable under repository settings.'),
+  ('aws', 'aws.ecr.no_wildcard_repository_policy', 'ECR repository policies do not grant a wildcard principal', 'Checks no ECR repository''s resource policy grants access to Principal "*".', 'critical', 'Scope the repository policy''s Principal to specific account IDs, roles, or organizations instead of "*".'),
+  ('aws', 'aws.ecs.no_privileged_containers', 'ECS task definitions do not run privileged containers', 'Checks no container definition in an active ECS task definition revision sets privileged: true.', 'critical', 'Remove the privileged flag from the container definition and grant only the specific Linux capabilities the container needs via linuxParameters.capabilities.'),
+  ('aws', 'aws.ecs.container_insights_enabled', 'ECS clusters have Container Insights enabled', 'Checks every ECS cluster has the containerInsights cluster setting enabled for monitoring and logging.', 'medium', 'Enable Container Insights under the cluster''s Monitoring settings, or via UpdateClusterSettings.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, framework, iso_reference) VALUES
+  ('aws.config.rules_compliant', 'ISO27001', 'A.12.1.2'),
+  ('aws.config.all_resource_types_recorded', 'ISO27001', 'A.12.1.1'),
+  ('aws.cloudtrail.log_file_validation_enabled', 'ISO27001', 'A.12.4.2'),
+  ('aws.cloudtrail.data_events_logged', 'ISO27001', 'A.12.4.1'),
+  ('aws.cloudwatch.alarms_configured', 'ISO27001', 'A.12.4.1'),
+  ('aws.cloudwatch.log_group_retention_configured', 'ISO27001', 'A.12.4.1'),
+  ('aws.waf.web_acl_associated', 'ISO27001', 'A.13.1.1'),
+  ('aws.waf.logging_enabled', 'ISO27001', 'A.12.4.1'),
+  ('aws.secretsmanager.rotation_enabled', 'ISO27001', 'A.9.2.4'),
+  ('aws.secretsmanager.encrypted_with_cmk', 'ISO27001', 'A.10.1.2'),
+  ('aws.secretsmanager.no_stale_secrets', 'ISO27001', 'A.9.2.4'),
+  ('aws.guardduty.enabled', 'ISO27001', 'A.12.6.1'),
+  ('aws.guardduty.high_severity_findings_resolved', 'ISO27001', 'A.16.1.2'),
+  ('aws.securityhub.enabled', 'ISO27001', 'A.12.6.1'),
+  ('aws.securityhub.critical_findings_resolved', 'ISO27001', 'A.16.1.2'),
+  ('aws.ecr.image_scanning_enabled', 'ISO27001', 'A.12.6.1'),
+  ('aws.ecr.tag_immutability_enabled', 'ISO27001', 'A.12.5.1'),
+  ('aws.ecr.no_wildcard_repository_policy', 'ISO27001', 'A.9.1.2'),
+  ('aws.ecs.no_privileged_containers', 'ISO27001', 'A.9.4.4'),
+  ('aws.ecs.container_insights_enabled', 'ISO27001', 'A.12.4.1')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
 INSERT INTO integrations (key, name, category, auth_type, status) VALUES
   ('azure', 'Microsoft Azure', 'cloud', 'oauth2', 'active')
 ON CONFLICT (key) DO NOTHING;
@@ -726,6 +772,115 @@ ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 INSERT INTO integrations (key, name, category, auth_type, status) VALUES
   ('purview_compliance', 'Microsoft Purview Compliance Manager', 'data_governance', 'oauth2', 'coming_soon')
 ON CONFLICT (key) DO NOTHING;
+
+-- ===== Zoho connector: catalog seed data =====
+
+INSERT INTO integrations (key, name, category, auth_type, status) VALUES
+  ('zoho', 'Zoho', 'business_apps', 'oauth2', 'active')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('zoho', 'zoho.directory.mfa_enforced', 'Multi-factor authentication is enforced org-wide', 'Checks the Directory org-wide security policy requires MFA for all users.', 'critical', 'Enable and enforce a multi-factor authentication policy under Zoho Directory > Security > Multi-factor Authentication, and remove any per-user exemptions.'),
+  ('zoho', 'zoho.directory.sso_enforced', 'Single sign-on is enforced for all applications', 'Checks that SSO is configured as the required sign-in method rather than optional, so credentials aren''t scattered across individually-authenticated apps.', 'high', 'Set the org''s authentication policy to require SSO sign-in and disable direct password login where the identity provider supports it.'),
+  ('zoho', 'zoho.directory.inactive_user_review', 'Inactive or terminated users are deprovisioned', 'Flags Directory user accounts with no sign-in activity for 90+ days that are still marked active.', 'medium', 'Suspend or delete the account in Zoho Directory, and confirm it is also removed from any per-product group/role assignments.'),
+
+  ('zoho', 'zoho.crm.mfa_enforced', 'CRM users have multi-factor authentication enabled', 'Checks every active CRM user has MFA enabled (directly or via the org-wide security policy).', 'critical', 'Enforce MFA for the CRM application under Setup > Security Control > Two-Factor Authentication.'),
+  ('zoho', 'zoho.crm.data_sharing_rules_restricted', 'Data sharing rules do not grant org-wide read/write', 'Checks CRM''s data-sharing settings for any module are not set to "Public Read/Write" or broader than required.', 'high', 'Tighten the module''s sharing rule under Setup > Data Sharing Settings to the narrowest role/territory grouping that meets the business need.'),
+  ('zoho', 'zoho.crm.audit_log_enabled', 'Audit log tracking is enabled', 'Checks CRM''s audit log feature is turned on and retaining events.', 'medium', 'Enable Audit Log under Setup > Security Control > Audit Log.'),
+
+  ('zoho', 'zoho.books.user_role_review', 'User roles follow least privilege', 'Checks no non-admin Books user is assigned the built-in Admin role without a documented business justification.', 'medium', 'Reassign the user to a custom role scoped to only the modules/permissions their job requires.'),
+  ('zoho', 'zoho.books.two_factor_auth_enforced', 'Two-factor authentication is enforced', 'Checks the organization''s Books security policy requires 2FA for all users.', 'critical', 'Enable "Enforce two-factor authentication" under Settings > Users & Roles > Security.'),
+  ('zoho', 'zoho.books.audit_trail_enabled', 'Audit trail is enabled and retained', 'Checks the Books audit trail feature is active and its retention meets the org''s evidence-retention policy.', 'medium', 'Enable Audit Trail under Settings > Preferences > Audit Trail and confirm retention duration.'),
+
+  ('zoho', 'zoho.people.data_access_review', 'Employee data access is restricted by role', 'Checks People''s form/module permissions restrict full-employee-database visibility to HR-admin roles only.', 'high', 'Adjust form permissions under Settings > Access Permissions so only HR admin roles can view records outside their own reporting hierarchy.'),
+  ('zoho', 'zoho.people.sensitive_field_encryption', 'Sensitive HR fields are access-restricted', 'Checks fields holding government ID numbers, bank details, and salary data are field-level restricted to authorized roles.', 'high', 'Apply field-level permission restrictions on sensitive fields under the form''s field settings.'),
+  ('zoho', 'zoho.people.admin_role_review', 'Admin role assignment is minimized', 'Checks the count of users with full People admin privileges is limited to designated HR/IT administrators.', 'medium', 'Remove admin privileges from users who do not require org-wide People administration and reassign a scoped role instead.'),
+
+  ('zoho', 'zoho.workdrive.external_sharing_restricted', 'External sharing is restricted at the team level', 'Checks the team/org sharing policy blocks or requires approval for sharing files/folders outside the organization.', 'critical', 'Disable open external sharing under Team Settings > Security, or require admin approval for external shares.'),
+  ('zoho', 'zoho.workdrive.link_sharing_password_protected', 'Public share links require a password and expiry', 'Checks public/anyone-with-link shares have a password and an expiration date set rather than standing open indefinitely.', 'high', 'Edit the share link to require a password and set an expiration date, or disable public link sharing entirely for sensitive folders.'),
+  ('zoho', 'zoho.workdrive.admin_activity_log_enabled', 'Admin activity logging is enabled', 'Checks WorkDrive''s admin audit log is enabled for the team.', 'medium', 'Enable activity logging under Admin Console > Audit.'),
+
+  ('zoho', 'zoho.desk.agent_role_audit', 'Agent roles follow least privilege', 'Checks no agent is assigned an Administrator profile without documented justification.', 'medium', 'Reassign the agent to a Light Agent or custom profile scoped to only the permissions their job requires.'),
+  ('zoho', 'zoho.desk.customer_data_field_restricted', 'Customer PII fields are profile-restricted', 'Checks fields containing customer PII (e.g. government ID, payment references) are restricted from profiles that don''t need them.', 'high', 'Apply field-level permissions restricting the field to profiles that require it for ticket resolution.'),
+  ('zoho', 'zoho.desk.ticket_access_control_enabled', 'Ticket access control (team/department scoping) is enabled', 'Checks tickets are scoped to departments/teams rather than visible org-wide to every agent.', 'medium', 'Enable department-based ticket access control under Setup > Developer Space > Access Control.'),
+
+  ('zoho', 'zoho.mail.forwarding_restricted', 'Auto-forwarding to external domains is restricted', 'Checks org mail policy blocks or requires admin approval for automatic forwarding rules that send mail to external domains.', 'high', 'Disable unrestricted auto-forwarding under Mail Admin Console > Policy Controls, or require admin approval for external forwarding rules.'),
+  ('zoho', 'zoho.mail.two_factor_auth_enforced', 'Two-factor authentication is enforced for mailboxes', 'Checks the organization''s mail security policy requires 2FA for all mailbox logins.', 'critical', 'Enforce TFA under Mail Admin Console > Security > Two-Factor Authentication.'),
+  ('zoho', 'zoho.mail.spam_phishing_filters_enabled', 'Spam and phishing filters are enabled', 'Checks organization-level spam/phishing filtering policies are active for all mailboxes.', 'medium', 'Enable and tune spam/phishing filter policies under Mail Admin Console > Security > Email Security.'),
+
+  ('zoho', 'zoho.vault.secret_sharing_policy', 'Secret sharing outside designated chambers is restricted', 'Checks Vault''s sharing policy prevents individual secrets from being shared directly with users outside their assigned chamber/group.', 'high', 'Restrict secret sharing under Vault Admin Console > Policies to chamber/group-based sharing only.'),
+  ('zoho', 'zoho.vault.password_policy_strength', 'Vault-generated/stored passwords meet minimum strength policy', 'Checks the organization''s password policy (used by Vault''s generator and strength scoring) enforces a minimum length and complexity.', 'high', 'Configure the password policy under Vault Admin Console > Password Policy to require 14+ characters with mixed character classes.'),
+  ('zoho', 'zoho.vault.access_log_review', 'Vault access logs are enabled and retained', 'Checks Vault''s audit/access log is enabled and retention meets the org''s evidence policy.', 'medium', 'Enable audit logging under Vault Admin Console > Reports > Audit Trail.'),
+
+  ('zoho', 'zoho.projects.external_user_review', 'External/client users have scoped project access', 'Checks client/external users are only added to the specific projects they need rather than the whole portal.', 'medium', 'Remove the external user from projects outside their engagement and confirm client-user role restricts admin functions.'),
+  ('zoho', 'zoho.projects.client_portal_access_restricted', 'Client portal access is restricted to intended projects', 'Checks the client portal''s visibility settings don''t expose other clients'' projects or tasks.', 'medium', 'Restrict the client portal''s project visibility under Project Settings > Client Users.'),
+  ('zoho', 'zoho.projects.role_based_permissions_enforced', 'Role-based permissions are enforced per project', 'Checks project roles (Manager/Employee/Client) are used to gate task, budget, and document permissions rather than granting everyone Manager.', 'medium', 'Reassign users with unnecessary Manager-level project roles to Employee or a scoped custom role.'),
+
+  ('zoho', 'zoho.analytics.data_sharing_review', 'Workspace/view sharing is scoped to intended users', 'Checks workspaces and views are not shared with "Everyone in the organization" or broader than the reporting requirement.', 'high', 'Edit the workspace/view''s sharing settings to specific users or groups instead of organization-wide sharing.'),
+  ('zoho', 'zoho.analytics.public_view_link_restricted', 'Public/embedded view links are disabled or reviewed', 'Checks published public view/embed links (which require no authentication) are disabled, or if in use, contain no sensitive data.', 'critical', 'Disable public publishing for the view, or remove sensitive columns/rows from the underlying query before re-publishing.'),
+  ('zoho', 'zoho.analytics.workspace_permission_review', 'Workspace admin/owner assignment is minimized', 'Checks the number of users with workspace Admin/Owner permission is limited to designated report administrators.', 'medium', 'Downgrade unnecessary Admin/Owner permissions to Designer or Viewer as appropriate.'),
+
+  ('zoho', 'zoho.creator.app_permission_review', 'App-level permissions follow least privilege', 'Checks custom applications restrict Admin/Developer permission to the users who build/maintain the app.', 'medium', 'Adjust the app''s user permissions under App Settings > Users & Permissions to remove unnecessary Developer/Admin access.'),
+  ('zoho', 'zoho.creator.public_form_data_exposure', 'Public forms do not expose sensitive existing records', 'Checks public-facing forms/pages don''t embed reports or lookups that leak other users'' submitted data to anonymous visitors.', 'critical', 'Remove the exposed report/lookup field from the public form, or move it behind an authenticated (employee/portal) form instead.'),
+  ('zoho', 'zoho.creator.deluge_script_access_review', 'Custom (Deluge) script edit access is restricted', 'Checks only designated developers can edit an application''s workflow/Deluge scripts, since scripts can read or exfiltrate any data the app touches.', 'medium', 'Restrict script edit permission under App Settings > Users & Permissions to the app''s designated developer role.'),
+
+  ('zoho', 'zoho.sign.audit_trail_enabled', 'Document audit trail is enabled', 'Checks every completed document retains its full signing audit trail (timestamps, IP, authentication method per signer).', 'high', 'Enable "Include Audit Trail" in the organization''s default document settings under Sign Settings > Preferences.'),
+  ('zoho', 'zoho.sign.template_access_restricted', 'Template access is restricted to authorized users', 'Checks shared templates are limited to the users/groups who need to send from them, not the whole organization.', 'medium', 'Edit template sharing under Templates > Manage Access to remove unnecessary users/groups.'),
+  ('zoho', 'zoho.sign.completed_document_retention', 'Completed document retention meets policy', 'Checks completed/signed documents are retained for at least the organization''s required evidence retention period before any auto-deletion.', 'medium', 'Adjust the document retention/auto-delete setting under Sign Settings to meet the required retention period.'),
+
+  ('zoho', 'zoho.expense.approval_policy_enforced', 'Expense approval requires a separate approver', 'Checks the approval workflow requires an approver other than the report submitter (no self-approval).', 'medium', 'Configure the approval workflow under Settings > Approvals to require a manager/finance approver distinct from the submitter.'),
+  ('zoho', 'zoho.expense.receipt_data_retention', 'Receipt/expense data retention meets policy', 'Checks expense records and attached receipts are retained for at least the organization''s required financial/evidence retention period.', 'medium', 'Adjust the data retention setting under Settings > Preferences to meet the required retention period.'),
+  ('zoho', 'zoho.expense.card_data_masking', 'Corporate card numbers are masked', 'Checks corporate card feed data displays only masked/last-4 card numbers, not full PANs, in reports and exports.', 'high', 'Confirm the card feed integration is configured to store/display masked card numbers only, per the provider''s masking option.'),
+
+  ('zoho', 'zoho.recruit.candidate_data_access_review', 'Candidate data access is restricted by role', 'Checks candidate records (including resumes and contact PII) are visible only to recruiters/hiring managers assigned to that requisition, not all users.', 'high', 'Adjust the module''s sharing rules under Setup > Data Sharing Settings so candidate visibility follows requisition assignment.'),
+  ('zoho', 'zoho.recruit.data_retention_policy_configured', 'Candidate data retention/deletion policy is configured', 'Checks a candidate data retention (and right-to-erasure) policy is configured, since unsuccessful-candidate PII has a legal retention ceiling under most privacy regimes.', 'medium', 'Configure a data retention policy under Setup > Data Administration > Data Retention Policy specifying an auto-purge or review window.'),
+  ('zoho', 'zoho.recruit.job_posting_visibility_review', 'Job posting visibility matches intended audience', 'Checks job postings marked internal-only are not also published to public/external career-site channels.', 'low', 'Edit the job opening''s posting visibility under the Job Opening record to remove unintended public channels.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
+  ('zoho.directory.mfa_enforced', 'A.9.4.2'),
+  ('zoho.directory.sso_enforced', 'A.9.2.1'),
+  ('zoho.directory.inactive_user_review', 'A.9.2.6'),
+  ('zoho.crm.mfa_enforced', 'A.9.4.2'),
+  ('zoho.crm.data_sharing_rules_restricted', 'A.13.1.1'),
+  ('zoho.crm.audit_log_enabled', 'A.12.4.1'),
+  ('zoho.books.user_role_review', 'A.9.2.2'),
+  ('zoho.books.two_factor_auth_enforced', 'A.9.4.2'),
+  ('zoho.books.audit_trail_enabled', 'A.12.4.1'),
+  ('zoho.people.data_access_review', 'A.9.1.1'),
+  ('zoho.people.sensitive_field_encryption', 'A.8.2.3'),
+  ('zoho.people.admin_role_review', 'A.9.2.3'),
+  ('zoho.workdrive.external_sharing_restricted', 'A.13.2.1'),
+  ('zoho.workdrive.link_sharing_password_protected', 'A.9.4.1'),
+  ('zoho.workdrive.admin_activity_log_enabled', 'A.12.4.1'),
+  ('zoho.desk.agent_role_audit', 'A.9.2.3'),
+  ('zoho.desk.customer_data_field_restricted', 'A.9.4.1'),
+  ('zoho.desk.ticket_access_control_enabled', 'A.9.1.2'),
+  ('zoho.mail.forwarding_restricted', 'A.13.2.3'),
+  ('zoho.mail.two_factor_auth_enforced', 'A.9.4.2'),
+  ('zoho.mail.spam_phishing_filters_enabled', 'A.12.2.1'),
+  ('zoho.vault.secret_sharing_policy', 'A.9.4.1'),
+  ('zoho.vault.password_policy_strength', 'A.9.4.3'),
+  ('zoho.vault.access_log_review', 'A.12.4.1'),
+  ('zoho.projects.external_user_review', 'A.9.1.1'),
+  ('zoho.projects.client_portal_access_restricted', 'A.9.4.1'),
+  ('zoho.projects.role_based_permissions_enforced', 'A.9.2.3'),
+  ('zoho.analytics.data_sharing_review', 'A.13.2.1'),
+  ('zoho.analytics.public_view_link_restricted', 'A.9.4.1'),
+  ('zoho.analytics.workspace_permission_review', 'A.9.2.3'),
+  ('zoho.creator.app_permission_review', 'A.9.2.3'),
+  ('zoho.creator.public_form_data_exposure', 'A.13.2.1'),
+  ('zoho.creator.deluge_script_access_review', 'A.14.2.5'),
+  ('zoho.sign.audit_trail_enabled', 'A.12.4.1'),
+  ('zoho.sign.template_access_restricted', 'A.9.4.1'),
+  ('zoho.sign.completed_document_retention', 'A.18.1.3'),
+  ('zoho.expense.approval_policy_enforced', 'A.6.1.2'),
+  ('zoho.expense.receipt_data_retention', 'A.18.1.3'),
+  ('zoho.expense.card_data_masking', 'A.8.2.3'),
+  ('zoho.recruit.candidate_data_access_review', 'A.9.1.1'),
+  ('zoho.recruit.data_retention_policy_configured', 'A.18.1.3'),
+  ('zoho.recruit.job_posting_visibility_review', 'A.13.2.1')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 
 -- ===== Idempotent upgrade guards (existing databases) =====
 -- These are no-ops on a fresh install; safe to run repeatedly on upgrades.

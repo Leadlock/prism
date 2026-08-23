@@ -3,6 +3,13 @@ import {
   ListUsersCommand,
   ListMFADevicesCommand,
   ListAccessKeysCommand,
+  GenerateCredentialReportCommand,
+  GetCredentialReportCommand,
+  ListGroupsCommand,
+  ListGroupPoliciesCommand,
+  ListUserPoliciesCommand,
+  ListAttachedUserPoliciesCommand,
+  ListAttachedGroupPoliciesCommand,
 } from "@aws-sdk/client-iam";
 
 const MAX_ACCESS_KEY_AGE_DAYS = 90;
@@ -80,8 +87,125 @@ export async function checkAccessKeyAge(iam) {
   return results;
 }
 
+export async function checkNoRootAccessKeys(iam) {
+  // The credential report is the only reliable source for root account key status
+  try {
+    await iam.send(new GenerateCredentialReportCommand({}));
+  } catch (_) { /* already generating — proceed */ }
+
+  let report;
+  for (let attempts = 0; attempts < 5; attempts++) {
+    try {
+      const { Content, State } = await iam.send(new GetCredentialReportCommand({}));
+      if (State === "COMPLETE") { report = Buffer.from(Content).toString("utf8"); break; }
+    } catch (err) {
+      if (err.name !== "ReportNotPresent" && err.name !== "ReportInProgress") throw err;
+    }
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  if (!report) {
+    return [{ resourceId: "account", status: "error", message: "Credential report not ready after retries", evidencePayload: {} }];
+  }
+
+  const lines = report.split("\n");
+  const headers = lines[0].split(",");
+  const col = (row, name) => row[headers.indexOf(name)];
+
+  for (const line of lines.slice(1)) {
+    const row = line.split(",");
+    if (col(row, "user") !== "<root_account>") continue;
+    const hasKey1 = col(row, "access_key_1_active") === "true";
+    const hasKey2 = col(row, "access_key_2_active") === "true";
+    const pass = !hasKey1 && !hasKey2;
+    return [{
+      resourceId: "root",
+      status: pass ? "pass" : "fail",
+      message: pass
+        ? "Root account has no active access keys"
+        : "Root account has active access keys — this is a critical security risk",
+      evidencePayload: { accessKey1Active: hasKey1, accessKey2Active: hasKey2 },
+    }];
+  }
+  return [{ resourceId: "root", status: "pass", message: "Root account has no active access keys", evidencePayload: {} }];
+}
+
+export async function checkNoInlinePolicies(iam) {
+  const { Users } = await iam.send(new ListUsersCommand({}));
+  const results = [];
+
+  for (const user of Users || []) {
+    const { PolicyNames } = await iam.send(new ListUserPoliciesCommand({ UserName: user.UserName }));
+    if ((PolicyNames || []).length > 0) {
+      results.push({
+        resourceId: user.Arn,
+        status: "fail",
+        message: `IAM user ${user.UserName} has ${PolicyNames.length} inline polic(ies): ${PolicyNames.join(", ")}`,
+        evidencePayload: { userName: user.UserName, inlinePolicies: PolicyNames },
+      });
+    }
+  }
+
+  const { Groups } = await iam.send(new ListGroupsCommand({}));
+  for (const group of Groups || []) {
+    const { PolicyNames } = await iam.send(new ListGroupPoliciesCommand({ GroupName: group.GroupName }));
+    if ((PolicyNames || []).length > 0) {
+      results.push({
+        resourceId: group.Arn,
+        status: "fail",
+        message: `IAM group ${group.GroupName} has ${PolicyNames.length} inline polic(ies): ${PolicyNames.join(", ")}`,
+        evidencePayload: { groupName: group.GroupName, inlinePolicies: PolicyNames },
+      });
+    }
+  }
+
+  if (results.length === 0) {
+    return [{ resourceId: "account", status: "pass", message: "No IAM users or groups have inline policies", evidencePayload: {} }];
+  }
+  return results;
+}
+
+export async function checkNoOverlyBroadManagedPolicies(iam) {
+  const { Users } = await iam.send(new ListUsersCommand({}));
+  const { Groups } = await iam.send(new ListGroupsCommand({}));
+  const flagged = [];
+
+  // Check well-known AWS-managed admin policies — sufficient for the 95% case
+  const ADMIN_POLICY_ARNS = new Set([
+    "arn:aws:iam::aws:policy/AdministratorAccess",
+    "arn:aws:iam::aws:policy/PowerUserAccess",
+  ]);
+
+  for (const user of Users || []) {
+    const { AttachedPolicies } = await iam.send(new ListAttachedUserPoliciesCommand({ UserName: user.UserName }));
+    const adminPolicies = (AttachedPolicies || []).filter(p => ADMIN_POLICY_ARNS.has(p.PolicyArn));
+    if (adminPolicies.length > 0) {
+      flagged.push({ resourceArn: user.Arn, resourceName: user.UserName, resourceType: "user", policies: adminPolicies.map(p => p.PolicyName) });
+    }
+  }
+  for (const group of Groups || []) {
+    const { AttachedPolicies } = await iam.send(new ListAttachedGroupPoliciesCommand({ GroupName: group.GroupName }));
+    const adminPolicies = (AttachedPolicies || []).filter(p => ADMIN_POLICY_ARNS.has(p.PolicyArn));
+    if (adminPolicies.length > 0) {
+      flagged.push({ resourceArn: group.Arn, resourceName: group.GroupName, resourceType: "group", policies: adminPolicies.map(p => p.PolicyName) });
+    }
+  }
+
+  if (flagged.length === 0) {
+    return [{ resourceId: "account", status: "pass", message: "No IAM users or groups have AdministratorAccess or PowerUserAccess attached", evidencePayload: {} }];
+  }
+  return flagged.map(f => ({
+    resourceId: f.resourceArn,
+    status: "fail",
+    message: `IAM ${f.resourceType} ${f.resourceName} has overly broad managed polic(ies) attached: ${f.policies.join(", ")}`,
+    evidencePayload: { resourceName: f.resourceName, resourceType: f.resourceType, policies: f.policies },
+  }));
+}
+
 export const iamTests = [
   { key: "aws.iam.mfa_enforced", title: "IAM users have MFA enabled", severityDefault: "critical", isoReferences: ["A.9.4.2"], run: (clients) => checkMfaEnforced(clients.iam) },
   { key: "aws.iam.password_policy", title: "Account password policy meets minimum strength", severityDefault: "high", isoReferences: ["A.9.4.3"], run: (clients) => checkPasswordPolicy(clients.iam) },
   { key: "aws.iam.access_key_age", title: "IAM access keys are rotated within 90 days", severityDefault: "high", isoReferences: ["A.9.2.4"], run: (clients) => checkAccessKeyAge(clients.iam) },
+  { key: "aws.iam.no_root_access_keys", title: "Root account has no active access keys", severityDefault: "critical", isoReferences: ["A.9.2.3"], run: (clients) => checkNoRootAccessKeys(clients.iam) },
+  { key: "aws.iam.no_inline_policies", title: "IAM users and groups have no inline policies", severityDefault: "medium", isoReferences: ["A.9.1.2"], run: (clients) => checkNoInlinePolicies(clients.iam) },
+  { key: "aws.iam.no_overly_broad_managed_policies", title: "No IAM users or groups have admin-level managed policies attached", severityDefault: "high", isoReferences: ["A.9.1.2"], run: (clients) => checkNoOverlyBroadManagedPolicies(clients.iam) },
 ];

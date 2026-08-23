@@ -19,6 +19,26 @@
     { "testKey": "aws.dynamodb.point_in_time_recovery_enabled", "title": "DynamoDB tables have point-in-time recovery enabled", "severityDefault": "high", "isoReferences": ["A.12.3.1"] },
     { "testKey": "aws.dynamodb.encryption_uses_cmk", "title": "DynamoDB tables are encrypted with a customer-managed key", "severityDefault": "medium", "isoReferences": ["A.8.2.3"] },
     { "testKey": "aws.kms.key_rotation_enabled", "title": "Customer-managed KMS keys have rotation enabled", "severityDefault": "high", "isoReferences": ["A.10.1.2"] },
-    { "testKey": "aws.kms.no_wildcard_key_policy", "title": "KMS key policies do not grant a wildcard principal", "severityDefault": "critical", "isoReferences": ["A.9.1.2"] }
+    { "testKey": "aws.kms.no_wildcard_key_policy", "title": "KMS key policies do not grant a wildcard principal", "severityDefault": "critical", "isoReferences": ["A.9.1.2"] },
+    { "testKey": "aws.cloudtrail.log_file_validation_enabled", "title": "CloudTrail trails have log file validation enabled", "severityDefault": "high", "isoReferences": ["A.12.4.2"] },
+    { "testKey": "aws.cloudtrail.data_events_logged", "title": "CloudTrail records data-plane events for S3 and Lambda", "severityDefault": "medium", "isoReferences": ["A.12.4.1"] },
+    { "testKey": "aws.config.rules_compliant", "title": "AWS Config rules report compliant resources", "severityDefault": "medium", "isoReferences": ["A.12.1.2"] },
+    { "testKey": "aws.config.all_resource_types_recorded", "title": "AWS Config recorder tracks all supported resource types", "severityDefault": "medium", "isoReferences": ["A.12.1.1"] },
+    { "testKey": "aws.cloudwatch.alarms_configured", "title": "CloudWatch alarms exist for account activity", "severityDefault": "medium", "isoReferences": ["A.12.4.1"] },
+    { "testKey": "aws.cloudwatch.log_group_retention_configured", "title": "CloudWatch Logs groups have a retention period set", "severityDefault": "medium", "isoReferences": ["A.12.4.1"] },
+    { "testKey": "aws.waf.web_acl_associated", "title": "Internet-facing resources are protected by a WAF Web ACL", "severityDefault": "high", "isoReferences": ["A.13.1.1"] },
+    { "testKey": "aws.waf.logging_enabled", "title": "WAF Web ACLs have logging enabled", "severityDefault": "medium", "isoReferences": ["A.12.4.1"] },
+    { "testKey": "aws.secretsmanager.rotation_enabled", "title": "Secrets Manager secrets have automatic rotation enabled", "severityDefault": "high", "isoReferences": ["A.9.2.4"] },
+    { "testKey": "aws.secretsmanager.encrypted_with_cmk", "title": "Secrets Manager secrets are encrypted with a customer-managed key", "severityDefault": "medium", "isoReferences": ["A.10.1.2"] },
+    { "testKey": "aws.secretsmanager.no_stale_secrets", "title": "Secrets Manager secrets are rotated within policy", "severityDefault": "medium", "isoReferences": ["A.9.2.4"] },
+    { "testKey": "aws.guardduty.enabled", "title": "GuardDuty is enabled", "severityDefault": "critical", "isoReferences": ["A.12.6.1"] },
+    { "testKey": "aws.guardduty.high_severity_findings_resolved", "title": "No unresolved high-severity GuardDuty findings", "severityDefault": "high", "isoReferences": ["A.16.1.2"] },
+    { "testKey": "aws.securityhub.enabled", "title": "Security Hub is enabled with a standard subscribed", "severityDefault": "high", "isoReferences": ["A.12.6.1"] },
+    { "testKey": "aws.securityhub.critical_findings_resolved", "title": "No active critical/high Security Hub findings", "severityDefault": "high", "isoReferences": ["A.16.1.2"] },
+    { "testKey": "aws.ecr.image_scanning_enabled", "title": "ECR repositories scan images on push", "severityDefault": "high", "isoReferences": ["A.12.6.1"] },
+    { "testKey": "aws.ecr.tag_immutability_enabled", "title": "ECR repositories enforce immutable image tags", "severityDefault": "medium", "isoReferences": ["A.12.5.1"] },
+    { "testKey": "aws.ecr.no_wildcard_repository_policy", "title": "ECR repository policies do not grant a wildcard principal", "severityDefault": "critical", "isoReferences": ["A.9.1.2"] },
+    { "testKey": "aws.ecs.no_privileged_containers", "title": "ECS task definitions do not run privileged containers", "severityDefault": "critical", "isoReferences": ["A.9.4.4"] },
+    { "testKey": "aws.ecs.container_insights_enabled", "title": "ECS clusters have Container Insights enabled", "severityDefault": "medium", "isoReferences": ["A.12.4.1"] }
   ]
 }

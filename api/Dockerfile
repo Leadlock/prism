@@ -11,20 +11,22 @@ RUN apt-get update -y && \
     apt-get install -y postgresql-client gosu && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Node dependencies
-COPY package*.json ./
+# Create non-root user early so all subsequent writes land with correct ownership,
+# avoiding a chown -R pass over the entire node_modules tree at the end of the build.
+RUN addgroup --system appgroup \
+ && adduser --system --ingroup appgroup appuser \
+ && chown appuser:appgroup /app
+
+# Install Node dependencies as appuser
+COPY --chown=appuser:appgroup package*.json ./
 RUN npm install --omit=dev
 
 # Copy all app files
-COPY . .
+COPY --chown=appuser:appgroup . .
 
 RUN chmod +x wait-for-db.sh start.sh docker-entrypoint.sh
 
 RUN mkdir -p exports uploads
-
-RUN addgroup --system appgroup \
- && adduser --system --ingroup appgroup appuser \
- && chown -R appuser:appgroup /app
 
 EXPOSE 4000
 

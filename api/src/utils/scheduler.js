@@ -324,9 +324,15 @@ export async function runScheduledCollections() {
 
     for (const row of result.rows) {
       try {
-        await runCollection({ connectionId: row.id, companyId: row.company_id, triggeredBy: null, triggerType: "scheduled" });
+        console.log(`[scheduler] starting scheduled collection for connection=${row.id} company=${row.company_id}`);
+        const run = await runCollection({ connectionId: row.id, companyId: row.company_id, triggeredBy: null, triggerType: "scheduled" });
+        console.log(`[scheduler] completed connection=${row.id} status=${run.status} passed=${run.testsPassed} failed=${run.testsFailed}`);
       } catch (e) {
-        console.error(`[scheduler] runScheduledCollections failed for connection ${row.id}:`, e.message);
+        if (e.status === 409) {
+          console.log(`[scheduler] skipped connection=${row.id} (run already in progress)`);
+        } else {
+          console.error(`[scheduler] error connection=${row.id}: ${e.message}`);
+        }
       }
     }
 

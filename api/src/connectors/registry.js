@@ -5,10 +5,11 @@ import * as aws from "./aws/index.js";
 import * as azure from "./azure/index.js";
 import * as github from "./github/index.js";
 import * as purview from "./purview/index.js";
+import * as zoho from "./zoho/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const connectors = { [aws.key]: aws, [azure.key]: azure, [github.key]: github, [purview.key]: purview };
+const connectors = { [aws.key]: aws, [azure.key]: azure, [github.key]: github, [purview.key]: purview, [zoho.key]: zoho };
 
 function readManifest(connectorKey) {
   const manifestPath = path.join(__dirname, connectorKey, "connector.json");
@@ -43,6 +44,25 @@ function validateManifests() {
         `Connector manifest drift for "${connectorKey}": ${problems.join("; ")}. ` +
           `Keep api/src/connectors/${connectorKey}/connector.json's tests[].testKey in sync with the ` +
           `test "key" values exported from api/src/connectors/${connectorKey}/index.js.`
+      );
+    }
+
+    // Check that each JS test's severityDefault matches its manifest counterpart.
+    const manifestSeverityByKey = new Map(manifest.tests.map((t) => [t.testKey, t.severityDefault]));
+    const severityMismatches = [];
+    for (const jsTest of connectors[connectorKey].tests) {
+      const manifestSeverity = manifestSeverityByKey.get(jsTest.key);
+      if (manifestSeverity !== undefined && jsTest.severityDefault !== manifestSeverity) {
+        severityMismatches.push(
+          `  ${jsTest.key}: JS="${jsTest.severityDefault}" vs connector.json="${manifestSeverity}"`
+        );
+      }
+    }
+    if (severityMismatches.length > 0) {
+      throw new Error(
+        `Connector severityDefault drift for "${connectorKey}":\n${severityMismatches.join("\n")}\n` +
+          `Keep api/src/connectors/${connectorKey}/connector.json's tests[].severityDefault in sync with the ` +
+          `"severityDefault" values exported from api/src/connectors/${connectorKey}/index.js.`
       );
     }
   }

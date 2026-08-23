@@ -1,4 +1,4 @@
-import { DescribeTrailsCommand, GetTrailStatusCommand } from "@aws-sdk/client-cloudtrail";
+import { DescribeTrailsCommand, GetTrailStatusCommand, GetEventSelectorsCommand } from "@aws-sdk/client-cloudtrail";
 import { DescribeConfigurationRecordersCommand, DescribeConfigurationRecorderStatusCommand } from "@aws-sdk/client-config-service";
 
 export async function checkCloudTrailEnabled(cloudtrail) {
@@ -44,7 +44,54 @@ export async function checkConfigEnabled(configService) {
   return results;
 }
 
+export async function checkCloudTrailLogFileValidation(cloudtrail) {
+  const { trailList } = await cloudtrail.send(new DescribeTrailsCommand({}));
+  const trails = trailList || [];
+  if (trails.length === 0) {
+    return [{ resourceId: "account", status: "fail", message: "No CloudTrail trails are configured", evidencePayload: {} }];
+  }
+  return trails.map((trail) => {
+    const pass = Boolean(trail.LogFileValidationEnabled);
+    return {
+      resourceId: trail.TrailARN,
+      status: pass ? "pass" : "fail",
+      message: pass
+        ? `${trail.Name} has log file validation enabled`
+        : `${trail.Name} does not have log file validation enabled`,
+      evidencePayload: { name: trail.Name, logFileValidationEnabled: Boolean(trail.LogFileValidationEnabled) },
+    };
+  });
+}
+
+export async function checkCloudTrailDataEventsLogged(cloudtrail) {
+  const { trailList } = await cloudtrail.send(new DescribeTrailsCommand({}));
+  const trails = trailList || [];
+  if (trails.length === 0) {
+    return [{ resourceId: "account", status: "fail", message: "No CloudTrail trails are configured", evidencePayload: {} }];
+  }
+  for (const trail of trails) {
+    const resp = await cloudtrail.send(new GetEventSelectorsCommand({ TrailName: trail.TrailARN }));
+    // Support both legacy EventSelectors and newer AdvancedEventSelectors
+    const advanced = resp.AdvancedEventSelectors || [];
+    const legacy = resp.EventSelectors || [];
+    const hasAdvancedS3 = advanced.some((sel) =>
+      (sel.FieldSelectors || []).some((f) => f.Field === "resources.type" && (f.Equals || []).includes("AWS::S3::Object"))
+    );
+    const hasAdvancedLambda = advanced.some((sel) =>
+      (sel.FieldSelectors || []).some((f) => f.Field === "resources.type" && (f.Equals || []).includes("AWS::Lambda::Function"))
+    );
+    const hasLegacyS3 = legacy.some((sel) => sel.ReadWriteType && sel.DataResources && sel.DataResources.some((d) => d.Type === "AWS::S3::Object"));
+    const hasLegacyLambda = legacy.some((sel) => sel.DataResources && sel.DataResources.some((d) => d.Type === "AWS::Lambda::Function"));
+    if ((hasAdvancedS3 && hasAdvancedLambda) || (hasLegacyS3 && hasLegacyLambda)) {
+      return [{ resourceId: trail.TrailARN, status: "pass", message: `${trail.Name} logs S3 and Lambda data events`, evidencePayload: { trailName: trail.Name, s3DataEvents: true, lambdaDataEvents: true } }];
+    }
+  }
+  return [{ resourceId: "account", status: "fail", message: "No trail is configured to log S3 and Lambda data events", evidencePayload: { s3DataEvents: false, lambdaDataEvents: false } }];
+}
+
 export const loggingTests = [
   { key: "aws.logging.cloudtrail_enabled", title: "CloudTrail is enabled and multi-region", severityDefault: "critical", isoReferences: ["A.12.4.1"], run: (clients) => checkCloudTrailEnabled(clients.cloudtrail) },
   { key: "aws.logging.config_enabled", title: "AWS Config is recording", severityDefault: "medium", isoReferences: ["A.12.1.1"], run: (clients) => checkConfigEnabled(clients.configService) },
+  { key: "aws.cloudtrail.log_file_validation_enabled", title: "CloudTrail trails have log file validation enabled", severityDefault: "high", isoReferences: ["A.12.4.2"], run: (clients) => checkCloudTrailLogFileValidation(clients.cloudtrail) },
+  { key: "aws.cloudtrail.data_events_logged", title: "CloudTrail records data-plane events for S3 and Lambda", severityDefault: "medium", isoReferences: ["A.12.4.1"], run: (clients) => checkCloudTrailDataEventsLogged(clients.cloudtrail) },
 ];

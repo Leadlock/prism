@@ -7,8 +7,25 @@ import { getConnector } from "../connectors/registry.js";
 import { writeAuditLog } from "./auditLog.js";
 import { renderFindingEvidencePdf } from "./findingEvidencePdf.js";
 
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return "[" + value.map(stableStringify).join(",") + "]";
+  }
+  if (value !== null && typeof value === "object") {
+    return (
+      "{" +
+      Object.keys(value)
+        .sort()
+        .map((k) => JSON.stringify(k) + ":" + stableStringify(value[k]))
+        .join(",") +
+      "}"
+    );
+  }
+  return JSON.stringify(value);
+}
+
 function hashPayload(payload) {
-  return crypto.createHash("sha256").update(JSON.stringify(payload || {})).digest("hex");
+  return crypto.createHash("sha256").update(stableStringify(payload || {})).digest("hex");
 }
 
 // Shared helper: links a vault item to every question mapped to the given testKey via ISO reference.
