@@ -1062,6 +1062,70 @@ INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
   ('microsoft_defender.alerts.no_unassigned_critical_alerts', 'A.16.1.2')
 ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 
+-- ===== Google Workspace connector: catalog seed data =====
+
+INSERT INTO integrations (key, name, category, auth_type, status) VALUES
+  ('google_workspace', 'Google Workspace', 'identity', 'oauth2', 'active')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('google_workspace', 'google_workspace.security.two_step_verification_enforced', '2-Step Verification is enforced for all users', 'Checks each active user has 2-Step Verification enforced (isEnforcedIn2Sv), rather than left as an opt-in choice.', 'critical', 'Enable 2-Step Verification enforcement under Admin Console > Security > Authentication > 2-Step Verification, and set an enforcement date for all organizational units.'),
+  ('google_workspace', 'google_workspace.admin.super_admin_role_reviewed', 'Super admin role is assigned to a minimal, reviewed set of users', 'Checks the count of users holding admin or delegated admin privileges, flagging accounts beyond an expected small set.', 'high', 'Remove Super Admin from accounts that don''t require it day-to-day; use delegated admin roles scoped to the minimum privileges needed instead, under Admin Console > Account > Admin roles.'),
+  ('google_workspace', 'google_workspace.oauth.third_party_app_risk_reviewed', 'Third-party OAuth app authorizations are reviewed and restricted', 'Checks each active user''s authorized third-party OAuth applications for high-risk scopes (full Drive/Gmail access, Admin SDK write access) that indicate over-broad app authorization.', 'high', 'Review and revoke risky app authorizations under Admin Console > Security > API Controls > App access control, and restrict future installs to allowlisted/internally-reviewed apps.'),
+  ('google_workspace', 'google_workspace.groups.privileged_group_membership_reviewed', 'Privileged groups have at least one owner', 'Checks groups matching a privileged-naming heuristic (admin, security, sudo, root, etc.) have at least one OWNER-role member, flagging orphaned groups with no accountable owner.', 'medium', 'Assign an OWNER-role member to any privileged group that lacks one, under Admin Console > Groups > select group > Members.'),
+  ('google_workspace', 'google_workspace.drive.external_sharing_restricted', 'Drive/Docs external sharing defaults are restricted', 'Checks the domain''s Drive external sharing mode is not fully open, and the default new-file access level is not search-discoverable.', 'critical', 'Under Admin Console > Apps > Google Workspace > Drive and Docs > Sharing settings, restrict external sharing to specific trusted domains or disable link-sharing outside the organization by default.'),
+  ('google_workspace', 'google_workspace.gmail.auto_forwarding_restricted', 'Automatic email forwarding to external addresses is restricted', 'Checks the Gmail auto-forwarding policy disallows forwarding to arbitrary external addresses.', 'high', 'Under Admin Console > Apps > Google Workspace > Gmail > End User Access, disable "Automatic forwarding" or restrict it to internal/allowlisted domains.'),
+  ('google_workspace', 'google_workspace.calendar.external_sharing_restricted', 'Calendar external sharing default is restricted', 'Checks the domain default Calendar external sharing policy does not expose event details (beyond free/busy) to external users by default.', 'medium', 'Under Admin Console > Apps > Google Workspace > Calendar > Sharing settings, set the external sharing default to "Only free/busy information".'),
+  ('google_workspace', 'google_workspace.devices.chrome_policy_compliant', 'Managed ChromeOS devices enforce baseline security policy', 'Checks a session length/idle-logout Chrome policy is explicitly configured for the organization rather than left on the platform default.', 'medium', 'Configure the session length policy under Admin Console > Devices > Chrome > Settings > Users & browsers for the affected organizational units.'),
+  ('google_workspace', 'google_workspace.users.inactive_accounts_reviewed', 'Suspended or long-inactive user accounts are reviewed', 'Checks for suspended-but-not-deleted accounts, or active accounts with no sign-in activity within 90 days, flagging stale accounts that retain access.', 'medium', 'Offboard or fully remove accounts no longer needed, and investigate active accounts with no recent sign-in for compromise or abandonment.'),
+  ('google_workspace', 'google_workspace.audit.log_retention_configured', 'Admin and login audit logs are retained and actively flowing', 'Checks Reports API admin and login application activity events are available and recent, evidencing audit logging hasn''t silently stopped.', 'high', 'Investigate via Admin Console > Reporting > Audit and investigation if no recent activity is returned.')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
+  ('google_workspace.security.two_step_verification_enforced', 'A.9.4.2'),
+  ('google_workspace.admin.super_admin_role_reviewed', 'A.9.2.3'),
+  ('google_workspace.oauth.third_party_app_risk_reviewed', 'A.9.4.1'),
+  ('google_workspace.groups.privileged_group_membership_reviewed', 'A.9.2.2'),
+  ('google_workspace.drive.external_sharing_restricted', 'A.8.2.3'),
+  ('google_workspace.gmail.auto_forwarding_restricted', 'A.13.2.1'),
+  ('google_workspace.calendar.external_sharing_restricted', 'A.13.2.1'),
+  ('google_workspace.devices.chrome_policy_compliant', 'A.6.2.1'),
+  ('google_workspace.users.inactive_accounts_reviewed', 'A.9.2.6'),
+  ('google_workspace.audit.log_retention_configured', 'A.12.4.1')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
+-- ===== GCP connector: catalog seed data =====
+
+INSERT INTO integrations (key, name, category, auth_type, status) VALUES
+  ('gcp', 'Google Cloud Platform', 'cloud', 'oauth2', 'active')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
+  ('gcp', 'gcp.iam.owner_role_assignments_limited', 'Project-level Owner role assignments are limited', 'Checks the count of principals bound to roles/owner at project scope, flagging accounts beyond the recommended maximum of 2.', 'medium', 'Remove Owner from principals that don''t require it; use narrower predefined or custom IAM roles instead, under IAM & Admin > IAM.'),
+  ('gcp', 'gcp.iam.service_account_keys_rotated', 'User-managed service account keys are rotated regularly', 'Checks user-managed (downloaded JSON) service account keys are not older than 90 days.', 'high', 'Rotate or delete stale user-managed keys under IAM & Admin > Service Accounts > select account > Keys; prefer Workload Identity Federation over long-lived keys where possible.'),
+  ('gcp', 'gcp.storage.buckets_not_publicly_accessible', 'Cloud Storage buckets enforce public access prevention', 'Checks each Cloud Storage bucket has publicAccessPrevention set to "enforced" rather than left at the inherited default.', 'critical', 'Under Cloud Storage > select bucket > Permissions, set Public access prevention to Enforced.'),
+  ('gcp', 'gcp.compute.instances_no_public_ip', 'Compute Engine instances are not directly exposed via a public IP address', 'Checks no VM instance network interface has an access config (external IP) assigned.', 'critical', 'Remove the external IP under Compute Engine > VM instances > select instance > Edit > Network interfaces, and route external access through a load balancer or IAP instead.'),
+  ('gcp', 'gcp.compute.shielded_vm_enabled', 'Compute Engine instances have Shielded VM protections enabled', 'Checks each VM instance has both vTPM and integrity monitoring enabled.', 'high', 'Enable Shielded VM options under Compute Engine > VM instances > select instance > Edit > Shielded VM (may require stopping the instance).'),
+  ('gcp', 'gcp.sql.ssl_enforced', 'Cloud SQL instances require SSL/TLS for connections', 'Checks each Cloud SQL instance requires SSL/TLS (requireSsl or an equivalent sslMode) for client connections.', 'critical', 'Under Cloud SQL > select instance > Connections > Security, require SSL/TLS encryption for all connections.'),
+  ('gcp', 'gcp.sql.public_access_disabled', 'Cloud SQL instances do not authorize connections from any address', 'Checks no Cloud SQL instance authorizes the 0.0.0.0/0 network range.', 'critical', 'Under Cloud SQL > select instance > Connections > Networking, remove any 0.0.0.0/0 authorized network and use Cloud SQL Auth Proxy or private IP instead.'),
+  ('gcp', 'gcp.kms.key_rotation_enabled', 'Cloud KMS symmetric keys have automatic rotation enabled', 'Checks each symmetric (ENCRYPT_DECRYPT) Cloud KMS key has an automatic rotation period configured.', 'medium', 'Under Security > Key Management > select key, set a rotation period (90 days recommended) if not already configured.'),
+  ('gcp', 'gcp.network.firewall_no_open_management_ports', 'Firewall rules do not expose management ports publicly', 'Checks no enabled ingress firewall rule allows 0.0.0.0/0 access to SSH (22) or RDP (3389).', 'critical', 'Restrict the firewall rule''s source range to specific trusted IPs, or require access via Identity-Aware Proxy / a bastion host, under VPC network > Firewall.'),
+  ('gcp', 'gcp.logging.data_access_audit_logs_enabled', 'Data Access audit logs are enabled for all services', 'Checks the project IAM policy''s audit config enables DATA_READ and DATA_WRITE Data Access audit logs for all services.', 'high', 'Under IAM & Admin > Audit Logs, enable Admin Read, Data Read, and Data Write for All services (or at minimum the services holding regulated data).')
+ON CONFLICT (test_key) DO NOTHING;
+
+INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
+  ('gcp.iam.owner_role_assignments_limited', 'A.9.1.2'),
+  ('gcp.iam.service_account_keys_rotated', 'A.9.2.4'),
+  ('gcp.storage.buckets_not_publicly_accessible', 'A.8.2.3'),
+  ('gcp.compute.instances_no_public_ip', 'A.13.1.1'),
+  ('gcp.compute.shielded_vm_enabled', 'A.8.2.3'),
+  ('gcp.sql.ssl_enforced', 'A.8.2.3'),
+  ('gcp.sql.public_access_disabled', 'A.13.1.1'),
+  ('gcp.kms.key_rotation_enabled', 'A.10.1.2'),
+  ('gcp.network.firewall_no_open_management_ports', 'A.13.1.1'),
+  ('gcp.logging.data_access_audit_logs_enabled', 'A.12.4.1')
+ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
+
 -- ===== Idempotent upgrade guards (existing databases) =====
 -- These are no-ops on a fresh install; safe to run repeatedly on upgrades.
 

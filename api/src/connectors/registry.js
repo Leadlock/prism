@@ -10,6 +10,8 @@ import * as entraId from "./entra_id/index.js";
 import * as microsoft365 from "./microsoft_365/index.js";
 import * as microsoftTeams from "./microsoft_teams/index.js";
 import * as microsoftDefender from "./microsoft_defender/index.js";
+import * as googleWorkspace from "./google_workspace/index.js";
+import * as gcp from "./gcp/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,6 +25,8 @@ const connectors = {
   [microsoft365.key]: microsoft365,
   [microsoftTeams.key]: microsoftTeams,
   [microsoftDefender.key]: microsoftDefender,
+  [googleWorkspace.key]: googleWorkspace,
+  [gcp.key]: gcp,
 };
 
 function readManifest(connectorKey) {

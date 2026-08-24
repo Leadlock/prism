@@ -1,9 +1,11 @@
-# Microsoft Teams Connector (proposed)
+# Microsoft Teams Connector
 
-Status: design spec, not yet implemented. Follows the existing connector pattern (see
-`api/src/connectors/purview/` for the plain-`fetch` + multi-resource-token shape this connector
-should copy, and `docs/connectors/entra_id.md` for the shared Azure AD app registration this
-connector reuses).
+Status: implemented. All 8 checks below are live in `api/src/connectors/microsoft_teams/`,
+registered in `api/src/connectors/registry.js`, and seeded in `init.sql`. This doc retains the
+original design rationale (scope boundaries, auth setup, API reference) as the reference for how
+the connector works. Follows the existing connector pattern (see `api/src/connectors/purview/`
+for the plain-`fetch` + multi-resource-token shape this connector copies, and
+`docs/connectors/entra_id.md` for the shared Azure AD app registration this connector reuses).
 
 ## 1. Overview
 
@@ -130,7 +132,7 @@ here, unlike Defender):
 - **Rate limiting**: Graph's standard per-app throttling applies to both surfaces — respect
   `429`/`Retry-After` with a single bounded retry, consistent with `describeGraphError()`.
 
-## 4. Proposed Checks
+## 4. Implemented Checks
 
 | test_key | title | severity_default | iso_reference | description | remediation_guidance |
 |---|---|---|---|---|---|
@@ -144,6 +146,8 @@ here, unlike Defender):
 | `microsoft_teams.policies.thirdparty_app_installation_restricted` | Third-party Teams app installation is governed by an explicit allow-list | medium | A.12.5.1 | Checks the global Teams app permission policy (`appPermissionPolicy`) restricts the default/global catalog app types to a defined allow-list rather than permitting all third-party apps to be installed by any user. | Configure the global app permission policy under Teams admin center > Teams apps > Permission policies to allow only reviewed, approved third-party apps. |
 
 ## 5. Seed SQL
+
+Already applied in `init.sql` (lines ~1014-1036).
 
 ```sql
 INSERT INTO integrations (key, name, category, auth_type, status) VALUES
@@ -175,45 +179,32 @@ ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 
 ## 6. Implementation Notes
 
-- **Connector key**: `microsoft_teams` — new entry in `api/src/connectors/registry.js`:
-  `import * as microsoftTeams from "./microsoft_teams/index.js";` and add
-  `[microsoftTeams.key]: microsoftTeams` to the `connectors` map.
-- **Files to add**:
-  - `api/src/connectors/microsoft_teams/credentials.js` — thin wrapper calling the **shared**
-    `resolveMicrosoftGraphCredentials()` helper proposed in `entra_id.md` with
-    `resource: "https://graph.microsoft.com"`. This connector does not need a second resource —
-    both the v1.0 core resources and the beta TCM resources are the same Graph audience, unlike
-    `microsoft_365`'s Exchange Online Admin API split or Defender's distinct token audience (see
-    `microsoft_defender.md`).
-  - `api/src/connectors/microsoft_teams/index.js` — `key`, `tests`, `testConnection` (probe
-    `GET /teams?$top=1` — cheap, requires only `TeamSettings.Read.All`, analogous to `entra_id`'s
-    `GET /organization` probe), `runTests`, `describeGraphError()` reusing the same shape as
-    `entra_id`/`microsoft_365`.
-  - `api/src/connectors/microsoft_teams/tests/externalAccess.js`,
-    `tests/clientConfiguration.js`, `tests/meetingPolicies.js`, `tests/appPolicies.js` — one file
-    per check group.
-  - `api/src/connectors/microsoft_teams/tcmSnapshot.js` — small helper implementing the
-    create-snapshot-job → poll → read-result flow described in API Reference, so every TCM-backed
-    check file calls one shared function instead of reimplementing the async job polling loop
-    four times.
-- **Files to edit**: `init.sql` (append the seed blocks above), `api/src/connectors/registry.js`.
-- **Shares the Microsoft Graph auth helper** proposed in `entra_id.md`
-  (`resolveMicrosoftGraphCredentials()`) — do not add a second, parallel token-caching
-  implementation here. This connector, `entra_id`, and `microsoft_365`'s Graph-facing half all
-  request the same `https://graph.microsoft.com/.default` scope, so in principle a single cached
-  token could even be shared across connectors within one `runTests` invocation if a future
-  refactor wants to go further than per-connector caching — not required for this pass, just
-  noted since it's a natural follow-on given how much of this token logic is now duplicated
-  per-connector.
-- **Verify before implementing**: (1) the exact TCM snapshot job request/response schema against
-  the live `beta` TCM API reference — the create/poll/read shape described above is inferred from
-  Microsoft's TCM overview docs, not confirmed against a working example; (2) that the tenant's
-  TCM service principal enrollment (Authentication section, step 4) is a one-time tenant setup
-  action Prism can document for the customer rather than something Prism itself needs to automate;
-  if TCM access isn't available in a given tenant (e.g. licensing or preview-gating), the fallback
-  is the `MicrosoftTeams` PowerShell module (`Connect-MicrosoftTeams` with app-only certificate
-  auth) calling `Get-CsTenantFederationConfiguration`/`Get-CsTeamsMeetingPolicy`/
-  `Get-CsTeamsMessagingPolicy`/`Get-CsTeamsClientConfiguration` directly — a real deviation from
-  this connector's otherwise Graph-only shape, flagged here the same way `microsoft_365.md` flags
-  its Exchange/Security & Compliance PowerShell fallback rather than letting it be discovered
-  during implementation.
+- **Connector key**: `microsoft_teams` — registered in `api/src/connectors/registry.js`:
+  `import * as microsoftTeams from "./microsoft_teams/index.js";` with
+  `[microsoftTeams.key]: microsoftTeams` in the `connectors` map.
+- **Files**:
+  - `api/src/connectors/microsoft_teams/credentials.js` — thin wrapper calling the shared
+    `resolveMicrosoftGraphCredentials()` helper (`api/src/connectors/shared/microsoftGraphAuth.js`)
+    with `resource: "https://graph.microsoft.com"`. Both the v1.0 core resources and the beta TCM
+    resources are the same Graph audience, so no second resource/token is needed.
+  - `api/src/connectors/microsoft_teams/index.js` — `key`, `tests`, `testConnection` (probes
+    `GET /teams?$top=1`), `runTests`, `describeTeamsError()`.
+  - `api/src/connectors/microsoft_teams/tests/teamsConfig.js` — all 8 checks in one file (not
+    split per check group as originally proposed), including the `tcmSnapshot()` create-job →
+    poll → read-result helper used by every TCM-backed check.
+  - `api/src/__tests__/connectorsMicrosoftTeams.test.js` — 15 unit tests covering pass/fail/edge
+    cases for all 8 checks.
+- `init.sql` and `api/src/connectors/registry.js` carry the corresponding seed rows and
+  registration.
+- **Shares the Microsoft Graph auth helper** (`resolveMicrosoftGraphCredentials()`) with
+  `entra_id` and `microsoft_365`'s Graph-facing half — no separate token-caching implementation
+  here.
+- **Not yet verified against a live tenant**: the TCM snapshot job request/response schema
+  (`tcmSnapshot()` in `teamsConfig.js`) is inferred from Microsoft's TCM overview docs, and the
+  tenant-side TCM service principal enrollment (Authentication section, step 4) has not been
+  walked through against a real tenant. If TCM access isn't available in a given tenant (e.g.
+  licensing or preview-gating), the documented fallback is the `MicrosoftTeams` PowerShell module
+  (`Connect-MicrosoftTeams` with app-only certificate auth) calling
+  `Get-CsTenantFederationConfiguration`/`Get-CsTeamsMeetingPolicy`/`Get-CsTeamsMessagingPolicy`/
+  `Get-CsTeamsClientConfiguration` directly — not implemented, since the connector currently
+  assumes TCM/Graph beta access.

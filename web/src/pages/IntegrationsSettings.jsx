@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { FaAws, FaMicrosoft, FaGithub } from "react-icons/fa";
-import { SiZoho } from "react-icons/si";
+import { SiZoho, SiGoogle, SiGooglecloud } from "react-icons/si";
 import { apiFetch } from "../api/client.js";
 import CredentialFields from "../components/CredentialFields.jsx";
 import GithubAppWalkthrough from "../components/GithubAppWalkthrough.jsx";
@@ -23,6 +23,8 @@ const PROVIDER_ICON = {
   microsoft_365: { Icon: FaMicrosoft, color: "#D83B01" },
   microsoft_teams: { Icon: FaMicrosoft, color: "#6264A7" },
   microsoft_defender: { Icon: FaMicrosoft, color: "#0D6EFD" },
+  google_workspace: { Icon: SiGoogle, color: "#4285F4" },
+  gcp: { Icon: SiGooglecloud, color: "#4285F4" },
 };
 
 // Display order for known categories; anything else falls back to
@@ -458,6 +460,131 @@ function MicrosoftWalkthrough({ providerKey, tenantId, setTenantId, token }) {
   );
 }
 
+function GoogleWorkspaceWalkthrough({
+  token,
+  adminEmail, setAdminEmail,
+  customerId, setCustomerId,
+  clientEmail, setClientEmail,
+  privateKey, setPrivateKey,
+}) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/google_workspace/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const scopeString = setupInfo?.scopes ? setupInfo.scopes.join(",") : "";
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        <li>In <a href="https://console.cloud.google.com/" target="_blank" rel="noreferrer">Google Cloud Console</a>, create or choose a project, then enable the <strong>Admin SDK API</strong>, <strong>Chrome Policy API</strong>, and <strong>Cloud Identity API</strong> under APIs &amp; Services → Library.</li>
+        <li>Under <strong>IAM &amp; Admin → Service Accounts → Create Service Account</strong>, no project IAM roles are needed. Note its email and, on its Details tab, its numeric <strong>Client ID</strong>.</li>
+        <li>On that service account, enable <strong>Domain-wide Delegation</strong> (Advanced settings).</li>
+        <li>Under <strong>Keys → Add Key → Create new key → JSON</strong>, download the key — you'll paste its <code>client_email</code> and <code>private_key</code> fields below.</li>
+        <li>As a Workspace <strong>super admin</strong>, go to <strong>Admin Console → Security → API Controls → Domain-wide Delegation → Manage Domain Wide Delegation</strong>, and add the service account's numeric Client ID with the scope list below.</li>
+        <li>Enter the admin's email (the account the service account impersonates), the service account's email and private key, then click Connect.</li>
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      {scopeString && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>OAuth scope list (paste into Domain-wide Delegation):</div>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <textarea
+              readOnly
+              value={scopeString}
+              rows={3}
+              style={{ flex: 1, fontSize: 11, fontFamily: "monospace", padding: 6, borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text1)", resize: "vertical" }}
+            />
+            <CopyButton text={scopeString} />
+          </div>
+        </div>
+      )}
+
+      <div className="form-group">
+        <label htmlFor="conn-admin-email">Admin email <span style={{ color: "var(--text3)", fontWeight: 400 }}>(impersonation target)</span></label>
+        <input id="conn-admin-email" required type="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} placeholder="admin@customer-domain.com" />
+      </div>
+      <div className="form-group">
+        <label htmlFor="conn-customer-id">Workspace customer ID <span style={{ color: "var(--text3)", fontWeight: 400 }}>(optional — defaults to the admin's own domain)</span></label>
+        <input id="conn-customer-id" value={customerId} onChange={e => setCustomerId(e.target.value)} placeholder="C0xxxxxxx" />
+      </div>
+      <div className="form-group">
+        <label htmlFor="conn-client-email">Service account email</label>
+        <input id="conn-client-email" required value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="prism-connector@my-project.iam.gserviceaccount.com" />
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label htmlFor="conn-private-key">Private key <span style={{ color: "var(--text3)", fontWeight: 400 }}>(the JSON key's "private_key" field, including BEGIN/END lines)</span></label>
+        <textarea
+          id="conn-private-key" required value={privateKey} onChange={e => setPrivateKey(e.target.value)}
+          rows={4} placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+          style={{ width: "100%", fontSize: 11, fontFamily: "monospace", padding: 6, borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg1)", color: "var(--text1)", resize: "vertical" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function GcpWalkthrough({
+  token,
+  projectId, setProjectId,
+  clientEmail, setClientEmail,
+  privateKey, setPrivateKey,
+}) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/gcp/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        <li>In <a href="https://console.cloud.google.com/" target="_blank" rel="noreferrer">Google Cloud Console</a>, select the project to audit and enable the Compute Engine, Cloud SQL Admin, Cloud KMS, IAM, and Cloud Resource Manager APIs under APIs &amp; Services → Library.</li>
+        <li>Under <strong>IAM &amp; Admin → Service Accounts → Create Service Account</strong>, create a service account (no domain-wide delegation needed for this connector).</li>
+        <li>Under <strong>IAM &amp; Admin → IAM → Grant Access</strong>, grant the service account these roles:
+          <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+            {(setupInfo?.roles || []).map(({ role, note }) => (
+              <li key={role}><code>{role}</code>{note && <span style={{ color: "var(--text3)" }}> — {note}</span>}</li>
+            ))}
+          </ul>
+        </li>
+        <li>Under <strong>Keys → Add Key → Create new key → JSON</strong>, download the key — paste its <code>client_email</code> and <code>private_key</code> fields below.</li>
+        <li>Enter the project ID, then click Connect.</li>
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <div className="form-group">
+        <label htmlFor="conn-project-id">Project ID</label>
+        <input id="conn-project-id" required value={projectId} onChange={e => setProjectId(e.target.value)} placeholder="my-gcp-project" />
+      </div>
+      <div className="form-group">
+        <label htmlFor="conn-gcp-client-email">Service account email</label>
+        <input id="conn-gcp-client-email" required value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="prism-connector@my-gcp-project.iam.gserviceaccount.com" />
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label htmlFor="conn-gcp-private-key">Private key <span style={{ color: "var(--text3)", fontWeight: 400 }}>(the JSON key's "private_key" field, including BEGIN/END lines)</span></label>
+        <textarea
+          id="conn-gcp-private-key" required value={privateKey} onChange={e => setPrivateKey(e.target.value)}
+          rows={4} placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+          style={{ width: "100%", fontSize: 11, fontFamily: "monospace", padding: 6, borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg1)", color: "var(--text1)", resize: "vertical" }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
   const [name, setName] = useState("");
   const [region, setRegion] = useState("us-east-1");
@@ -475,6 +602,14 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
   const [dataCenter, setDataCenter] = useState("com");
   const [orgId, setOrgId] = useState("");
   const [refreshToken, setRefreshToken] = useState("");
+  // Google Workspace-specific state (domain-wide delegation service account)
+  const [adminEmail, setAdminEmail] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [privateKey, setPrivateKey] = useState("");
+  // GCP-specific state (reuses clientEmail/privateKey above — same JSON-key
+  // credential shape, just without domain-wide delegation)
+  const [projectId, setProjectId] = useState("");
   const [authType, setAuthType] = useState(provider.authType);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -517,12 +652,18 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
             ? { tenantId, purviewAccountName }
             : provider.key === "azure"
               ? { tenantId, subscriptionId }
-              : { tenantId }
+              : provider.key === "google_workspace"
+                ? { adminEmail, customerId: customerId || undefined }
+                : provider.key === "gcp"
+                  ? { projectId }
+                  : { tenantId }
         : authType === "iam_role" ? { region, roleArn } : { region };
       const secret = authType === "oauth2"
         ? provider.key === "zoho"
           ? { clientId, clientSecret, refreshToken }
-          : { clientId, clientSecret }
+          : provider.key === "google_workspace" || provider.key === "gcp"
+            ? { clientEmail, privateKey }
+            : { clientId, clientSecret }
         : authType === "iam_role" ? { externalId } : { accessKeyId, secretAccessKey, sessionToken: sessionToken || undefined };
 
       let connection = createdConnection;
@@ -587,7 +728,7 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                 </div>
               ) : null}
 
-              {provider.key !== "azure" && provider.key !== "github" && provider.key !== "purview" && provider.key !== "zoho" &&
+              {provider.key !== "azure" && provider.key !== "github" && provider.key !== "purview" && provider.key !== "zoho" && provider.key !== "google_workspace" && provider.key !== "gcp" &&
                !["entra_id", "microsoft_365", "microsoft_teams", "microsoft_defender"].includes(provider.key) && (
                 <div className="form-group">
                   <label htmlFor="conn-region">Region</label>
@@ -624,6 +765,21 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                       token={token}
                       tenantId={tenantId} setTenantId={setTenantId}
                     />
+                  ) : provider.key === "google_workspace" ? (
+                    <GoogleWorkspaceWalkthrough
+                      token={token}
+                      adminEmail={adminEmail} setAdminEmail={setAdminEmail}
+                      customerId={customerId} setCustomerId={setCustomerId}
+                      clientEmail={clientEmail} setClientEmail={setClientEmail}
+                      privateKey={privateKey} setPrivateKey={setPrivateKey}
+                    />
+                  ) : provider.key === "gcp" ? (
+                    <GcpWalkthrough
+                      token={token}
+                      projectId={projectId} setProjectId={setProjectId}
+                      clientEmail={clientEmail} setClientEmail={setClientEmail}
+                      privateKey={privateKey} setPrivateKey={setPrivateKey}
+                    />
                   ) : (
                     <AzureServicePrincipalWalkthrough
                       token={token}
@@ -631,11 +787,13 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                       subscriptionId={subscriptionId} setSubscriptionId={setSubscriptionId}
                     />
                   )}
-                  <CredentialFields
-                    authType="oauth2"
-                    clientId={clientId} setClientId={setClientId}
-                    clientSecret={clientSecret} setClientSecret={setClientSecret}
-                  />
+                  {provider.key !== "google_workspace" && provider.key !== "gcp" && (
+                    <CredentialFields
+                      authType="oauth2"
+                      clientId={clientId} setClientId={setClientId}
+                      clientSecret={clientSecret} setClientSecret={setClientSecret}
+                    />
+                  )}
                   {provider.key === "zoho" && (
                     <div className="form-group">
                       <label htmlFor="conn-refresh-token">Refresh Token <span style={{ color: "var(--text3)", fontWeight: 400 }}>(from step 4 above)</span></label>

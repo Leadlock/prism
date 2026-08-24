@@ -207,6 +207,56 @@ describe("connector registry", () => {
     expect(keys).toContain("microsoft_teams.policies.meeting_anonymous_join_restricted");
   });
 
+  test("resolves the google_workspace connector", () => {
+    const connector = getConnector("google_workspace");
+    expect(connector.key).toBe("google_workspace");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("google_workspace connector exposes exactly the 10 tests", () => {
+    const tests = listConnectorTests("google_workspace");
+    expect(tests).toHaveLength(10);
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "google_workspace.admin.super_admin_role_reviewed",
+      "google_workspace.audit.log_retention_configured",
+      "google_workspace.calendar.external_sharing_restricted",
+      "google_workspace.devices.chrome_policy_compliant",
+      "google_workspace.drive.external_sharing_restricted",
+      "google_workspace.gmail.auto_forwarding_restricted",
+      "google_workspace.groups.privileged_group_membership_reviewed",
+      "google_workspace.oauth.third_party_app_risk_reviewed",
+      "google_workspace.security.two_step_verification_enforced",
+      "google_workspace.users.inactive_accounts_reviewed",
+    ]);
+  });
+
+  test("resolves the gcp connector", () => {
+    const connector = getConnector("gcp");
+    expect(connector.key).toBe("gcp");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("gcp connector exposes exactly the 10 tests", () => {
+    const tests = listConnectorTests("gcp");
+    expect(tests).toHaveLength(10);
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "gcp.compute.instances_no_public_ip",
+      "gcp.compute.shielded_vm_enabled",
+      "gcp.iam.owner_role_assignments_limited",
+      "gcp.iam.service_account_keys_rotated",
+      "gcp.kms.key_rotation_enabled",
+      "gcp.logging.data_access_audit_logs_enabled",
+      "gcp.network.firewall_no_open_management_ports",
+      "gcp.sql.public_access_disabled",
+      "gcp.sql.ssl_enforced",
+      "gcp.storage.buckets_not_publicly_accessible",
+    ]);
+  });
+
   test("resolves the microsoft_defender connector", () => {
     const connector = getConnector("microsoft_defender");
     expect(connector.key).toBe("microsoft_defender");
@@ -238,7 +288,7 @@ describe("connector registry", () => {
   });
 
   test("throws for an unknown integration", () => {
-    expect(() => getConnector("gcp")).toThrow("Unknown integration: gcp");
+    expect(() => getConnector("digitalocean")).toThrow("Unknown integration: digitalocean");
   });
 
   // Guardrail: purview_compliance is a catalog-only placeholder (no connector

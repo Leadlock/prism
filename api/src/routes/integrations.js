@@ -342,6 +342,46 @@ router.get("/zoho/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]),
   res.json({ dataCenters: ZOHO_DATA_CENTERS, products: ZOHO_PRODUCTS });
 }));
 
+// Kept in lockstep with connectors/google_workspace/credentials.js's SCOPES
+// array (not imported from it, matching this file's existing convention of
+// duplicating connector permission lists in code — see AZURE_READ_ONLY_ROLE_DEFINITION
+// above) — any scope added to one must be added to the other, or domain-wide
+// delegation authorization in the customer's Admin Console won't match what
+// the connector actually requests at token-mint time.
+const GOOGLE_WORKSPACE_SCOPES = [
+  "https://www.googleapis.com/auth/admin.directory.customer.readonly",
+  "https://www.googleapis.com/auth/admin.directory.user.readonly",
+  "https://www.googleapis.com/auth/admin.directory.user.security",
+  "https://www.googleapis.com/auth/admin.directory.group.readonly",
+  "https://www.googleapis.com/auth/admin.directory.group.member.readonly",
+  "https://www.googleapis.com/auth/admin.directory.domain.readonly",
+  "https://www.googleapis.com/auth/admin.directory.device.chromeos.readonly",
+  "https://www.googleapis.com/auth/admin.directory.device.mobile.readonly",
+  "https://www.googleapis.com/auth/admin.reports.audit.readonly",
+  "https://www.googleapis.com/auth/chrome.management.policy.readonly",
+  "https://www.googleapis.com/auth/cloud-identity.policies.readonly",
+];
+
+router.get("/google_workspace/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({ scopes: GOOGLE_WORKSPACE_SCOPES });
+}));
+
+// GCP's service account authenticates directly (no domain-wide delegation/
+// impersonation, unlike google_workspace) and is authorized via ordinary
+// Cloud IAM role bindings on the project — Viewer covers most reads (incl.
+// resourcemanager.projects.getIamPolicy), but IAM-specific reads like
+// iam.serviceAccountKeys.list are deliberately excluded from Viewer, hence
+// the second role. Kept in code next to the route, same convention as
+// AZURE_READ_ONLY_ROLE_DEFINITION above.
+const GCP_RECOMMENDED_ROLES = [
+  { role: "roles/viewer", note: "Broad read access across Compute Engine, Cloud SQL, Cloud Storage, Cloud KMS, and Resource Manager." },
+  { role: "roles/iam.securityReviewer", note: "Read access to service account keys and IAM policies — not included in the basic Viewer role." },
+];
+
+router.get("/gcp/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({ roles: GCP_RECOMMENDED_ROLES });
+}));
+
 router.get("/:id/github/setup-info", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   const connectionId = parseInt(req.params.id);
   const result = await query(

@@ -1,7 +1,22 @@
-# Google Workspace Connector (proposed)
+# Google Workspace Connector
 
-Status: design spec, not yet implemented. Follows the existing connector pattern
-(see `api/src/connectors/azure/` and `api/src/connectors/github/`, both OAuth2-based).
+Status: implemented (`api/src/connectors/google_workspace/`). Follows the existing connector
+pattern (see `api/src/connectors/azure/` and `api/src/connectors/github/`, both OAuth2-based).
+
+**Correction vs. the original design below**: the Drive/Gmail/Calendar sharing-default checks
+read via the **Cloud Identity Policy API** (`cloudidentity.googleapis.com`, scope
+`cloud-identity.policies.readonly`) — a distinct API/host from the **Chrome Policy API**
+(`chromepolicy.googleapis.com`) originally proposed for all of them. Google splits these across
+two separate APIs even though both are configured from adjacent Admin Console "Additional Google
+services" policy screens; verified against `docs.cloud.google.com/identity/docs/concepts/
+supported-policy-api-settings`, which lists the exact `drive_and_docs.*`, `gmail.auto_forwarding`,
+and `calendar.primary_calendar_max_allowed_external_sharing` setting types used by
+`tests/drive.js`, `tests/gmail.js`, `tests/calendar.js`. The Chrome Policy API (and its
+`chrome.management.policy.readonly` scope) is used only by `tests/devices.js`, resolving the
+documented `chrome.users.SessionLengthV2` schema. Also added: `admin.directory.customer.readonly`,
+used once at credential-resolution time (`customers.get`) to resolve the `"my_customer"` alias to
+a real `customers/Cxxxx` ID up front, since the Cloud Identity Policy API's `customer==` filter
+and the Chrome Policy API's `customer` path segment aren't documented as accepting the alias.
 
 ## 1. Overview
 
@@ -163,6 +178,7 @@ full-directory fetch.
 | `google_workspace.security.two_step_verification_enforced` | 2-Step Verification is enforced for all users | critical | A.9.4.2 | Checks the domain-wide 2-Step Verification enforcement policy is turned on (`isEnforcedIn2Sv`/enrollment status on the Directory API user resource) so all users, not just enrolled volunteers, must use 2SV. | Enable 2-Step Verification enforcement under Admin Console > Security > Authentication > 2-Step Verification, and set an enforcement date for all organizational units. |
 | `google_workspace.admin.super_admin_role_reviewed` | Super admin role is assigned to a minimal, reviewed set of users | high | A.9.2.3 | Checks the count and identities of users holding the Super Admin (or other highly-privileged delegated admin) role, flagging accounts beyond an expected small set. | Remove Super Admin from accounts that don't require it day-to-day; use delegated admin roles scoped to the minimum privileges needed instead, under Admin Console > Account > Admin roles. |
 | `google_workspace.oauth.third_party_app_risk_reviewed` | Third-party OAuth app authorizations are reviewed and restricted | high | A.9.4.1 | Checks installed/authorized third-party OAuth applications (via `users.tokens.list` and Reports API `token` events) against an allowed-scopes or allowed-app baseline, flagging apps granted high-risk scopes (e.g. full Drive/Gmail access) that aren't allowlisted. | Review and revoke risky app authorizations under Admin Console > Security > API Controls > App access control, and restrict future installs to allowlisted/internally-reviewed apps. |
+| `google_workspace.groups.privileged_group_membership_reviewed` | Privileged groups have at least one owner | medium | A.9.2.2 | Checks groups matching a privileged-naming heuristic (admin, security, sudo, root, it-ops, helpdesk) have at least one OWNER-role member, flagging orphaned groups with no accountable owner. | Assign an OWNER-role member to any privileged group that lacks one, under Admin Console > Groups > select group > Members. |
 | `google_workspace.drive.external_sharing_restricted` | Drive/Docs external sharing defaults are restricted | critical | A.8.2.3 | Checks the domain's default Drive sharing setting is not "Public on the web" or unrestricted "Anyone with the link", and that external sharing (if enabled) is limited to allowlisted domains. | Under Admin Console > Apps > Google Workspace > Drive and Docs > Sharing settings, restrict external sharing to specific trusted domains or disable link-sharing outside the organization by default. |
 | `google_workspace.gmail.auto_forwarding_restricted` | Automatic email forwarding to external addresses is restricted | high | A.13.2.1 | Checks the Gmail auto-forwarding domain policy disallows forwarding to arbitrary external addresses (a common data-exfiltration and phishing-persistence vector), cross-referenced against Reports API `email_settings_changed`/forwarding events. | Under Admin Console > Apps > Google Workspace > Gmail > End User Access, disable "Automatic forwarding" or restrict it to internal/allowlisted domains. |
 | `google_workspace.calendar.external_sharing_restricted` | Calendar external sharing default is restricted | medium | A.13.2.1 | Checks the domain default Calendar sharing setting does not expose free/busy plus event details to external/unauthenticated users by default. | Under Admin Console > Apps > Google Workspace > Calendar > Sharing settings, set the external sharing default to "Only free/busy information" or more restrictive. |
@@ -183,6 +199,7 @@ INSERT INTO automated_tests (integration_key, test_key, title, description, seve
   ('google_workspace', 'google_workspace.security.two_step_verification_enforced', '2-Step Verification is enforced for all users', 'Checks the domain-wide 2-Step Verification enforcement policy is turned on so all users, not just enrolled volunteers, must use 2SV.', 'critical', 'Enable 2-Step Verification enforcement under Admin Console > Security > Authentication > 2-Step Verification, and set an enforcement date for all organizational units.'),
   ('google_workspace', 'google_workspace.admin.super_admin_role_reviewed', 'Super admin role is assigned to a minimal, reviewed set of users', 'Checks the count and identities of users holding the Super Admin (or other highly-privileged delegated admin) role, flagging accounts beyond an expected small set.', 'high', 'Remove Super Admin from accounts that don''t require it day-to-day; use delegated admin roles scoped to the minimum privileges needed instead, under Admin Console > Account > Admin roles.'),
   ('google_workspace', 'google_workspace.oauth.third_party_app_risk_reviewed', 'Third-party OAuth app authorizations are reviewed and restricted', 'Checks installed/authorized third-party OAuth applications against an allowed-scopes or allowed-app baseline, flagging apps granted high-risk scopes that aren''t allowlisted.', 'high', 'Review and revoke risky app authorizations under Admin Console > Security > API Controls > App access control, and restrict future installs to allowlisted/internally-reviewed apps.'),
+  ('google_workspace', 'google_workspace.groups.privileged_group_membership_reviewed', 'Privileged groups have at least one owner', 'Checks groups matching a privileged-naming heuristic have at least one OWNER-role member, flagging orphaned groups with no accountable owner.', 'medium', 'Assign an OWNER-role member to any privileged group that lacks one, under Admin Console > Groups > select group > Members.'),
   ('google_workspace', 'google_workspace.drive.external_sharing_restricted', 'Drive/Docs external sharing defaults are restricted', 'Checks the domain default Drive sharing setting is not "Public on the web" or unrestricted "Anyone with the link", and that external sharing is limited to allowlisted domains.', 'critical', 'Under Admin Console > Apps > Google Workspace > Drive and Docs > Sharing settings, restrict external sharing to specific trusted domains or disable link-sharing outside the organization by default.'),
   ('google_workspace', 'google_workspace.gmail.auto_forwarding_restricted', 'Automatic email forwarding to external addresses is restricted', 'Checks the Gmail auto-forwarding domain policy disallows forwarding to arbitrary external addresses.', 'high', 'Under Admin Console > Apps > Google Workspace > Gmail > End User Access, disable "Automatic forwarding" or restrict it to internal/allowlisted domains.'),
   ('google_workspace', 'google_workspace.calendar.external_sharing_restricted', 'Calendar external sharing default is restricted', 'Checks the domain default Calendar sharing setting does not expose free/busy plus event details to external/unauthenticated users by default.', 'medium', 'Under Admin Console > Apps > Google Workspace > Calendar > Sharing settings, set the external sharing default to "Only free/busy information" or more restrictive.'),
@@ -195,6 +212,7 @@ INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
   ('google_workspace.security.two_step_verification_enforced', 'A.9.4.2'),
   ('google_workspace.admin.super_admin_role_reviewed', 'A.9.2.3'),
   ('google_workspace.oauth.third_party_app_risk_reviewed', 'A.9.4.1'),
+  ('google_workspace.groups.privileged_group_membership_reviewed', 'A.9.2.2'),
   ('google_workspace.drive.external_sharing_restricted', 'A.8.2.3'),
   ('google_workspace.gmail.auto_forwarding_restricted', 'A.13.2.1'),
   ('google_workspace.calendar.external_sharing_restricted', 'A.13.2.1'),
@@ -216,6 +234,7 @@ api/src/connectors/google_workspace/
     security.js           # two_step_verification_enforced
     admin.js               # super_admin_role_reviewed
     oauth.js                # third_party_app_risk_reviewed
+    groups.js               # privileged_group_membership_reviewed
     drive.js                # external_sharing_restricted
     gmail.js                # auto_forwarding_restricted
     calendar.js             # external_sharing_restricted
