@@ -42,7 +42,7 @@ export const DEPT_QUESTIONS = {
     { id: "it-25", section: "Applications & Cloud",       text: "Do you scan applications for vulnerabilities?" },
     // 6. Third parties
     { id: "it-26", section: "Third Parties",              text: "Do you maintain a list of third parties/vendors that process personal data?" },
-    { id: "it-26", section: "Third Parties",              text: "Are vendors assessed for security/privacy risks?" },
+    { id: "it-26b", section: "Third Parties",             text: "Are vendors assessed for security/privacy risks?" },
     { id: "it-27", section: "Third Parties",              text: "Do you review third-party access to personal data?" },
     // 7. Breach & incident response
     { id: "it-28", section: "Breach & Incident Response", text: "Do you have a documented personal-data breach/incident response process?" },
@@ -56,7 +56,11 @@ export const DEPT_QUESTIONS = {
     { id: "it-35", section: "Stress Test",                text: "If an auditor asks you to prove that your security controls are working, can you produce the evidence?" },
   ],
   HR: [
-    { id: "hr-1", text: "Is third-party HRMS or Payroll software used?" }, //if yes, then ask q1: Is the third party provider compliant with applicable data protection regulations? (e.g., DPDPA, GDPR), q2: Is there a data processing agreement (SLA) in place with the third party provider? q3: Is candidate consent obtained before sharing their personal data with the third party provider? 
+    { id: "hr-1", text: "Is third-party HRMS or Payroll software used?", followUps: { trigger: "YES", questions: [
+      { id: "hr-1a", text: "Is the third-party provider compliant with applicable data protection regulations? (e.g., DPDPA, GDPR)" },
+      { id: "hr-1b", text: "Is there a data processing agreement (SLA) in place with the third-party provider?" },
+      { id: "hr-1c", text: "Is candidate consent obtained before sharing their personal data with the third-party provider?" },
+    ] } },
     { id: "hr-2", text: "Do employment contracts include data protection obligations for employees?" },
     { id: "hr-3", text: "Is there a documented retention schedule for employee records?" },
     { id: "hr-4", text: "Are employees trained on data protection and privacy at least annually?" },
@@ -87,7 +91,11 @@ export const DEPT_QUESTIONS = {
     { id: "fi-4", text: "Is customer financial data encrypted when shared with third parties only under formal data-sharing agreements?" },
     { id: "fi-5", text: "Are financial data retention and disposal policies documented and enforced?" },
     { id: "fi-6", text: "Do you conduct periodic reviews to ensure only necessary financial data is retained?" },
-    { id: "fi-7", text: "Are you storing any financial records or documents in a physical format?" }, //if yes, then ask q1: Are physical records stored in a secure location with access controls? q2: Is there a documented process for the secure disposal of physical financial records? q3: Are physical records periodically reviewed to ensure they are still required and compliant with retention policies?
+    { id: "fi-7", text: "Are you storing any financial records or documents in a physical format?", followUps: { trigger: "YES", questions: [
+      { id: "fi-7a", text: "Are physical records stored in a secure location with access controls?" },
+      { id: "fi-7b", text: "Is there a documented process for the secure disposal of physical financial records?" },
+      { id: "fi-7c", text: "Are physical records periodically reviewed to ensure they are still required and compliant with retention policies?" },
+    ] } },
     { id: "fi-8", text: "Is collection (Debt Recovery) outsourced to third parties?" },
   ],
   Legal: [
@@ -108,7 +116,10 @@ export const DEPT_QUESTIONS = {
     { id: "op-6", text: "Do you conduct data protection impact assessments (DPIAs) for high-risk processing activities?" },
   ],
   Marketing: [
-    { id: "mk-1", text: "Is marketing data collected from third party sources?" }, //if yes, then ask q1: is third party dpdpa compliant? q2: is there a data processing agreement (SLA) in place with the third party provider?
+    { id: "mk-1", text: "Is marketing data collected from third party sources?", followUps: { trigger: "YES", questions: [
+      { id: "mk-1a", text: "Is the third party compliant with applicable data protection regulations (e.g., DPDPA)?" },
+      { id: "mk-1b", text: "Is there a data processing agreement (SLA) in place with the third-party provider?" },
+    ] } },
     { id: "mk-2", text: "Is explicit, informed consent obtained before sending marketing communications?" },
     { id: "mk-3", text: "Are official channels used for marketing communications? (Company Emails, Phones, etc.)" },
     { id: "mk-4", text: "Do marketing campaigns comply with applicable anti-spam and e-privacy regulations?" },
@@ -117,6 +128,22 @@ export const DEPT_QUESTIONS = {
     { id: "mk-7", text: "Do you have a process to remove customer data from marketing systems upon request (Unsubscribe from emails, etc.)?" },
   ],
 };
+
+// Inserts a question's follow-up sub-questions right after it whenever the
+// triggering answer has been given, so scoring/gaps/rendering all agree on
+// which questions are actually "in play" for a given answer set.
+export function expandQuestions(baseQuestions, answers) {
+  const result = [];
+  for (const q of baseQuestions) {
+    result.push(q);
+    if (q.followUps && answers?.[q.id] === q.followUps.trigger) {
+      for (const fq of q.followUps.questions) {
+        result.push({ ...fq, section: q.section, parentId: q.id });
+      }
+    }
+  }
+  return result;
+}
 
 export const ANSWER_OPTIONS = [
   { value: "YES",         label: "Yes",         score: 1,    color: "#22c55e", bg: "rgba(34,197,94,0.12)" },

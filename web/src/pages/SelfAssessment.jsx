@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import Logo from "../components/Logo";
 import { apiFetch } from "../api/client.js";
-import { DEPT_META, DEPT_QUESTIONS, ANSWER_OPTIONS, DEFAULT_DEPTS } from "../utils/deptSelfAssessQuestions.js";
+import { DEPT_META, DEPT_QUESTIONS, ANSWER_OPTIONS, DEFAULT_DEPTS, expandQuestions } from "../utils/deptSelfAssessQuestions.js";
 
 const STORAGE_KEY = (userId) => `prism_selfassess_${userId || "guest"}`;
 
@@ -17,10 +17,43 @@ function saveToDisk(userId, data) {
   try { localStorage.setItem(STORAGE_KEY(userId), JSON.stringify(data)); } catch {}
 }
 
+// Custom (non-default) departments have no entry in DEPT_QUESTIONS, so both
+// the question screen and answer-scoping below fall back to this same
+// generic 6-question set — kept in one place so their ids never drift apart.
+function fallbackDeptQuestions(dept) {
+  return [
+    { id: `${dept}-1`, text: `Do you share data / tasks with other departments??` },
+    { id: `${dept}-2`, text: `Does your department directly contact clients / vendors?` },
+    { id: `${dept}-3`, text: `Does ${dept} department enforce Role Based Access Control?` },
+    { id: `${dept}-4`, text: `Does ${dept} process personal data (name, phone number, card details)?` },
+    { id: `${dept}-5`, text: `Does ${dept} use third party software (ERP, SaaS, CRM) ?` },
+    { id: `${dept}-6`, text: `Does ${dept} handle employee / client / vendor data?` },
+  ];
+}
+
+function deptQuestionBase(dept) {
+  return DEPT_QUESTIONS[dept] || fallbackDeptQuestions(dept);
+}
+
+// The session keeps one flat `answers` map across every department the user
+// has touched. Before submitting one department's answers to the backend,
+// scope it down to just that department's own question ids (base + any
+// triggered follow-ups) — otherwise every department's stored submission
+// ends up containing every other department's answers too, which corrupts
+// per-department gap/score counts.
+function getDeptAnswers(dept, answers) {
+  const ids = new Set(expandQuestions(deptQuestionBase(dept), answers).map(q => q.id));
+  const scoped = {};
+  for (const id of ids) {
+    if (answers[id] !== undefined) scoped[id] = answers[id];
+  }
+  return scoped;
+}
+
 function calcScore(answers, depts) {
   const byDept = {};
   for (const dept of depts) {
-    const qs = DEPT_QUESTIONS[dept] || [];
+    const qs = expandQuestions(deptQuestionBase(dept), answers);
     let total = 0, scored = 0;
     for (const q of qs) {
       const a = answers[q.id];
@@ -120,14 +153,36 @@ function DeptSelectStep({ selected, onToggle, onCustomAdd, customDept, setCustom
         </button>
       </div>
       {selected.length > 0 && (
-        <div style={{ fontSize: 13, color: "var(--text2)", marginBottom: 20 }}>
-          Selected: {selected.join(", ")}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+          {selected.map(dept => {
+            const isCustom = !DEFAULT_DEPTS.includes(dept);
+            const meta = DEPT_META[dept];
+            return (
+              <div
+                key={dept}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  background: "var(--bg3)", border: "1px solid var(--border2)",
+                  borderRadius: 20, padding: "5px 10px 5px 12px", fontSize: 12, color: "var(--text)",
+                }}
+              >
+                <span>{meta ? `${meta.icon} ${meta.label}` : dept}</span>
+                {isCustom && (
+                  <button
+                    onClick={() => onToggle(dept)}
+                    aria-label={`Remove ${dept}`}
+                    style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: 0 }}
+                  >×</button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
       <div style={{ display: "flex", gap: 12 }}>
         <button className="btn btn-ghost" onClick={onBack}>← Back</button>
         <button className="btn btn-primary" disabled={selected.length === 0} onClick={onNext}>
-          Start Questions →
+          Continue →
         </button>
       </div>
     </div>
@@ -243,7 +298,47 @@ function CollaboratorInput({ dept, collaborators, onChange, orgDomain, token, us
   );
 }
 
-function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, deptIndex, totalDepts, collaborators, onCollaboratorsChange, orgDomain, token, userRole }) {
+function CollabsStep({ depts, collaborators, onChange, orgDomain, token, userRole, onNext, onBack }) {
+  return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Add Collaborators</h2>
+        <p style={{ fontSize: 14, color: "var(--text2)" }}>
+          Optionally invite colleagues to help answer questions for each department before you begin. You can skip this and continue on your own.
+        </p>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 28 }}>
+        {depts.map(dept => {
+          const meta = DEPT_META[dept] || { label: dept, icon: "🏢" };
+          return (
+            <div key={dept}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 18 }}>{meta.icon}</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{meta.label}</span>
+              </div>
+              <CollaboratorInput
+                dept={dept}
+                collaborators={collaborators}
+                onChange={onChange}
+                orgDomain={orgDomain}
+                token={token}
+                userRole={userRole}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 12 }}>
+        <button className="btn btn-ghost" onClick={onBack}>← Back</button>
+        <button className="btn btn-primary" onClick={onNext}>
+          Start Questions →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, deptIndex, totalDepts }) {
   const meta = DEPT_META[dept] || { label: dept, icon: "🏢" };
   const answered = questions.filter(q => answers[q.id]).length;
   const progress = Math.round((answered / questions.length) * 100);
@@ -263,36 +358,35 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
         <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent)", borderRadius: 2, transition: "width 0.3s" }} />
       </div>
 
-      <CollaboratorInput
-        dept={dept}
-        collaborators={collaborators}
-        onChange={onCollaboratorsChange}
-        orgDomain={orgDomain}
-        token={token}
-        userRole={userRole}
-      />
-
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
-        {questions.map((q, i) => {
-          const selected = answers[q.id];
-          const showSection = q.section && (i === 0 || questions[i - 1]?.section !== q.section);
-          return (
-            <div key={q.id}>
-              {showSection && (
-                <div style={{
-                  fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
-                  color: "var(--accent)", padding: "16px 0 6px", borderBottom: "1px solid var(--border2)",
-                  marginBottom: 8,
-                }}>
-                  {q.section}
-                </div>
-              )}
-              <div style={{ background: "var(--bg2)", borderRadius: 10, padding: "14px 16px", border: "1px solid var(--border2)" }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", marginBottom: 10, lineHeight: 1.5 }}>
-                  <span style={{ color: "var(--text3)", marginRight: 8, fontWeight: 700 }}>{i + 1}.</span>
-                  {q.text}
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {(() => {
+          let mainCount = 0;
+          return questions.map((q, i) => {
+            const selected = answers[q.id];
+            const isFollowUp = !!q.parentId;
+            if (!isFollowUp) mainCount++;
+            const showSection = !isFollowUp && q.section && (i === 0 || questions[i - 1]?.section !== q.section);
+            return (
+              <div key={q.id} style={isFollowUp ? { marginLeft: 20, borderLeft: "2px solid var(--border2)", paddingLeft: 12 } : undefined}>
+                {showSection && (
+                  <div style={{
+                    fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
+                    color: "var(--accent)", padding: "16px 0 6px", borderBottom: "1px solid var(--border2)",
+                    marginBottom: 8,
+                  }}>
+                    {q.section}
+                  </div>
+                )}
+                <div style={{ background: "var(--bg2)", borderRadius: 10, padding: "14px 16px", border: "1px solid var(--border2)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", marginBottom: 10, lineHeight: 1.5 }}>
+                    {isFollowUp ? (
+                      <span style={{ color: "var(--accent)", marginRight: 8, fontWeight: 700 }}>↳</span>
+                    ) : (
+                      <span style={{ color: "var(--text3)", marginRight: 8, fontWeight: 700 }}>{mainCount}.</span>
+                    )}
+                    {q.text}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {ANSWER_OPTIONS.map(opt => (
                     <button
                       key={opt.value}
@@ -312,7 +406,8 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
               </div>
             </div>
           );
-        })}
+          });
+        })()}
       </div>
 
       <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
@@ -361,7 +456,7 @@ function ResultsStep({ selectedDepts, answers, onRetake, onLogout, onViewReport,
           const meta = DEPT_META[dept] || { label: dept, icon: "🏢" };
           const pct = byDept[dept];
           const { label, color } = scoreLabel(pct);
-          const qs = DEPT_QUESTIONS[dept] || [];
+          const qs = expandQuestions(deptQuestionBase(dept), answers);
           const answeredCount = qs.filter(q => answers[q.id] && answers[q.id] !== "NA").length;
           const noCount = qs.filter(q => answers[q.id] === "NO").length;
           const partialCount = qs.filter(q => answers[q.id] === "PARTIAL").length;
@@ -414,11 +509,15 @@ function ResultsStep({ selectedDepts, answers, onRetake, onLogout, onViewReport,
 
 function ReportStep({ token, onBack }) {
   const [submissions, setSubmissions] = useState(null);
+  const [extendedReport, setExtendedReport] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     apiFetch("/api/self-assessment", { token })
-      .then(data => setSubmissions(data || []))
+      .then(data => {
+        setSubmissions(data?.submissions || []);
+        setExtendedReport(data?.report || null);
+      })
       .catch(err => setError(err.message || "Failed to load report"));
   }, [token]);
 
@@ -452,7 +551,14 @@ function ReportStep({ token, onBack }) {
 
   // For each dept, compute per-submission score and aggregate
   const deptSummaries = Object.entries(byDept).map(([dept, subs]) => {
-    const qs = DEPT_QUESTIONS[dept] || [];
+    // Union of each submitter's expanded question set, so follow-ups
+    // triggered by any one submitter are represented in gaps/partials.
+    const base = deptQuestionBase(dept);
+    const qsById = new Map();
+    for (const s of subs) {
+      for (const q of expandQuestions(base, s.answers)) qsById.set(q.id, q);
+    }
+    const qs = Array.from(qsById.values());
     const meta = DEPT_META[dept] || { label: dept, icon: "🏢" };
 
     const scoredSubs = subs.map(s => {
@@ -487,6 +593,7 @@ function ReportStep({ token, onBack }) {
       <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Team Self-Assessment Report</h2>
       <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 24 }}>
         {submissions.length} submission{submissions.length !== 1 ? "s" : ""} across {Object.keys(byDept).length} department{Object.keys(byDept).length !== 1 ? "s" : ""}
+        {extendedReport?.requestedByEmail && <> · Requested by {extendedReport.requestedByEmail}</>}
       </p>
 
       {/* Overall score */}
@@ -577,6 +684,77 @@ function ReportStep({ token, onBack }) {
           );
         })}
       </div>
+
+      {extendedReport?.riskRewardRows?.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Risk vs. Reward — by Department</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {extendedReport.riskRewardRows.map(r => {
+              const meta = DEPT_META[r.dept] || { label: r.dept, icon: "🏢" };
+              return (
+                <div key={r.dept} style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 10, padding: "14px 16px" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span>{meta.icon}</span>{meta.label || r.dept}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ borderLeft: `3px solid ${r.hasGaps ? "#ef4444" : "var(--border2)"}`, paddingLeft: 10 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>⚠ Risk — current exposure</div>
+                      {r.riskReasons?.length > 0 ? (
+                        <>
+                          <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.5, marginBottom: 6 }}>
+                            {r.gapsSummary} in {r.dept} fall within scope of:
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {r.riskReasons.map((rr, i) => (
+                              <div key={i} style={{ background: "var(--bg3)", borderRadius: 6, padding: "6px 8px" }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)" }}>{rr.framework} — {rr.provision}</div>
+                                <div style={{ fontSize: 11, color: "var(--text3)", margin: "2px 0" }}>{rr.why}</div>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: "#ef4444" }}>Penalty: {rr.penalty}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>{r.riskText}</div>
+                      )}
+                    </div>
+                    <div style={{ borderLeft: "3px solid #22c55e", paddingLeft: 10 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>✅ Reward — if gaps close</div>
+                      <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>{r.rewardText}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {extendedReport?.complianceReference?.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Compliance & Regulatory Reference</h3>
+          <p style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12 }}>
+            Shown only where a related department has at least one "No" or "Partial" answer. Penalty figures are commonly-cited public maxima, for awareness only — not legal advice.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {extendedReport.complianceReference.map((row, i) => (
+              <div key={i} style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 10, padding: "14px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 4 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{row.framework}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#ef4444", textAlign: "right", whiteSpace: "nowrap" }}>{row.penalty}</div>
+                </div>
+                <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600, marginBottom: 6 }}>{row.provision}</div>
+                <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.5, marginBottom: row.triggeredBy?.length ? 8 : 0 }}>{row.summary}</div>
+                {row.triggeredBy?.length > 0 && (
+                  <div style={{ fontSize: 11, color: "var(--accent)", lineHeight: 1.5, paddingTop: 8, borderTop: "1px solid var(--border2)" }}>
+                    <strong>Why this applies to you:</strong> {row.triggeredBy.join("; ")} — self-assessed with open gaps in this exact area.
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -615,7 +793,7 @@ export default function SelfAssessment({ user, token, onLogout }) {
           apiFetch("/api/self-assessment", {
             token,
             method: "POST",
-            body: JSON.stringify({ department: dept, answers }),
+            body: JSON.stringify({ department: dept, answers: getDeptAnswers(dept, answers) }),
           }).catch(() => {})
         )
       );
@@ -641,8 +819,8 @@ export default function SelfAssessment({ user, token, onLogout }) {
   const goToPreviousStep = useCallback(() => {
     if (step === "questions") {
       if (deptIndex === 0) {
-        setStep("depts");
-        persist({ step: "depts" });
+        setStep("collabs");
+        persist({ step: "collabs" });
       } else {
         const prev = deptIndex - 1;
         setDeptIndex(prev);
@@ -651,6 +829,9 @@ export default function SelfAssessment({ user, token, onLogout }) {
     } else if (step === "results") {
       setStep("questions");
       persist({ step: "questions" });
+    } else if (step === "collabs") {
+      setStep("depts");
+      persist({ step: "depts" });
     } else if (step === "depts") {
       setStep("welcome");
       persist({ step: "welcome" });
@@ -708,16 +889,8 @@ export default function SelfAssessment({ user, token, onLogout }) {
   };
 
   const currentDept = selectedDepts[deptIndex];
-  const currentQuestions = currentDept
-    ? (DEPT_QUESTIONS[currentDept] || [
-      { id: `${currentDept}-1`, text: `Do you share data / tasks with other departments??` }, 
-      { id: `${currentDept}-2`, text: `Does your department directly contact clients / vendors?` },
-      { id: `${currentDept}-3`, text: `Does ${currentDept} department enforce Role Based Access Control?` },
-      {id: `${currentDept}-4`, text: `Does ${currentDept} process personal data (name, phone number, card details)?` },
-      {id: `${currentDept}-5`, text: `Does ${currentDept} use third party software (ERP, SaaS, CRM) ?` },
-      {id: `${currentDept}-6`, text: `Does ${currentDept} handle employee / client / vendor data?` },
-      ])
-    : [];
+  const currentQuestionsBase = currentDept ? deptQuestionBase(currentDept) : [];
+  const currentQuestions = expandQuestions(currentQuestionsBase, answers);
 
   const goToStep = (s, extra = {}) => {
     setStep(s);
@@ -769,8 +942,8 @@ export default function SelfAssessment({ user, token, onLogout }) {
       {step !== "welcome" && step !== "report" && (
         <div style={{ padding: "0 28px" }}>
           <div style={{ display: "flex", gap: 4, padding: "12px 0", maxWidth: 680, margin: "0 auto" }}>
-            {["depts", ...selectedDepts, "results"].map((s, i) => {
-              const stepOrder = ["welcome", "depts", ...selectedDepts, "results"];
+            {["depts", "collabs", ...selectedDepts, "results"].map((s, i) => {
+              const stepOrder = ["welcome", "depts", "collabs", ...selectedDepts, "results"];
               const current = stepOrder.indexOf(step);
               const done = i < current - 1;
               const active = s === step || (step === `q-${selectedDepts[deptIndex]}` && s === selectedDepts[deptIndex]);
@@ -808,6 +981,18 @@ export default function SelfAssessment({ user, token, onLogout }) {
             setCustomDept={setCustomDept}
             onCustomAdd={addCustomDept}
             onBack={() => goToStep("welcome")}
+            onNext={() => goToStep("collabs")}
+          />
+        )}
+        {!lockedDept && step === "collabs" && (
+          <CollabsStep
+            depts={selectedDepts}
+            collaborators={collaborators}
+            onChange={handleCollaboratorsChange}
+            orgDomain={orgDomain}
+            token={token}
+            userRole={user?.role}
+            onBack={() => goToStep("depts")}
             onNext={() => { setDeptIndex(0); goToStep("questions", { deptIndex: 0 }); }}
           />
         )}
@@ -819,13 +1004,8 @@ export default function SelfAssessment({ user, token, onLogout }) {
             onAnswer={answer}
             deptIndex={deptIndex}
             totalDepts={selectedDepts.length}
-            collaborators={collaborators}
-            onCollaboratorsChange={handleCollaboratorsChange}
-            orgDomain={orgDomain}
-            token={token}
-            userRole={user?.role}
             onBack={lockedDept ? null : () => {
-              if (deptIndex === 0) { goToStep("depts"); }
+              if (deptIndex === 0) { goToStep("collabs"); }
               else { const prev = deptIndex - 1; setDeptIndex(prev); persist({ deptIndex: prev }); }
             }}
             onNext={() => {

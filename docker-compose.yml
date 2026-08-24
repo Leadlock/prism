@@ -17,6 +17,23 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot: re-applies init.sql against the running db on every
+  # `docker compose up`, not just on first volume init. Every statement in
+  # init.sql is idempotent (CREATE TABLE IF NOT EXISTS, ON CONFLICT DO
+  # NOTHING), so this only adds new tables/seed rows — it never touches or
+  # wipes existing data.
+  db-init:
+    image: postgres:16-alpine
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./init.sql:/init.sql:ro
+    command: ["psql", "-h", "db", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}", "-v", "ON_ERROR_STOP=1", "-f", "/init.sql"]
+
   clamav:
     image: clamav/clamav:stable_base
     platform: linux/amd64
@@ -74,6 +91,8 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     ports:
       - "${API_PORT}:4000"
 

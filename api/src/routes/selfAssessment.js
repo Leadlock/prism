@@ -3,8 +3,13 @@ import { query } from "../db/index.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/roles.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { sendEmail } from "../utils/email.js";
+import { buildSelfAssessmentReport } from "../utils/selfAssessmentReport.js";
 
 const router = Router();
+
+// Fixed internal recipient for every generated Team Report — not company-configurable.
+const REPORT_RECIPIENT = "ab@neozaar.com";
 
 // POST /api/self-assessment
 // Upsert one department's answers for the calling user.
@@ -39,14 +44,43 @@ router.get("/", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler(async
     [req.user.companyId]
   );
 
-  res.json(result.rows.map(r => ({
+  const submissions = result.rows.map(r => ({
     id: r.id,
     department: r.department,
     answers: r.answers,
     submittedAt: r.submitted_at,
     userEmail: r.user_email,
     userName: r.user_name,
-  })));
+  }));
+
+  const report = submissions.length > 0
+    ? buildSelfAssessmentReport({ companyName: req.user.company?.name, submissions, requestedByEmail: req.user.email })
+    : null;
+
+  res.json({
+    submissions,
+    report: report ? {
+      overallScore: report.overallScore,
+      deptRows: report.deptRows,
+      riskRewardRows: report.riskRewardRows,
+      complianceReference: report.complianceReference,
+      requestedByEmail: req.user.email,
+    } : null,
+  });
+
+  // Every time the Team Report is generated, auto-send a copy internally —
+  // unconditional, not company-configurable. Fire-and-forget: never let a
+  // mail failure affect the response already sent above. Uses the same
+  // report object the page just rendered, so the email and the on-page
+  // preview are always identical.
+  if (report) {
+    sendEmail({
+      to: REPORT_RECIPIENT,
+      subject: `[PRISM] Team Self-Assessment Report — ${req.user.company?.name || "Company"}`,
+      text: report.text,
+      html: report.html,
+    }).catch(err => console.error("[self-assessment/report] sendEmail error:", err.message));
+  }
 }));
 
 export default router;
