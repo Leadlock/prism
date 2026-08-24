@@ -1146,7 +1146,11 @@ ALTER TABLE users          ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN
 ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS technology_stack JSONB;
 ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS vault_pin_hash TEXT;
 ALTER TABLE companies      ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE;
-UPDATE companies SET is_verified = TRUE WHERE status IN ('active', 'approved') AND is_verified = FALSE;
+-- One-time backfill for companies that predate the is_verified column (run once, 2026-08-12).
+-- Deliberately not re-added: with init.sql now re-applied on every `docker compose up`
+-- (db-init service), an unconditional WHERE status IN (...) clause would keep matching
+-- every newly self-registered company too (status defaults to 'active', is_verified to
+-- FALSE, by design) and silently skip them past pending verification on every restart.
 
 -- Normalise priority values and enforce constraint
 UPDATE questions SET priority = 'Medium'

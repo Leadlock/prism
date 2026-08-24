@@ -194,8 +194,6 @@ function CollaboratorInput({ dept, collaborators, onChange, orgDomain, token, us
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState([]);
-  const [inviteLinks, setInviteLinks] = useState({});
   const [copied, setCopied] = useState(null);
   const canInvite = userRole === "ADMIN" || userRole === "LEAD";
 
@@ -206,14 +204,12 @@ function CollaboratorInput({ dept, collaborators, onChange, orgDomain, token, us
       setError(`Must be a @${orgDomain} address`);
       return;
     }
-    if (current.includes(email) || sent.includes(email)) { setError("Already invited"); return; }
+    if (current.some(c => c.email === email)) { setError("Already invited"); return; }
     setSending(true);
     setError("");
     try {
       const data = await apiFetch("/api/users/invite", { token, method: "POST", body: JSON.stringify({ email, role: "CONTRIBUTOR", department: dept }) });
-      onChange(dept, [...current, email]);
-      setSent(prev => [...prev, email]);
-      if (data.inviteLink) setInviteLinks(prev => ({ ...prev, [email]: data.inviteLink }));
+      onChange(dept, [...current, { email, inviteLink: data.inviteLink || null }]);
       setInput("");
     } catch (e) {
       setError(e.message || "Failed to send invite");
@@ -229,28 +225,28 @@ function CollaboratorInput({ dept, collaborators, onChange, orgDomain, token, us
     });
   };
 
-  const remove = (email) => onChange(dept, current.filter(e => e !== email));
+  const remove = (email) => onChange(dept, current.filter(c => c.email !== email));
 
   return (
     <div style={{ marginTop: 20, padding: "14px 16px", background: "var(--bg2)", borderRadius: 10, border: "1px solid var(--border2)" }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
         Collaborators
       </div>
-      {current.map(email => (
-        <div key={email} style={{ marginBottom: 8 }}>
+      {current.map(c => (
+        <div key={c.email} style={{ marginBottom: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--bg3)", borderRadius: 6, padding: "6px 10px" }}>
-            <span style={{ fontSize: 13, flex: 1, color: "var(--text)" }}>{email}</span>
-            {sent.includes(email) && <span style={{ fontSize: 11, color: "var(--green, #22c55e)" }}>✓ Invite sent</span>}
+            <span style={{ fontSize: 13, flex: 1, color: "var(--text)" }}>{c.email}</span>
+            <span style={{ fontSize: 11, color: "var(--green, #22c55e)" }}>✓ Invite sent</span>
             <button
-              onClick={() => remove(email)}
+              onClick={() => remove(c.email)}
               style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 16, lineHeight: 1 }}
             >×</button>
           </div>
-          {inviteLinks[email] && (
+          {c.inviteLink && (
             <div style={{ marginTop: 4, display: "flex", gap: 6, alignItems: "center" }}>
               <input
                 readOnly
-                value={inviteLinks[email]}
+                value={c.inviteLink}
                 style={{
                   flex: 1, padding: "5px 8px", borderRadius: 5, fontSize: 11,
                   border: "1px solid var(--border2)", background: "var(--bg)", color: "var(--text3)",
@@ -261,9 +257,9 @@ function CollaboratorInput({ dept, collaborators, onChange, orgDomain, token, us
               <button
                 className="btn btn-ghost"
                 style={{ fontSize: 11, padding: "4px 10px", whiteSpace: "nowrap" }}
-                onClick={() => copyLink(email, inviteLinks[email])}
+                onClick={() => copyLink(c.email, c.inviteLink)}
               >
-                {copied === email ? "Copied!" : "Copy link"}
+                {copied === c.email ? "Copied!" : "Copy link"}
               </button>
             </div>
           )}
@@ -338,10 +334,13 @@ function CollabsStep({ depts, collaborators, onChange, orgDomain, token, userRol
   );
 }
 
-function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, deptIndex, totalDepts }) {
+function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, deptIndex, totalDepts, collaborators }) {
   const meta = DEPT_META[dept] || { label: dept, icon: "🏢" };
   const answered = questions.filter(q => answers[q.id]).length;
   const progress = Math.round((answered / questions.length) * 100);
+  const delegatedTo = collaborators?.[dept] || [];
+  const [answerMyself, setAnswerMyself] = useState(false);
+  const isDelegated = delegatedTo.length > 0 && !answerMyself;
 
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
@@ -354,11 +353,57 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
           <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)" }}>{meta.label}</h2>
         </div>
       </div>
-      <div style={{ height: 4, background: "var(--bg4)", borderRadius: 2, marginBottom: 24 }}>
-        <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent)", borderRadius: 2, transition: "width 0.3s" }} />
-      </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
+      {isDelegated ? (
+        <div style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 12, padding: "20px 24px", marginBottom: 28 }}>
+          <div style={{ fontSize: 28, marginBottom: 10 }}>🔗</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Delegated to the department head</div>
+          <p style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.6, marginBottom: 16 }}>
+            Copy the link below and send it to the department head. Once they fill it in, results will appear here automatically — you don't need to answer these questions yourself.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+            {delegatedTo.map(c => (
+              <div key={c.email}>
+                <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 4 }}>{c.email}</div>
+                {c.inviteLink && (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      readOnly
+                      value={c.inviteLink}
+                      style={{ flex: 1, padding: "7px 10px", borderRadius: 6, fontSize: 12, border: "1px solid var(--border2)", background: "var(--bg)", color: "var(--text2)", fontFamily: "monospace" }}
+                      onFocus={e => e.target.select()}
+                    />
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 12, padding: "6px 12px", whiteSpace: "nowrap" }}
+                      onClick={() => navigator.clipboard.writeText(c.inviteLink)}
+                    >
+                      Copy link
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setAnswerMyself(true)}>
+            Answer it myself instead
+          </button>
+        </div>
+      ) : (
+        <>
+          {delegatedTo.length > 0 && (
+            <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <span>Answering on behalf of this department (also delegated to {delegatedTo.map(c => c.email).join(", ")})</span>
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 8px" }} onClick={() => setAnswerMyself(false)}>
+                Undo
+              </button>
+            </div>
+          )}
+          <div style={{ height: 4, background: "var(--bg4)", borderRadius: 2, marginBottom: 24 }}>
+            <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent)", borderRadius: 2, transition: "width 0.3s" }} />
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
         {(() => {
           let mainCount = 0;
           return questions.map((q, i) => {
@@ -408,7 +453,9 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
           );
           });
         })()}
-      </div>
+          </div>
+        </>
+      )}
 
       <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
         {onBack && <button className="btn btn-ghost" onClick={onBack}>← Back</button>}
@@ -789,13 +836,18 @@ export default function SelfAssessment({ user, token, onLogout }) {
     setSubmitting(true);
     try {
       await Promise.all(
-        depts.map(dept =>
-          apiFetch("/api/self-assessment", {
+        depts.map(dept => {
+          const scoped = getDeptAnswers(dept, answers);
+          // Nothing answered — most likely a delegated department the admin
+          // never filled in themselves. Skip it rather than overwriting
+          // whatever the department head already submitted with an empty row.
+          if (Object.keys(scoped).length === 0) return Promise.resolve();
+          return apiFetch("/api/self-assessment", {
             token,
             method: "POST",
-            body: JSON.stringify({ department: dept, answers: getDeptAnswers(dept, answers) }),
-          }).catch(() => {})
-        )
+            body: JSON.stringify({ department: dept, answers: scoped }),
+          }).catch(() => {});
+        })
       );
     } finally {
       setSubmitting(false);
@@ -882,8 +934,8 @@ export default function SelfAssessment({ user, token, onLogout }) {
     persist({ answers: next });
   };
 
-  const handleCollaboratorsChange = (dept, emails) => {
-    const next = { ...collaborators, [dept]: emails };
+  const handleCollaboratorsChange = (dept, entries) => {
+    const next = { ...collaborators, [dept]: entries };
     setCollaborators(next);
     persist({ collaborators: next });
   };
@@ -998,12 +1050,14 @@ export default function SelfAssessment({ user, token, onLogout }) {
         )}
         {step === "questions" && currentDept && (
           <QuestionStep
+            key={currentDept}
             dept={currentDept}
             questions={currentQuestions}
             answers={answers}
             onAnswer={answer}
             deptIndex={deptIndex}
             totalDepts={selectedDepts.length}
+            collaborators={collaborators}
             onBack={lockedDept ? null : () => {
               if (deptIndex === 0) { goToStep("collabs"); }
               else { const prev = deptIndex - 1; setDeptIndex(prev); persist({ deptIndex: prev }); }
