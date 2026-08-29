@@ -1,5 +1,7 @@
 import fetch from "node-fetch";
 import fs from "fs";
+import path from "path";
+import { extractFileContent } from "./fileExtract.js";
 
 // ─── OAuth2 Token Cache ───────────────────────────────────────────────────────
 
@@ -110,7 +112,9 @@ export async function analyzeEvidence({ evidenceName, evidenceType, questId, mod
     throw new Error("AZURE_AGENT_ID not configured in .env");
   }
 
-  // Read file content if it's a text-based file
+  // Extract file content (PDF/DOCX/XLSX/text) via the shared extractor. The
+  // Azure agent request path is text-only, so an image is described rather than
+  // sent as vision input.
   let evidenceContent = "No file content available";
 
   if (evidenceType === "FILE" && filePath) {
@@ -121,18 +125,12 @@ export async function analyzeEvidence({ evidenceName, evidenceType, questId, mod
         console.error(`[AI] File does not exist: ${filePath}`);
         evidenceContent = `FILE NOT FOUND: ${filePath}`;
       } else {
-        const fileExt = filePath.split(".").pop().toLowerCase();
-        console.log(`[AI] File extension: ${fileExt}`);
-
-        if (["txt", "csv", "log", "json", "md", "html", "xml"].includes(fileExt)) {
-          const content = fs.readFileSync(filePath, "utf8");
-          evidenceContent = content.substring(0, 10000);
-          console.log(`[AI] Read ${evidenceContent.length} characters from file`);
-        } else if (["pdf", "docx", "xlsx"].includes(fileExt)) {
-          evidenceContent = `Binary file uploaded: ${fileExt.toUpperCase()} - ${evidenceName}\n\nNote: This is a ${fileExt.toUpperCase()} file. The AI is analyzing based on filename and metadata only.`;
-        } else {
-          evidenceContent = `File type: ${fileExt.toUpperCase()} - ${evidenceName}\n\nUnsupported format for content reading. Analyzing based on filename and metadata.`;
-        }
+        const fileExt = path.extname(filePath).replace(".", "").toLowerCase();
+        const extracted = await extractFileContent(filePath, fileExt);
+        evidenceContent = extracted.type === "image"
+          ? `(Image evidence "${evidenceName}" — ${fileExt.toUpperCase()}. The Azure agent cannot view images; analyzing based on filename and metadata only.)`
+          : extracted.content;
+        console.log(`[AI] Prepared ${evidenceContent.length} characters of evidence content`);
       }
     } catch (err) {
       console.error(`[AI] Error reading file:`, err);
@@ -160,14 +158,14 @@ export async function analyzeEvidence({ evidenceName, evidenceType, questId, mod
 - Type: ${evidenceType}
 - Question ID: ${questId || "N/A"}
 - Module ID: ${moduleId || "N/A"}
-- Required Evidence per ISO 27001: ${requiredEvidence || "Not specified"}
+- Required Evidence: ${requiredEvidence || "Not specified"}
 ${dateContext}
 
 **File Content Preview:**
 ${evidenceContent}
 
 **Task:**
-Evaluate if this evidence adequately addresses the ISO 27001 compliance requirements.
+Evaluate whether this evidence adequately addresses the stated compliance requirement. Judge it against whichever control framework(s) are actually relevant to this control — e.g. ISO 27001, SOC 2, GDPR, India's DPDPA, HIPAA, PCI DSS, NIST CSF — rather than assuming a single standard. If the required-evidence text names or implies a specific framework, prioritise that one.
 ${dateInstruction}
 Provide your analysis as JSON with: contributorComments, reviewerComments, gaps array, suggestions array, dateWarning (string or null).`;
 
@@ -252,6 +250,99 @@ Provide your analysis as JSON with: contributorComments, reviewerComments, gaps 
   } catch (error) {
     console.error(`[AI] Azure AI Agent Error:`, error.message);
     throw new Error(`AI analysis failed: ${error.message}`);
+  }
+}
+
+// ─── Shared agent conversation helper ─────────────────────────────────────────
+// Runs a single-turn prompt through the threads/messages/runs pattern and
+// returns the assistant's text reply. Cleans up the thread afterwards.
+async function runAgentPrompt(userPrompt) {
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const agentId = process.env.AZURE_AGENT_ID;
+  if (!endpoint) throw new Error("AZURE_OPENAI_ENDPOINT not configured in .env");
+  if (!agentId) throw new Error("AZURE_AGENT_ID not configured in .env");
+
+  const thread = await agentRequest("/threads", "POST", {});
+  const threadId = thread.id;
+  try {
+    await agentRequest(`/threads/${threadId}/messages`, "POST", { role: "user", content: userPrompt });
+    const run = await agentRequest(`/threads/${threadId}/runs`, "POST", { assistant_id: agentId });
+    await pollRunUntilComplete(threadId, run.id);
+
+    const messagesResult = await agentRequest(`/threads/${threadId}/messages`);
+    const latest = (messagesResult.data || []).find(m => m.role === "assistant");
+    if (!latest) throw new Error("No response from agent");
+    const part = Array.isArray(latest.content) ? latest.content.find(c => c.type === "text") : null;
+    return part?.text?.value || part?.text || String(latest.content);
+  } finally {
+    try { await agentRequest(`/threads/${threadId}`, "DELETE"); }
+    catch (e) { console.warn(`[AI] Failed to delete thread: ${e.message}`); }
+  }
+}
+
+// ─── Policy Analysis ─────────────────────────────────────────────────────────
+
+export async function analyzePolicy({ policyName, filePath, fileExt }) {
+  console.log(`[AI] analyzePolicy (azure): ${policyName} (${fileExt})`);
+
+  let extracted;
+  try {
+    if (!filePath || !fs.existsSync(filePath)) throw new Error("File not found");
+    extracted = await extractFileContent(filePath, fileExt);
+  } catch (err) {
+    extracted = { type: "text", content: `(Could not extract file content: ${err.message})` };
+  }
+
+  const contentSection = extracted.type === "image"
+    ? `**Document Content:** (Image document — the Azure agent cannot view images. Analyse based on the policy name only.)`
+    : `**Document Content:**\n${(extracted.content || "(No content extracted)").substring(0, 15000)}`;
+
+  const prompt = `You are a compliance analyst. Evaluate this policy document for completeness and alignment with the compliance frameworks and regulations that are relevant to its subject matter. Infer the applicable frameworks from the policy's content and title — this may include ISO 27001, SOC 2, GDPR, India's DPDPA 2023, HIPAA, PCI DSS, NIST CSF, or others. Do not assume a single standard applies.
+
+**Policy Name:** ${policyName}
+
+${contentSection}
+
+**Task:**
+1. Assess how complete and production-ready this policy is.
+2. Identify general gaps — missing sections, vague ownership, missing review dates, undefined scope, unclear enforcement.
+3. Identify framework-specific gaps — obligations or controls required by a specific named framework/regulation that this policy does not adequately address. Attribute each gap to the framework it comes from (e.g. "ISO 27001 A.5.10: acceptable-use rules not defined", "DPDPA s.6: consent-withdrawal mechanism missing", "GDPR Art. 33: 72-hour breach notification timeline absent").
+4. Provide a one-sentence summary of the policy's current state.
+5. Provide 3–5 concrete improvement suggestions.
+
+Respond with ONLY a valid JSON object, no markdown fences, no explanation:
+{
+  "readiness": "strong" | "adequate" | "incomplete" | "placeholder",
+  "summary": "one sentence summary of the policy's current state",
+  "gaps": ["up to 5 key general gaps or missing sections"],
+  "dpdpGaps": ["up to 4 framework-specific gaps, each attributed to its framework"],
+  "suggestions": ["3 to 5 concrete improvement actions"]
+}
+
+Use "placeholder" if the document is a template with unfilled fields. Use "strong" only if the policy is genuinely comprehensive and aligned with its applicable frameworks. Return an empty array for any category with nothing to report.`;
+
+  let raw;
+  try {
+    raw = await runAgentPrompt(prompt);
+  } catch (error) {
+    console.error(`[AI] Azure analyzePolicy error:`, error.message);
+    throw new Error(`AI analysis failed: ${error.message}`);
+  }
+  console.log(`[AI] analyzePolicy response preview: ${raw.substring(0, 200)}`);
+
+  try {
+    const jsonMatch = raw.match(/```json\s*([\s\S]*?)\s*```/) || raw.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : raw);
+    const VALID_READINESS = ["strong", "adequate", "incomplete", "placeholder"];
+    return {
+      readiness: VALID_READINESS.includes(parsed.readiness) ? parsed.readiness : "incomplete",
+      summary: parsed.summary || "Analysis complete.",
+      gaps: Array.isArray(parsed.gaps) ? parsed.gaps.slice(0, 6) : [],
+      dpdpGaps: Array.isArray(parsed.dpdpGaps) ? parsed.dpdpGaps.slice(0, 5) : [],
+      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 5) : [],
+    };
+  } catch {
+    return { readiness: "incomplete", summary: raw.substring(0, 200), gaps: [], dpdpGaps: [], suggestions: [] };
   }
 }
 
@@ -349,6 +440,7 @@ If nothing scores 40+, return: []`;
         vaultId: parseInt(p.vaultId),
         relevanceScore: Math.min(100, Math.max(0, parseInt(p.relevanceScore) || 0)),
         reason: p.reason || "Relevant to this control",
+        matchType: "ai",
       }))
       .filter(p => !isNaN(p.vaultId) && p.relevanceScore >= 40);
   } catch (error) {

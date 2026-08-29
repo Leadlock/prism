@@ -1145,6 +1145,9 @@ ALTER TABLE evidence_vault ADD COLUMN IF NOT EXISTS locked BOOLEAN NOT NULL DEFA
 ALTER TABLE users          ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS technology_stack JSONB;
 ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS vault_pin_hash TEXT;
+-- Per-company AI provider override. NULL = use the platform default (PRISM_AI_PROVIDER env).
+ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS ai_provider TEXT
+  CHECK (ai_provider IS NULL OR ai_provider IN ('bedrock', 'azure'));
 ALTER TABLE companies      ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE;
 -- One-time backfill for companies that predate the is_verified column (run once, 2026-08-12).
 -- Deliberately not re-added: with init.sql now re-applied on every `docker compose up`

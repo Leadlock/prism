@@ -1,4 +1,6 @@
+import fs from 'fs';
 import ExcelJS from 'exceljs';
+import { normalizeStrictWorkbook } from './normalizeStrictWorkbook.js';
 
 /**
  * Parse an Excel workbook and extract modules + questions.
@@ -12,8 +14,7 @@ import ExcelJS from 'exceljs';
  * @returns {Promise<{ modules: object[], questions: object[], errors: string[] }>}
  */
 export async function parseExcelImport(filePath) {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(filePath);
+  const workbook = await readWorkbook(filePath);
   const errors = [];
 
   const sheetNames = workbook.worksheets.map(ws => ws.name);
@@ -33,6 +34,64 @@ export async function parseExcelImport(filePath) {
 
   // Otherwise, parse as combined format (single sheet with all data)
   return parseCombinedSheet(workbook, errors);
+}
+
+/**
+ * Read a workbook, transparently recovering from the "Strict Open XML
+ * Spreadsheet" / namespace-prefixed shape ExcelJS can't parse. Any remaining
+ * failure is rethrown as an actionable 400.
+ */
+async function readWorkbook(filePath) {
+  const workbook = new ExcelJS.Workbook();
+  try {
+    await workbook.xlsx.readFile(filePath);
+    return workbook;
+  } catch (err) {
+    if (/reading 'sheets'/.test(err?.message || "")) {
+      try {
+        const recovered = new ExcelJS.Workbook();
+        await recovered.xlsx.load(await normalizeStrictWorkbook(fs.readFileSync(filePath)));
+        return recovered;
+      } catch {
+        // normalisation didn't help — fall through to the friendly error
+      }
+    }
+    throw translateWorkbookReadError(err);
+  }
+}
+
+/**
+ * Turn an opaque ExcelJS/JSZip parse failure into an actionable 400.
+ *
+ * The most common real-world offender is the "Strict Open XML Spreadsheet"
+ * variant (and other generators that emit a namespace-prefixed `<x:workbook>`
+ * root): ExcelJS's WorkbookXform only recognises a bare `<workbook>` element, so
+ * it never builds a model and a later `model.sheets = workbook.sheets` in
+ * exceljs throws "Cannot read properties of undefined (reading 'sheets')".
+ */
+function translateWorkbookReadError(err) {
+  const clean = new Error();
+  clean.status = 400;
+  const msg = err && err.message ? String(err.message) : "";
+
+  if (/reading 'sheets'/.test(msg)) {
+    clean.message =
+      'This file appears to be a "Strict Open XML Spreadsheet", which is not supported. ' +
+      'Open it in Excel and use File → Save As → "Excel Workbook (.xlsx)" ' +
+      '(not the "Strict" option), or re-export it from Google Sheets, then upload again.';
+    return clean;
+  }
+
+  if (/end of central directory|is this a zip file|corrupted zip/i.test(msg)) {
+    clean.message =
+      "This file is not a readable .xlsx workbook — it may be corrupt, password-protected, " +
+      "or a different format (e.g. .xls or .csv) saved with an .xlsx extension. " +
+      'Re-save it as "Excel Workbook (.xlsx)" and try again.';
+    return clean;
+  }
+
+  clean.message = `Could not read the Excel file: ${msg || "unknown error"}`;
+  return clean;
 }
 
 /**

@@ -245,6 +245,24 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     }
   };
 
+  const handleAIProviderChange = async (companyId, rawValue) => {
+    const aiProvider = rawValue || null; // "" (Default) -> null
+    const prev = [...companies];
+    setCompanies(cs => cs.map(c => c.id === companyId ? { ...c, ai_provider: aiProvider } : c));
+    try {
+      await apiFetch(`/api/superadmin/companies/${companyId}/ai-provider`, {
+        token,
+        method: "PATCH",
+        body: JSON.stringify({ aiProvider }),
+      });
+      const label = aiProvider === "azure" ? "Azure" : aiProvider === "bedrock" ? "AWS Bedrock" : "platform default";
+      showToast(`AI provider set to ${label}`, "success");
+    } catch (err) {
+      setCompanies(prev);
+      showToast(err.message || "Failed to change AI provider", "error");
+    }
+  };
+
   // --- Import handler ---
   const handleImport = async () => {
     if (!importFile) return;
@@ -954,16 +972,34 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
                     )}
                   </td>
                   <td style={tdStyle}>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleAIToggle(c.id, c.ai_enabled); }}
-                      style={{
-                        ...styles.toggle,
-                        background: c.ai_enabled ? "var(--green)" : "var(--bg4)",
-                      }}
-                      title={c.ai_enabled ? "AI Enabled - Click to disable" : "AI Disabled - Click to enable"}
-                    >
-                      <span style={{ ...styles.toggleDot, left: c.ai_enabled ? "19px" : "3px" }} />
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleAIToggle(c.id, c.ai_enabled); }}
+                        style={{
+                          ...styles.toggle,
+                          background: c.ai_enabled ? "var(--green)" : "var(--bg4)",
+                        }}
+                        title={c.ai_enabled ? "AI Enabled - Click to disable" : "AI Disabled - Click to enable"}
+                      >
+                        <span style={{ ...styles.toggleDot, left: c.ai_enabled ? "19px" : "3px" }} />
+                      </button>
+                      <select
+                        value={c.ai_provider || ""}
+                        disabled={!c.ai_enabled}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => { e.stopPropagation(); handleAIProviderChange(c.id, e.target.value); }}
+                        title="AI provider for this company"
+                        style={{
+                          fontSize: "11px", padding: "3px 6px", borderRadius: "6px",
+                          background: "var(--bg3)", color: "var(--text2)",
+                          border: "1px solid var(--border)", cursor: c.ai_enabled ? "pointer" : "not-allowed",
+                        }}
+                      >
+                        <option value="">Default</option>
+                        <option value="bedrock">AWS Bedrock</option>
+                        <option value="azure">Azure</option>
+                      </select>
+                    </div>
                   </td>
                   <td style={tdStyle}>
                     <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>

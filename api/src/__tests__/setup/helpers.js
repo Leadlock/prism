@@ -14,7 +14,7 @@ export async function truncateAll() {
       questions, modules, invitations,
       audit_logs, auditor_profiles, reminders,
       list_items, consent_logs, company_settings,
-      users, companies
+      users, companies, super_admins
     RESTART IDENTITY CASCADE
   `);
 }
@@ -30,6 +30,25 @@ export async function createCompany(overrides = {}) {
     ]
   );
   return result.rows[0];
+}
+
+export async function createSuperAdmin(overrides = {}) {
+  const email = overrides.email || `superadmin-${Date.now()}@prism.test`;
+  const hash = await bcrypt.hash(overrides.password || "Test@1234", 4);
+
+  const result = await query(
+    `INSERT INTO super_admins (email, password_hash) VALUES ($1, $2) RETURNING *`,
+    [email, hash]
+  );
+  const admin = result.rows[0];
+
+  const token = jwt.sign(
+    { userId: admin.id, email: admin.email, role: "SUPERADMIN", companyId: null },
+    process.env.JWT_SECRET || "integration-test-secret",
+    { expiresIn: "1d" }
+  );
+
+  return { ...admin, token };
 }
 
 export async function createUser(companyId, role, overrides = {}) {

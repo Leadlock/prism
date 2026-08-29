@@ -55,6 +55,7 @@
     "googleapis": "^144.0.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "jszip": "^3.10.1",
     "mammoth": "^1.8.0",
     "multer": "^2.2.0",
     "nodemailer": "^9.0.3",

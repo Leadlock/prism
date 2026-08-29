@@ -4,6 +4,7 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 import fs from "fs";
 import path from "path";
+import { extractFileContent } from "./fileExtract.js";
 
 const client = new BedrockRuntimeClient({
   region: process.env.AWS_REGION || "eu-north-1",
@@ -15,82 +16,6 @@ const client = new BedrockRuntimeClient({
 });
 
 const MODEL_ID = process.env.BEDROCK_CHAT_MODEL || process.env.BEDROCK_MODEL_ID || "eu.amazon.nova-pro-v1:0";
-const MAX_CONTENT_CHARS = 20000;
-
-const IMAGE_TYPES = {
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  gif: "image/gif",
-  webp: "image/webp"
-};
-
-// Lazy singletons — imported once on first use, cached thereafter.
-let _pdfParse, _xlsx, _mammoth;
-async function getPdfParse() { return (_pdfParse ??= (await import("pdf-parse/lib/pdf-parse.js")).default); }
-async function getExcelJS()  { return (_xlsx     ??= (await import("exceljs")).default); }
-async function getMammoth()  { return (_mammoth  ??= (await import("mammoth")).default); }
-
-async function extractFileContent(filePath, fileExt) {
-  if (["txt", "csv", "log", "json", "md", "html", "xml"].includes(fileExt)) {
-    const content = fs.readFileSync(filePath, "utf8");
-    return { type: "text", content: content.substring(0, MAX_CONTENT_CHARS) };
-  }
-
-  if (fileExt === "pdf") {
-    const pdfParse = await getPdfParse();
-    const buffer = fs.readFileSync(filePath);
-    const data = await pdfParse(buffer);
-    const text = data.text.trim().substring(0, MAX_CONTENT_CHARS);
-    console.log(`[AI] Extracted ${text.length} chars from PDF (${data.numpages} pages)`);
-    return { type: "text", content: text || "(PDF contained no extractable text)" };
-  }
-
-  if (["xlsx", "xlsm"].includes(fileExt)) {
-    const ExcelJS = await getExcelJS();
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(fs.readFileSync(filePath));
-    const sheets = wb.worksheets.map(ws => {
-      const rows = [];
-      ws.eachRow({ includeEmpty: true }, row => {
-        const cells = [];
-        row.eachCell({ includeEmpty: true }, cell => {
-          let v = cell.value;
-          if (v !== null && v !== undefined && typeof v === 'object') {
-            if ('result' in v) v = v.result ?? '';
-            else if ('richText' in v) v = v.richText.map(t => t.text).join('');
-            else if (v instanceof Date) v = v.toISOString();
-            else v = '';
-          }
-          const s = (v === null || v === undefined) ? '' : String(v);
-          cells.push(s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s);
-        });
-        rows.push(cells.join(','));
-      });
-      return `--- Sheet: ${ws.name} ---\n${rows.join('\n')}`;
-    }).join("\n\n");
-    const content = sheets.substring(0, MAX_CONTENT_CHARS);
-    console.log(`[AI] Extracted ${content.length} chars from Excel (${wb.worksheets.length} sheets)`);
-    return { type: "text", content };
-  }
-
-  if (fileExt === "docx") {
-    const mammoth = await getMammoth();
-    const result = await mammoth.extractRawText({ path: filePath });
-    const content = result.value.trim().substring(0, MAX_CONTENT_CHARS);
-    console.log(`[AI] Extracted ${content.length} chars from DOCX`);
-    return { type: "text", content: content || "(DOCX contained no extractable text)" };
-  }
-
-  if (IMAGE_TYPES[fileExt]) {
-    const buffer = fs.readFileSync(filePath);
-    const base64 = buffer.toString("base64");
-    console.log(`[AI] Loaded image (${fileExt}, ${Math.round(buffer.length / 1024)}KB) for vision`);
-    return { type: "image", mediaType: IMAGE_TYPES[fileExt], base64 };
-  }
-
-  return { type: "text", content: `Unsupported file type: ${fileExt.toUpperCase()} — analyzing based on filename and metadata only.` };
-}
 
 function buildText(metaBlock, taskBlock, middle = "") {
   return [metaBlock, middle, taskBlock].filter(Boolean).join("\n\n");
@@ -112,7 +37,7 @@ export async function analyzeEvidence({ evidenceName, evidenceType, questId, mod
 - Type: ${evidenceType}
 - Question ID: ${questId || "N/A"}
 - Module ID: ${moduleId || "N/A"}
-- Required Evidence per ISO 27001: ${requiredEvidence || "Not specified"}
+- Required Evidence: ${requiredEvidence || "Not specified"}
 ${dateContext}`;
 
   const dateInstruction = intervalLabel && intervalLabel !== "none"
@@ -120,7 +45,7 @@ ${dateContext}`;
     : `4. DATE VALIDATION: Scan the document for any dates. Set "dateWarning" to null if evidence appears current, or to a concise warning if you find dates suggesting the document is significantly out of date.`;
 
   const taskBlock = `**Task:**
-Evaluate whether this evidence adequately addresses the ISO 27001 compliance requirements.
+Evaluate whether this evidence adequately addresses the stated compliance requirement. Judge it against whichever control framework(s) are actually relevant to this control — e.g. ISO 27001, SOC 2, GDPR, India's DPDPA, HIPAA, PCI DSS, NIST CSF — rather than assuming a single standard. If the required-evidence text names or implies a specific framework, prioritise that one.
 ${dateInstruction}
 Respond with ONLY a JSON object (no markdown fences) with these exact keys:
 {
@@ -249,6 +174,7 @@ If nothing scores 40+, return: []`;
         vaultId: parseInt(p.vaultId),
         relevanceScore: Math.min(100, Math.max(0, parseInt(p.relevanceScore) || 0)),
         reason: p.reason || "Relevant to this control",
+        matchType: "ai",
       }))
       .filter(p => !isNaN(p.vaultId) && p.relevanceScore >= 40);
   } catch (error) {
@@ -291,7 +217,7 @@ export async function analyzePolicy({ policyName, filePath, fileExt }) {
     ? "Analyze the policy document shown in this image."
     : `**Document Content:**\n${(extracted.content || "(No content extracted)").substring(0, 15000)}`;
 
-  const prompt = `You are a compliance analyst. Evaluate this policy document for completeness and alignment with India's DPDPA (Digital Personal Data Protection Act 2023).
+  const prompt = `You are a compliance analyst. Evaluate this policy document for completeness and alignment with the compliance frameworks and regulations that are relevant to its subject matter. Infer the applicable frameworks from the policy's content and title — this may include ISO 27001, SOC 2, GDPR, India's DPDPA 2023, HIPAA, PCI DSS, NIST CSF, or others. Do not assume a single standard applies.
 
 **Policy Name:** ${policyName}
 
@@ -299,20 +225,21 @@ ${contentSection}
 
 **Task:**
 1. Assess how complete and production-ready this policy is.
-2. Identify general gaps — missing sections, vague ownership, missing review dates, undefined scope.
-3. Identify DPDPA-specific gaps — obligations under India's DPDPA 2023 not adequately addressed (e.g. consent mechanisms, data principal rights, breach notification timelines, data fiduciary obligations, retention & deletion, third-party processor controls, grievance redressal).
-4. Provide 3–5 concrete improvement suggestions.
+2. Identify general gaps — missing sections, vague ownership, missing review dates, undefined scope, unclear enforcement.
+3. Identify framework-specific gaps — obligations or controls required by a specific named framework/regulation that this policy does not adequately address. Attribute each gap to the framework it comes from (e.g. "ISO 27001 A.5.10: acceptable-use rules not defined", "DPDPA s.6: consent-withdrawal mechanism missing", "GDPR Art. 33: 72-hour breach notification timeline absent").
+4. Provide a one-sentence summary of the policy's current state.
+5. Provide 3–5 concrete improvement suggestions.
 
 Respond with ONLY a valid JSON object, no markdown fences, no explanation:
 {
   "readiness": "strong" | "adequate" | "incomplete" | "placeholder",
   "summary": "one sentence summary of the policy's current state",
-  "gaps": ["up to 5 key gaps or missing sections"],
-  "dpdpGaps": ["up to 4 DPDPA-specific obligations not addressed"],
+  "gaps": ["up to 5 key general gaps or missing sections"],
+  "dpdpGaps": ["up to 4 framework-specific gaps, each attributed to its framework"],
   "suggestions": ["3 to 5 concrete improvement actions"]
 }
 
-Use "placeholder" if the document is a template with unfilled fields. Use "strong" only if the policy is genuinely comprehensive and DPDPA-aligned.`;
+Use "placeholder" if the document is a template with unfilled fields. Use "strong" only if the policy is genuinely comprehensive and aligned with its applicable frameworks. Return an empty array for any category with nothing to report.`;
 
   let messageContent;
   if (extracted.type === "image") {

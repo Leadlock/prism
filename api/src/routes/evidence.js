@@ -378,7 +378,7 @@ router.delete("/:id", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler
 router.post("/:id/analyze", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), longRequestTimeout(120000), asyncHandler(async (req, res) => {
   // Check if AI is enabled for this company
   const settingsResult = await query(
-    "SELECT ai_enabled FROM company_settings WHERE company_id = $1",
+    "SELECT ai_enabled, ai_provider FROM company_settings WHERE company_id = $1",
     [req.user.companyId]
   );
   const settings = mapRow(settingsResult);
@@ -402,6 +402,7 @@ router.post("/:id/analyze", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIB
   const today = new Date().toISOString().slice(0, 10);
 
   const analysis = await analyzeEvidence({
+    provider: settings?.aiProvider || null,
     evidenceName: evidence.evidenceName,
     evidenceType: evidence.evidenceType,
     questId: evidence.questId,

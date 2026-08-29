@@ -7,8 +7,8 @@ import Logo from "../components/Logo";
 const CURRENT_YEAR = new Date().getFullYear();
 
 const DPDP_PENALTIES = [
+  { label: "Failure to implement reasonable security safeguards to prevent a breach", amountCrore: 250, amountLabel: "₹250 Cr" },
   { label: "Failure to notify a personal data breach", amountCrore: 200, amountLabel: "₹200 Cr" },
-  { label: "Violations related to children's data", amountCrore: 200, amountLabel: "₹200 Cr" },
   { label: "Non-compliance by Significant Data Fiduciaries (SDFs)", amountCrore: 150, amountLabel: "₹150 Cr" },
   { label: "Other violations under the Act", amountCrore: 50, amountLabel: "₹50 Cr" },
 ];
@@ -443,10 +443,10 @@ export default function Homepage() {
             <div className="hp-pricing-card">
               <div className="hp-pricing-tag">Best for startups</div>
               <h3>PRISM Lite</h3>
-              <div className="hp-pricing-price">₹8,000<span className="hp-pricing-period">/mo</span></div>
+              <div className="hp-pricing-price">₹8,000<span className="hp-pricing-period">/user/mo</span></div>
               <ul className="hp-pricing-features">
                 <li>Single framework assessment</li>
-                <li>Up to 5 users</li>
+                <li>Minimum 5 users</li>
                 <li>Evidence upload</li>
                 <li>Basic dashboard</li>
                 <li>10 hours of Guided Support</li>
@@ -456,10 +456,10 @@ export default function Homepage() {
             <div className="hp-pricing-card hp-pricing-featured">
               <div className="hp-pricing-tag">Most popular</div>
               <h3>Professional</h3>
-              <div className="hp-pricing-price">₹15,000<span>/mo</span></div>
+              <div className="hp-pricing-price">₹15,000<span>/user/mo</span></div>
               <ul className="hp-pricing-features">
                 <li>All frameworks (DPDP, ISO, GDPR)</li>
-                <li>Unlimited users & roles</li>
+                <li>Unlimited roles & permissions</li>
                 <li>Advanced reporting</li>
                 <li>AI Assisted Gap Analysis</li>
                 <li>30 Hours of Priority Support</li>

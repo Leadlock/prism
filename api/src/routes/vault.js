@@ -11,6 +11,7 @@ import { longRequestTimeout } from "../middleware/timeout.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { notifyReviewers } from "../utils/notifyReviewers.js";
 import { chatWithDocuments } from "../utils/aiProvider.js";
+import { getCompanyAiProvider } from "../utils/aiSettings.js";
 import { scanFile } from "../utils/scanFile.js";
 import { sanitiseText } from "../utils/sanitise.js";
 
@@ -225,6 +226,7 @@ router.get("/suggestions", authenticate, requireVaultPin, requireReadOnly(VAULT_
   const { suggestEvidence } = await import("../utils/aiProvider.js");
 
   const scores = await suggestEvidence({
+    provider: await getCompanyAiProvider(cid),
     questionContext: {
       questId: q.questId,
       moduleName: q.moduleName,
@@ -249,6 +251,7 @@ router.get("/suggestions", authenticate, requireVaultPin, requireReadOnly(VAULT_
         linkedCount: item.linkedCount,
         relevanceScore: s.relevanceScore,
         reason: s.reason,
+        matchType: s.matchType || "ai",
       };
     })
     .filter(Boolean)
@@ -259,7 +262,7 @@ router.get("/suggestions", authenticate, requireVaultPin, requireReadOnly(VAULT_
 
 // POST /api/vault/chat — AI chatbot that queries documents in the vault
 router.post("/chat", authenticate, requireVaultPin, requireReadOnly(VAULT_READERS), longRequestTimeout(60000), asyncHandler(async (req, res) => {
-  const settingsResult = await query("SELECT ai_enabled FROM company_settings WHERE company_id = $1", [req.user.companyId]);
+  const settingsResult = await query("SELECT ai_enabled, ai_provider FROM company_settings WHERE company_id = $1", [req.user.companyId]);
   const settings = mapRow(settingsResult);
   if (settings && settings.aiEnabled === false) {
     return res.status(403).json({ error: "AI features are disabled for your company" });
@@ -317,8 +320,15 @@ router.post("/chat", authenticate, requireVaultPin, requireReadOnly(VAULT_READER
           content = result.value.trim().substring(0, 6000);
         } else if (["xlsx","xlsm"].includes(ext)) {
           const ExcelJS = (await import("exceljs")).default;
+          const { normalizeStrictWorkbook } = await import("../utils/normalizeStrictWorkbook.js");
           const wb = new ExcelJS.Workbook();
-          await wb.xlsx.load(fs.readFileSync(item.storagePath));
+          try {
+            await wb.xlsx.load(fs.readFileSync(item.storagePath));
+          } catch (xlErr) {
+            if (!/reading 'sheets'/.test(xlErr?.message || "")) throw xlErr;
+            // Strict Open XML Spreadsheet — retry via a Transitional-normalised copy.
+            await wb.xlsx.load(await normalizeStrictWorkbook(fs.readFileSync(item.storagePath)));
+          }
           content = wb.worksheets.map(ws => {
             const rows = [];
             ws.eachRow({ includeEmpty: true }, row => {
@@ -383,7 +393,7 @@ Organisation's Policy Vault (${items.length} total documents; ${docContexts.leng
 
 ${docsBlock}${techBlock}`;
 
-  const reply = await chatWithDocuments({ systemPrompt, history, message: message.trim() });
+  const reply = await chatWithDocuments({ provider: settings?.aiProvider || null, systemPrompt, history, message: message.trim() });
 
   res.json({ reply, sources: usedTitles });
 }));
@@ -510,7 +520,7 @@ router.post("/:id/analyze-policy", authenticate, requireRole(["ADMIN"]), longReq
   const id = parseInt(req.params.id);
   const cid = req.user.companyId;
 
-  const settingsResult = await query("SELECT ai_enabled FROM company_settings WHERE company_id = $1", [cid]);
+  const settingsResult = await query("SELECT ai_enabled, ai_provider FROM company_settings WHERE company_id = $1", [cid]);
   const settings = mapRow(settingsResult);
   if (settings && settings.aiEnabled === false) {
     return res.status(403).json({ error: "AI features are disabled for your company" });
@@ -534,6 +544,7 @@ router.post("/:id/analyze-policy", authenticate, requireRole(["ADMIN"]), longReq
   const { analyzePolicy } = await import("../utils/aiProvider.js");
 
   const analysis = await analyzePolicy({
+    provider: settings?.aiProvider || null,
     policyName: req.body.policyName || item.title,
     filePath: resolved,
     fileExt,

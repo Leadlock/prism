@@ -532,17 +532,24 @@ export default function QuestionDetail({ token, user, onLogout, isVerified }) {
                   <div className="list">
                     {visible.map(s => {
                       const score = s.relevanceScore;
-                      const scoreColor = score >= 70 ? "var(--green)" : score >= 50 ? "var(--amber)" : "var(--text3)";
+                      const isKeyword = s.matchType === "keyword";
+                      const scoreColor = isKeyword
+                        ? "var(--text3)"
+                        : (score >= 70 ? "var(--green)" : score >= 50 ? "var(--amber)" : "var(--text3)");
                       const alreadyAttaching = attachingSuggestion === s.id;
                       return (
                         <div key={s.id} className="list-item" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <div style={{
-                            flexShrink: 0, width: 40, height: 40, borderRadius: "50%",
-                            border: `2px solid ${scoreColor}`, background: "var(--bg3)",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 10, fontWeight: 700, color: scoreColor,
-                          }}>
-                            {score}%
+                          <div
+                            title={isKeyword
+                              ? "Keyword overlap, not an AI score — enable an AI provider for semantic matching"
+                              : "AI relevance score"}
+                            style={{
+                              flexShrink: 0, width: 40, height: 40, borderRadius: "50%",
+                              border: `2px ${isKeyword ? "dashed" : "solid"} ${scoreColor}`, background: "var(--bg3)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: isKeyword ? 9 : 10, fontWeight: 700, color: scoreColor,
+                            }}>
+                            {isKeyword ? "kw" : `${score}%`}
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="list-item-title" style={{ wordBreak: "break-word" }}>{s.title}</div>

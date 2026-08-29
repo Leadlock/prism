@@ -25,6 +25,7 @@ router.get("/companies", authenticate, requireSuperAdmin, asyncHandler(async (re
     `SELECT c.id, c.name, c.domain, c.admin_email, c.industry, c.company_size, c.status, c.is_verified, c.created_at,
             c.plan, c.billing_status, c.trial_ends_at,
             COALESCE(cs.ai_enabled, true) AS ai_enabled,
+            cs.ai_provider,
             c.template_id,
             mt.name AS template_name
      FROM companies c
@@ -285,6 +286,32 @@ router.patch("/companies/:id/ai-toggle", authenticate, requireSuperAdmin, asyncH
   );
 
   res.json({ companyId: parseInt(id), aiEnabled });
+}));
+
+// PATCH /api/superadmin/companies/:id/ai-provider — switch a company's AI backend
+// (AWS Bedrock <-> Azure). null clears the override back to the platform default.
+router.patch("/companies/:id/ai-provider", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  let { aiProvider } = req.body;
+
+  if (aiProvider === "" || aiProvider === "default") aiProvider = null;
+  if (aiProvider !== null && !["bedrock", "azure"].includes(aiProvider)) {
+    return res.status(400).json({ error: "aiProvider must be 'bedrock', 'azure', or null" });
+  }
+
+  const companyCheck = await query("SELECT id FROM companies WHERE id = $1", [id]);
+  if (companyCheck.rows.length === 0) {
+    return res.status(404).json({ error: "Company not found" });
+  }
+
+  await query(
+    `INSERT INTO company_settings (company_id, ai_provider)
+     VALUES ($1, $2)
+     ON CONFLICT (company_id) DO UPDATE SET ai_provider = $2, updated_at = NOW()`,
+    [id, aiProvider]
+  );
+
+  res.json({ companyId: parseInt(id), aiProvider });
 }));
 
 // --- Logo multer (for company branding) ---
