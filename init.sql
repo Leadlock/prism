@@ -338,7 +338,17 @@ CREATE TABLE IF NOT EXISTS evidence_vault (
   uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   legacy_evidence_id INT,
-  locked BOOLEAN NOT NULL DEFAULT false
+  locked BOOLEAN NOT NULL DEFAULT false,
+  -- AI evidence analysis lives on the reusable vault item so it is shared by every
+  -- question (and therefore every framework) the item is linked to.
+  ai_contributor_comments TEXT,
+  ai_reviewer_comments TEXT,
+  ai_gaps JSONB,
+  ai_suggestions JSONB,
+  ai_analyzed_at TIMESTAMPTZ,
+  ai_date_warning TEXT,
+  ai_analyzed_version INT,
+  ai_provider TEXT
 );
 CREATE INDEX IF NOT EXISTS evidence_vault_company_idx ON evidence_vault(company_id);
 CREATE INDEX IF NOT EXISTS evidence_vault_title_idx ON evidence_vault(company_id, title);
@@ -1142,6 +1152,14 @@ ALTER TABLE assessments ADD COLUMN IF NOT EXISTS reviewer_notes TEXT;
 ALTER TABLE assessments ADD COLUMN IF NOT EXISTS auditor_notes TEXT;
 ALTER TABLE evidence    ADD COLUMN IF NOT EXISTS ai_date_warning TEXT;
 ALTER TABLE evidence_vault ADD COLUMN IF NOT EXISTS locked BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE evidence_vault ADD COLUMN IF NOT EXISTS ai_contributor_comments TEXT;
+ALTER TABLE evidence_vault ADD COLUMN IF NOT EXISTS ai_reviewer_comments TEXT;
+ALTER TABLE evidence_vault ADD COLUMN IF NOT EXISTS ai_gaps JSONB;
+ALTER TABLE evidence_vault ADD COLUMN IF NOT EXISTS ai_suggestions JSONB;
+ALTER TABLE evidence_vault ADD COLUMN IF NOT EXISTS ai_analyzed_at TIMESTAMPTZ;
+ALTER TABLE evidence_vault ADD COLUMN IF NOT EXISTS ai_date_warning TEXT;
+ALTER TABLE evidence_vault ADD COLUMN IF NOT EXISTS ai_analyzed_version INT;
+ALTER TABLE evidence_vault ADD COLUMN IF NOT EXISTS ai_provider TEXT;
 ALTER TABLE users          ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS technology_stack JSONB;
 ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS vault_pin_hash TEXT;

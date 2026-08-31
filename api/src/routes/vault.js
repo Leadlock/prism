@@ -10,6 +10,7 @@ import { longRequestTimeout } from "../middleware/timeout.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { notifyReviewers } from "../utils/notifyReviewers.js";
 import { chatWithDocuments } from "../utils/aiProvider.js";
+import { runEvidenceAnalysis } from "../utils/evidenceAnalysis.js";
 import { getCompanyAiProvider } from "../utils/aiSettings.js";
 import { scanBuffer } from "../utils/scanFile.js";
 import { saveObject, openObjectStream, deleteObject, withLocalCopy } from "../utils/evidenceStorage.js";
@@ -465,6 +466,31 @@ router.get("/:id/download", authenticate, requireVaultPin, requireReadOnly(VAULT
     filename: item.fileName || path.basename(item.storagePath),
     disposition: "attachment",
   });
+}));
+
+// POST /api/vault/:id/analyze — AI analysis of a vault evidence item against the
+// controls it is linked to. The result is stored on the vault row and is shared
+// by every question/framework the item covers.
+router.post("/:id/analyze", authenticate, requireVaultPin, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), longRequestTimeout(120000), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const cid = req.user.companyId;
+
+  const settingsResult = await query("SELECT ai_enabled, ai_provider FROM company_settings WHERE company_id = $1", [cid]);
+  const settings = mapRow(settingsResult);
+  if (settings && settings.aiEnabled === false) {
+    return res.status(403).json({ error: "AI features are disabled for your company" });
+  }
+
+  const exists = await query("SELECT 1 FROM evidence_vault WHERE id = $1 AND company_id = $2", [id, cid]);
+  if (exists.rows.length === 0) return res.status(404).json({ error: "Vault item not found" });
+
+  const { vaultItem } = await runEvidenceAnalysis({
+    vaultId: id,
+    companyId: cid,
+    provider: settings?.aiProvider || null,
+  });
+
+  res.json(vaultItem); // already camelCased by runEvidenceAnalysis
 }));
 
 // POST /api/vault/:id/analyze-policy — AI gap analysis for a vault document (onboarding)

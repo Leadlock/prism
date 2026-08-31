@@ -7,6 +7,7 @@ import { longRequestTimeout } from "../middleware/timeout.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { writeAuditLog } from "../utils/auditLog.js";
 import { analyzeEvidence } from "../utils/aiProvider.js";
+import { runEvidenceAnalysis, resolveVaultIdForEvidence } from "../utils/evidenceAnalysis.js";
 import { notifyReviewers } from "../utils/notifyReviewers.js";
 import { scanBuffer } from "../utils/scanFile.js";
 import { saveObject, openObjectStream, withLocalCopy } from "../utils/evidenceStorage.js";
@@ -42,26 +43,47 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
     await writeAuditLog({ userId: req.user.userId, companyId: req.user.companyId, email: req.user.email, action: "READ", resource: "evidence", ip: req.ip });
   }
   const { questId, moduleId, month } = req.query;
-  const conditions = ["company_id = $1"];
+  const conditions = ["e.company_id = $1"];
   const values = [req.user.companyId];
 
   if (questId) {
     values.push(questId);
-    conditions.push(`quest_id = $${values.length}`);
+    conditions.push(`e.quest_id = $${values.length}`);
   }
 
   if (moduleId) {
     values.push(moduleId);
-    conditions.push(`module_id = $${values.length}`);
+    conditions.push(`e.module_id = $${values.length}`);
   }
 
   if (month) {
     values.push(month);
-    conditions.push(`month = $${values.length}`);
+    conditions.push(`e.month = $${values.length}`);
   }
 
+  // AI analysis now lives on the shared evidence_vault item; fall back to the
+  // legacy per-row columns for evidence uploaded/analysed before the move.
   const result = await query(
-    `SELECT * FROM evidence WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC`,
+    `SELECT e.id, e.evidence_id, e.month, e.module_id, e.quest_id, e.company_id,
+            e.evidence_type, e.evidence_name, e.evidence_link, e.file_path,
+            e.uploaded_by, e.upload_date, e.reviewer, e.approval_status, e.notes,
+            COALESCE(ev.ai_contributor_comments, e.ai_contributor_comments) AS ai_contributor_comments,
+            COALESCE(ev.ai_reviewer_comments,    e.ai_reviewer_comments)    AS ai_reviewer_comments,
+            COALESCE(ev.ai_gaps,                 e.ai_gaps)                 AS ai_gaps,
+            COALESCE(ev.ai_suggestions,          e.ai_suggestions)          AS ai_suggestions,
+            COALESCE(ev.ai_analyzed_at,          e.ai_analyzed_at)          AS ai_analyzed_at,
+            COALESCE(ev.ai_date_warning,         e.ai_date_warning)         AS ai_date_warning,
+            e.created_at, e.updated_at
+       FROM evidence e
+       LEFT JOIN LATERAL (
+         SELECT ai_contributor_comments, ai_reviewer_comments, ai_gaps,
+                ai_suggestions, ai_analyzed_at, ai_date_warning
+           FROM evidence_vault
+          WHERE legacy_evidence_id = e.id AND company_id = e.company_id
+          ORDER BY updated_at DESC LIMIT 1
+       ) ev ON TRUE
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY e.created_at DESC`,
     values
   );
   res.json(mapRows(result));
@@ -374,12 +396,13 @@ router.post("/:id/analyze", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIB
     return res.status(403).json({ error: "AI features are disabled for your company" });
   }
 
+  const evidenceId = parseInt(req.params.id);
   const evidenceResult = await query(
     `SELECT e.*, q.required_evidence, q.recurrence_interval
      FROM evidence e
      LEFT JOIN questions q ON e.quest_id = q.quest_id
      WHERE e.id = $1 AND e.company_id = $2`,
-    [parseInt(req.params.id), req.user.companyId]
+    [evidenceId, req.user.companyId]
   );
   const evidence = mapRow(evidenceResult);
 
@@ -388,23 +411,37 @@ router.post("/:id/analyze", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIB
   }
 
   const today = new Date().toISOString().slice(0, 10);
+  const provider = settings?.aiProvider || null;
 
-  const runAnalysis = (filePath) => analyzeEvidence({
-    provider: settings?.aiProvider || null,
-    evidenceName: evidence.evidenceName,
-    evidenceType: evidence.evidenceType,
-    questId: evidence.questId,
-    moduleId: evidence.moduleId,
-    requiredEvidence: evidence.requiredEvidence,
-    filePath,
-    recurrenceInterval: evidence.recurrenceInterval || null,
-    today
-  });
+  // Prefer analysing the shared vault item so the result is reused by every
+  // question/framework the evidence is linked to. Fall back to the legacy
+  // evidence row only when there is no vault mirror (e.g. a link-only record).
+  const vaultId = await resolveVaultIdForEvidence(evidenceId, req.user.companyId);
 
-  const analysis = evidence.evidenceType === "FILE" && evidence.filePath
-    ? await withLocalCopy(req.user.companyId, evidence.filePath, runAnalysis)
-    : await runAnalysis(null);
+  let analysis;
+  if (vaultId) {
+    ({ analysis } = await runEvidenceAnalysis({
+      vaultId, companyId: req.user.companyId, provider, today,
+    }));
+  } else {
+    const runAnalysis = (filePath) => analyzeEvidence({
+      provider,
+      evidenceName: evidence.evidenceName,
+      evidenceType: evidence.evidenceType,
+      questId: evidence.questId,
+      moduleId: evidence.moduleId,
+      requiredEvidence: evidence.requiredEvidence,
+      filePath,
+      recurrenceInterval: evidence.recurrenceInterval || null,
+      today
+    });
+    analysis = evidence.evidenceType === "FILE" && evidence.filePath
+      ? await withLocalCopy(req.user.companyId, evidence.filePath, runAnalysis)
+      : await runAnalysis(null);
+  }
 
+  // Dual-write onto the legacy evidence row so the Tracker UI (which reads
+  // /api/evidence) keeps showing analysis without a frontend change.
   const updateResult = await query(
     `UPDATE evidence
      SET ai_contributor_comments = $1, ai_reviewer_comments = $2,
@@ -418,7 +455,7 @@ router.post("/:id/analyze", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIB
       JSON.stringify(analysis.gaps || []),
       JSON.stringify(analysis.suggestions || []),
       analysis.dateWarning || null,
-      parseInt(req.params.id),
+      evidenceId,
       req.user.companyId
     ]
   );
