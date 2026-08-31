@@ -1246,6 +1246,16 @@ INSERT INTO frameworks (key, name, description) VALUES
   ('GDPR',     'GDPR',             'General Data Protection Regulation (EU)')
 ON CONFLICT (key) DO NOTHING;
 
+-- Additional frameworks (audit-ready sheet imports). Keys stay version-free and
+-- uppercase to match the style above; the import filename matcher normalises.
+INSERT INTO frameworks (key, name, description) VALUES
+  ('AWSWAF',   'AWS Well-Architected Framework',   'Amazon Web Services Well-Architected Framework review'),
+  ('AZUREWAF', 'Azure Well-Architected Framework', 'Microsoft Azure Well-Architected Framework review'),
+  ('CERTIN',   'CERT-In Directions 2022',          'Indian Computer Emergency Response Team cyber security directions (Sec. 70B IT Act)'),
+  ('CIS',      'CIS Critical Security Controls v8.1', 'Center for Internet Security Critical Security Controls, version 8.1'),
+  ('PCIDSS',   'PCI DSS v4.0.1',                   'Payment Card Industry Data Security Standard, version 4.0.1')
+ON CONFLICT (key) DO NOTHING;
+
 -- Framework key on modules and templates (upgrade guard — no-op on fresh install)
 ALTER TABLE modules          ADD COLUMN IF NOT EXISTS framework_key TEXT REFERENCES frameworks(key);
 ALTER TABLE module_templates ADD COLUMN IF NOT EXISTS framework_key TEXT;

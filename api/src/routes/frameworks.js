@@ -17,7 +17,7 @@ const router = Router();
  *
  * Returns { questionsInserted, mappingsInserted }.
  */
-async function importFrameworkQuestions(client, { companyId, frameworkKey, modules, questions }) {
+export async function importFrameworkQuestions(client, { companyId, frameworkKey, modules, questions }) {
   let questionsInserted = 0;
   let mappingsInserted = 0;
 

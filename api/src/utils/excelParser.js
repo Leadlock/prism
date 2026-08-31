@@ -1,4 +1,5 @@
 import fs from 'fs';
+import crypto from 'crypto';
 import ExcelJS from 'exceljs';
 import { normalizeStrictWorkbook } from './normalizeStrictWorkbook.js';
 
@@ -11,13 +12,19 @@ import { normalizeStrictWorkbook } from './normalizeStrictWorkbook.js';
  * 2. Separate sheets: "Modules" sheet + "Questions" sheet with dedicated columns.
  *
  * @param {string} filePath - Path to the uploaded .xlsx file
- * @returns {Promise<{ modules: object[], questions: object[], errors: string[] }>}
+ * @param {{ originalName?: string }} [opts] - originalName is the upload's real
+ *   filename (multer stores a `Date.now()-` prefixed copy); used to guess the framework.
+ * @returns {Promise<{ modules: object[], questions: object[], errors: string[], frameworkGuess: string|null }>}
  */
-export async function parseExcelImport(filePath) {
+export async function parseExcelImport(filePath, opts = {}) {
   const workbook = await readWorkbook(filePath);
   const errors = [];
 
   const sheetNames = workbook.worksheets.map(ws => ws.name);
+
+  // First-pass framework guess from the upload filename; combined-sheet parsing
+  // refines it with the worksheet name and the clause-reference column header.
+  const nameGuess = guessFrameworkKey(opts.originalName || '');
 
   // Check for separate "Modules" and "Questions" sheets
   const moduleSheetName = sheetNames.find(
@@ -29,11 +36,14 @@ export async function parseExcelImport(filePath) {
 
   // If we have dedicated sheets, use the legacy parser
   if (moduleSheetName || questionSheetName) {
-    return parseSeparateSheets(workbook, moduleSheetName, questionSheetName, errors);
+    const result = parseSeparateSheets(workbook, moduleSheetName, questionSheetName, errors);
+    const guess = nameGuess || guessFrameworkKey(questionSheetName || moduleSheetName || '');
+    decorateQuestions(result.questions, guess);
+    return { ...result, frameworkGuess: guess };
   }
 
   // Otherwise, parse as combined format (single sheet with all data)
-  return parseCombinedSheet(workbook, errors);
+  return parseCombinedSheet(workbook, errors, { nameGuess });
 }
 
 /**
@@ -111,7 +121,7 @@ function translateWorkbookReadError(err) {
  * - Level 3 Criteria / level3_yes_criteria
  * - Required Evidence / required_evidence
  */
-function parseCombinedSheet(workbook, errors) {
+function parseCombinedSheet(workbook, errors, { nameGuess = null } = {}) {
   const modules = [];
   const questions = [];
   const seenModules = new Map(); // module_id -> module object
@@ -119,10 +129,14 @@ function parseCombinedSheet(workbook, errors) {
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {
     errors.push('No sheets found in workbook');
-    return { modules, questions, errors };
+    return { modules, questions, errors, frameworkGuess: nameGuess };
   }
 
   const rows = sheetToJson(worksheet);
+
+  // Framework guess: filename → worksheet name → (refined below) clause-ref header.
+  let frameworkGuess = nameGuess || guessFrameworkKey(worksheet.name || '');
+  let refHeaderSeen = null;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -134,27 +148,27 @@ function parseCombinedSheet(workbook, errors) {
       if (k.trim()) cleanRow[k.trim()] = v;
     }
 
-    // Extract module info
+    // Extract module info. CIS renames Module ID -> "CIS Control".
     const moduleId = getField(cleanRow, [
-      'Module ID', 'module_id', 'ModuleID', 'Module_ID', 'moduleId'
+      'Module ID', 'module_id', 'ModuleID', 'Module_ID', 'moduleId', 'CIS Control'
     ]);
     const moduleGrouping = getField(cleanRow, [
       'Module Grouping', 'module_grouping', 'ModuleGrouping', 'Module_Grouping'
     ]);
 
-    // Extract question info
+    // Extract question info. CIS renames Question ID -> "Audit ID",
+    // Question Text -> "Audit Question", Control Area -> "Safeguard / Control Area".
     const questId = getField(cleanRow, [
-      'Question ID', 'quest_id', 'QuestID', 'Quest_ID', 'questionId', 'Question_ID'
+      'Question ID', 'quest_id', 'QuestID', 'Quest_ID', 'questionId', 'Question_ID', 'Audit ID'
     ]);
     const questionText = getField(cleanRow, [
-      'Question Text', 'baseline_question', 'BaselineQuestion', 'Baseline_Question', 'question_text'
+      'Question Text', 'baseline_question', 'BaselineQuestion', 'Baseline_Question', 'question_text', 'Audit Question'
     ]);
     const controlArea = getField(cleanRow, [
-      'Control Area', 'control_area', 'ControlArea', 'Control_Area'
+      'Control Area', 'control_area', 'ControlArea', 'Control_Area', 'Safeguard / Control Area'
     ]);
-    const isoRef = getField(cleanRow, [
-      'ISO / Clause Reference', 'ISO/Clause Reference', 'iso_reference', 'ISOReference', 'ISO_Reference', 'Clause Reference', 'Framework Reference', 'framework_reference'
-    ]);
+    const { value: isoRef, header: isoRefHeader } = findClauseRef(cleanRow);
+    if (isoRefHeader && !refHeaderSeen) refHeaderSeen = isoRefHeader;
     const owner = getField(cleanRow, [
       'Owner', 'default_owner', 'DefaultOwner', 'Default_Owner'
     ]);
@@ -165,7 +179,8 @@ function parseCombinedSheet(workbook, errors) {
       'Purpose / Description', 'Purpose/Description', 'purpose', 'Purpose', 'Description'
     ]);
     const level3Criteria = getField(cleanRow, [
-      'Level 3 Criteria', 'level3_yes_criteria', 'Level3YesCriteria', 'Level3_Yes_Criteria', 'Level 3 Yes Criteria'
+      'Level 3 Criteria', 'level3_yes_criteria', 'Level3YesCriteria', 'Level3_Yes_Criteria', 'Level 3 Yes Criteria',
+      'Audit-Ready Criteria', 'Audit Ready Criteria'
     ]);
     const requiredEvidence = getField(cleanRow, [
       'Required Evidence', 'required_evidence', 'RequiredEvidence', 'Required_Evidence'
@@ -224,7 +239,13 @@ function parseCombinedSheet(workbook, errors) {
     modules.push(mod);
   }
 
-  return { modules, questions, errors };
+  // Refine the framework guess from the clause-reference column header
+  // (e.g. "GDPR Reference", "SOC 2 / TSC Reference") when name-based guessing failed.
+  if (!frameworkGuess && refHeaderSeen) frameworkGuess = guessFrameworkKey(refHeaderSeen);
+
+  decorateQuestions(questions, frameworkGuess);
+
+  return { modules, questions, errors, frameworkGuess };
 }
 
 /**
@@ -371,4 +392,154 @@ function isEmptyRow(row) {
   return Object.values(row).every(
     (val) => val === '' || val === undefined || val === null
   );
+}
+
+// ─── Framework / control mapping helpers ─────────────────────────────────────
+
+// Header names for the clause-reference column, tried in order. The explicit
+// per-framework dialects come first (they are unambiguous), then the generic
+// legacy names.
+const CLAUSE_REF_HEADERS = [
+  'ISO / Clause Reference', 'ISO/Clause Reference',
+  'AWS WAF Reference', 'Azure WAF Reference', 'CERT-In Reference',
+  'CIS v8.1 Reference', 'GDPR Reference', 'HIPAA Reference',
+  'PCI DSS v4.0.1 Reference', 'SOC 2 / TSC Reference',
+  'iso_reference', 'ISOReference', 'ISO_Reference',
+  'Clause Reference', 'Framework Reference', 'framework_reference',
+];
+
+// Columns that must never be treated as the clause-ref column by the generic
+// fallback scan, even though some contain the word "Reference".
+const CLAUSE_REF_EXCLUDE = new Set([
+  'Module Grouping', 'Module ID', 'Question ID', 'Question Text', 'Control Area',
+  'Owner', 'Frequency', 'Priority', 'Tags', 'Purpose / Description',
+  'Level 3 Criteria', 'Audit-Ready Criteria', 'Required Evidence',
+  'Assessment Status', 'Score', 'Gap / Observation', 'Remediation Owner',
+  'Target Date', 'Control Type', 'Implementation Group',
+  'CIS Control', 'Audit ID', 'Audit Question', 'Safeguard / Control Area',
+]);
+
+/**
+ * Find the clause-reference cell for a row: explicit dialect headers first, then
+ * a generic scan for a `* Reference` / `* Clause` column.
+ * @returns {{ value: any, header: string|null }}
+ */
+function findClauseRef(row) {
+  for (const key of CLAUSE_REF_HEADERS) {
+    if (row[key] !== undefined && row[key] !== '') return { value: row[key], header: key };
+  }
+  for (const key of Object.keys(row)) {
+    if (CLAUSE_REF_EXCLUDE.has(key)) continue;
+    if (/\breference$/i.test(key) || /\bclause\b/i.test(key) || /\btsc reference\b/i.test(key)) {
+      if (row[key] !== undefined && row[key] !== '') return { value: row[key], header: key };
+    }
+  }
+  return { value: undefined, header: null };
+}
+
+/**
+ * Split a clause-reference cell that lists several controls
+ * (e.g. "Art. 5(2), 24" or "CC1.1, CC1.2" or "Sec 8 / Sec 10") into distinct refs.
+ * Conservative: only splits on ";" or "/" or a comma that is NOT inside parentheses.
+ */
+function splitRefs(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return [];
+  const parts = [];
+  let buf = '';
+  let depth = 0;
+  for (const ch of s) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    if ((ch === ';' || ch === '/' || (ch === ',' && depth === 0))) {
+      if (buf.trim()) parts.push(buf.trim());
+      buf = '';
+      continue;
+    }
+    buf += ch;
+  }
+  if (buf.trim()) parts.push(buf.trim());
+  // dedupe, preserve order
+  return [...new Set(parts.length ? parts : [s])];
+}
+
+/**
+ * Classify which facet of a control a question row is asking about. Audit-ready
+ * sheets emit ~3 near-identical rows per control; the facet lets us collapse them.
+ */
+function classifyFacet(text) {
+  const t = String(text || '').toLowerCase();
+  if (/rate\s+the\s+maturity|maturity\s+of\s+.+\s+on\s+a\s+0.?5/.test(t)) return 'MATURITY';
+  if (/\bprovide\s+(current,?\s*)?(dated\s+)?evidence/.test(t)) return 'EVIDENCE';
+  if (/dated\s+evidence\s+(that|demonstrating|for)\b/.test(t)) return 'EVIDENCE';
+  if (/\bevidence\s+(be\s+)?(uploaded|linked|retriev)/.test(t)) return 'EVIDENCE';
+  if (/periodically\s+reviewed|reviewed\s+periodically|reviewed\s+or\s+tested|tested\s+or\s+reviewed|reviewed\s+and\s+improved/.test(t)) return 'REVIEWED';
+  if (/reviewed\s+(or\s+\w+\s+)?(at\s+the\s+)?(required|defined)\s+frequency/.test(t)) return 'REVIEWED';
+  if (/implemented,?\s*(formally\s+)?documented,?\s*and\s+assigned/.test(t)) return 'IMPLEMENTED';
+  if (/\bimplemented\s+and\s+(formally\s+)?documented/.test(t)) return 'IMPLEMENTED';
+  if (/\bimplemented,?\s+operational\b|formally\s+implemented\s+and\s+operational/.test(t)) return 'IMPLEMENTED';
+  return 'OTHER';
+}
+
+/**
+ * Stable key grouping every sheet row that describes the same underlying control:
+ * same framework + module + control area + first clause reference.
+ */
+function collapseGroupKey(frameworkGuess, moduleId, controlArea, firstRef) {
+  return crypto
+    .createHash('sha1')
+    .update([
+      String(frameworkGuess || ''),
+      String(moduleId || '').trim().toLowerCase(),
+      String(controlArea || '').trim().toLowerCase(),
+      String(firstRef || '').trim().toLowerCase(),
+    ].join('|'))
+    .digest('hex');
+}
+
+// Ordered filename / sheet-name / header patterns → framework catalog key.
+const FRAMEWORK_PATTERNS = [
+  [/aws[^a-z]*waf|aws.*well.?architected/i, 'AWSWAF'],
+  [/azure[^a-z]*waf|azure.*well.?architected/i, 'AZUREWAF'],
+  [/cert[^a-z]*in/i, 'CERTIN'],
+  [/\bcis\b|cis.*controls/i, 'CIS'],
+  [/pci[^a-z]*dss|\bpci\b/i, 'PCIDSS'],
+  [/\bgdpr\b/i, 'GDPR'],
+  [/\bhipaa\b/i, 'HIPAA'],
+  [/soc[^a-z]*2|\bsoc2\b|\btsc\b/i, 'SOC2'],
+  [/iso[^a-z]*27001|\biso27001\b/i, 'ISO27001'],
+  [/\bdpdpa?\b/i, 'DPDPA'],
+];
+
+/**
+ * Guess a framework catalog key from a filename, worksheet name, or column header.
+ * Returns null when nothing matches unambiguously.
+ */
+export function guessFrameworkKey(text) {
+  // Normalise separators so word boundaries work in filenames like
+  // "PRISM_HIPAA_Audit_Framework.xlsx" (underscore is a word char, so \bHIPAA\b
+  // would never match without this).
+  const s = String(text || '').replace(/[_.\-]+/g, ' ');
+  for (const [re, key] of FRAMEWORK_PATTERNS) {
+    if (re.test(s)) return key;
+  }
+  return null;
+}
+
+/**
+ * Attach cross-framework mapping fields to each parsed question in place:
+ *   control_references: string[]  — the clause ref cell split into distinct refs
+ *   facet:              string    — IMPLEMENTED | EVIDENCE | REVIEWED | MATURITY | OTHER
+ *   collapse_group_key: string    — groups the ~3 rows describing one control
+ */
+export function decorateQuestions(questions, frameworkGuess) {
+  for (const q of questions) {
+    const refs = splitRefs(q.iso_reference);
+    q.control_references = refs;
+    q.facet = classifyFacet(q.baseline_question);
+    q.collapse_group_key = collapseGroupKey(
+      frameworkGuess, q.module_id, q.control_area, refs[0] || ''
+    );
+  }
+  return questions;
 }

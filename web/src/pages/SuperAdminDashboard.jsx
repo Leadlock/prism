@@ -43,6 +43,8 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
   // --- Import state ---
   const [importFile, setImportFile] = useState(null);
   const [importCompanyId, setImportCompanyId] = useState("");
+  const [importFrameworkKey, setImportFrameworkKey] = useState("");
+  const [frameworks, setFrameworks] = useState([]);
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [importing, setImporting] = useState(false);
@@ -138,13 +140,23 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     }
   }, [token]);
 
+  // --- Fetch framework catalog ---
+  const fetchFrameworks = useCallback(async () => {
+    try {
+      const data = await apiFetch("/api/frameworks", { token });
+      setFrameworks(data || []);
+    } catch {
+      // non-fatal — the picker just falls back to a free selection
+    }
+  }, [token]);
+
   // --- Load data on mount and tab change ---
   useEffect(() => {
     if (activeTab === "companies") fetchCompanies();
     if (activeTab === "modules") { fetchTemplates(); fetchCompanies(); }
-    if (activeTab === "import") fetchCompanies();
+    if (activeTab === "import") { fetchCompanies(); fetchFrameworks(); }
     if (activeTab === "branding") fetchCompanies();
-  }, [activeTab, fetchCompanies, fetchTemplates]);
+  }, [activeTab, fetchCompanies, fetchTemplates, fetchFrameworks]);
 
   // --- Company status change (optimistic) ---
   const handleStatusChange = async (companyId, newStatus) => {
@@ -272,6 +284,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     try {
       const body = {};
       if (importCompanyId) body.companyId = importCompanyId;
+      if (importFrameworkKey) body.frameworkKey = importFrameworkKey;
       if (saveAsTemplate) {
         body.saveAsTemplate = "true";
         body.templateName = templateName || importFile.name;
@@ -283,6 +296,7 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
       setSaveAsTemplate(false);
       setTemplateName("");
       setImportCompanyId("");
+      setImportFrameworkKey("");
     } catch (err) {
       setImportError(err.message || "Import failed");
       showToast(err.message || "Import failed", "error");
@@ -323,8 +337,16 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     setImportFile(file);
     setImportResult(null);
     setImportError(null);
+    setImportFrameworkKey("");
     fetchPreview(file, setImportPreview, setPreviewLoading);
   };
+
+  // Prefill the framework picker from the server's filename-based guess.
+  useEffect(() => {
+    if (importPreview?.frameworkGuess && !importFrameworkKey) {
+      setImportFrameworkKey(importPreview.frameworkGuess);
+    }
+  }, [importPreview, importFrameworkKey]);
 
   // --- Template assign ---
   const handleAssignTemplate = async (templateId) => {
@@ -1565,6 +1587,27 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
         />
 
         {renderImportPreview(importPreview, previewLoading)}
+
+        {/* Framework Selector */}
+        <div className="form-group" style={{ marginTop: "16px" }}>
+          <label>Compliance Framework (optional)</label>
+          <select
+            value={importFrameworkKey}
+            onChange={(e) => setImportFrameworkKey(e.target.value)}
+          >
+            <option value="">— Not a framework sheet —</option>
+            {frameworks.map(f => (
+              <option key={f.key} value={f.key}>{f.name}</option>
+            ))}
+          </select>
+          <p style={{ fontSize: "12px", color: "var(--text2)", margin: "6px 0 0" }}>
+            {importPreview?.frameworkGuess
+              ? `Detected "${importPreview.frameworkGuess}" from the filename. `
+              : ""}
+            When set, questions are de-duplicated by control and mapped to this framework
+            (the framework is activated for the assigned company).
+          </p>
+        </div>
 
         {/* Company Selector */}
         <div className="form-group" style={{ marginTop: "16px" }}>
