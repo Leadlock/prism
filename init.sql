@@ -1242,15 +1242,22 @@ CREATE INDEX IF NOT EXISTS company_frameworks_company_idx ON company_frameworks(
 
 -- Maps a question to one or more framework controls (many-to-many).
 -- A question answered once satisfies every framework it is mapped to.
--- For new modules this replaces the single iso_reference column on questions;
--- the legacy iso_reference column is kept as a fallback.
+-- company_id IS NULL rows are the GLOBAL crosswalk (curated once, shared by every
+-- company); provisioning copies them into per-company rows. For new modules this
+-- replaces the single iso_reference column on questions; iso_reference is kept
+-- as a fallback. original_* preserve each framework's pre-merge wording.
 CREATE TABLE IF NOT EXISTS question_framework_controls (
   id                SERIAL PRIMARY KEY,
-  company_id        INT  NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  company_id        INT  REFERENCES companies(id) ON DELETE CASCADE,
   quest_id          TEXT NOT NULL,
   framework_key     TEXT NOT NULL REFERENCES frameworks(key),
   control_reference TEXT NOT NULL,   -- e.g. 'A.9.4.2', 'DPDPA-7', 'CC6.1'
-  UNIQUE(company_id, quest_id, framework_key, control_reference)
+  original_quest_id     TEXT,
+  original_question     TEXT,
+  original_control_area TEXT,
+  original_level3       TEXT,
+  original_facets       JSONB,       -- {IMPLEMENTED:"…", EVIDENCE:"…", REVIEWED:"…"} pre-collapse
+  CONSTRAINT qfc_uniq_nnd UNIQUE NULLS NOT DISTINCT (company_id, quest_id, framework_key, control_reference)
 );
 CREATE INDEX IF NOT EXISTS qfc_company_framework_idx ON question_framework_controls(company_id, framework_key);
 CREATE INDEX IF NOT EXISTS qfc_quest_idx             ON question_framework_controls(company_id, quest_id);
@@ -1277,5 +1284,107 @@ ON CONFLICT (key) DO NOTHING;
 -- Framework key on modules and templates (upgrade guard — no-op on fresh install)
 ALTER TABLE modules          ADD COLUMN IF NOT EXISTS framework_key TEXT REFERENCES frameworks(key);
 ALTER TABLE module_templates ADD COLUMN IF NOT EXISTS framework_key TEXT;
+
+-- question_framework_controls upgrade guards (existing databases): allow a global
+-- (company_id IS NULL) crosswalk, add original_* wording, switch the unique
+-- constraint to NULLS NOT DISTINCT so global rows dedupe.
+ALTER TABLE question_framework_controls ALTER COLUMN company_id DROP NOT NULL;
+ALTER TABLE question_framework_controls ADD COLUMN IF NOT EXISTS original_quest_id     TEXT;
+ALTER TABLE question_framework_controls ADD COLUMN IF NOT EXISTS original_question     TEXT;
+ALTER TABLE question_framework_controls ADD COLUMN IF NOT EXISTS original_control_area TEXT;
+ALTER TABLE question_framework_controls ADD COLUMN IF NOT EXISTS original_level3       TEXT;
+ALTER TABLE question_framework_controls ADD COLUMN IF NOT EXISTS original_facets       JSONB;
+DO $$
+DECLARE c TEXT;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'qfc_uniq_nnd') THEN
+    FOR c IN SELECT conname FROM pg_constraint
+             WHERE conrelid = 'question_framework_controls'::regclass AND contype = 'u'
+    LOOP EXECUTE format('ALTER TABLE question_framework_controls DROP CONSTRAINT %I', c);
+    END LOOP;
+    ALTER TABLE question_framework_controls
+      ADD CONSTRAINT qfc_uniq_nnd UNIQUE NULLS NOT DISTINCT
+      (company_id, quest_id, framework_key, control_reference);
+  END IF;
+END $$;
+
+-- ===== Framework import: AI clustering + human-review batches =====
+-- A batch stages one framework's parsed sheet (kind=IMPORT) or every framework's
+-- template at once (kind=RECONCILE), clusters the incoming controls against the
+-- global canonical set, and holds the superadmin's merge/split decisions until
+-- commit writes canonical questions + question_framework_controls.
+CREATE TABLE IF NOT EXISTS import_batches (
+  id                    SERIAL PRIMARY KEY,
+  kind                  TEXT NOT NULL DEFAULT 'IMPORT' CHECK (kind IN ('IMPORT','RECONCILE')),
+  primary_framework_key TEXT REFERENCES frameworks(key),
+  source_file_name      TEXT,
+  status                TEXT NOT NULL DEFAULT 'STAGED'
+                        CHECK (status IN ('STAGED','CLUSTERING','REVIEW','COMMITTED','ABANDONED','FAILED')),
+  raw_stats             JSONB,
+  ai_provider           TEXT,
+  templates_snapshot    JSONB,       -- pre-commit backup of affected module_templates (RECONCILE)
+  error                 TEXT,
+  created_by            INT REFERENCES super_admins(id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  committed_at          TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS import_staging_rows (
+  id                    SERIAL PRIMARY KEY,
+  batch_id              INT NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE,
+  framework_key         TEXT NOT NULL REFERENCES frameworks(key),
+  source_quest_id       TEXT,
+  module_id             TEXT,
+  module_name           TEXT,
+  control_area          TEXT,
+  control_reference     TEXT,         -- one normalised ref (multi-ref cells fan out)
+  control_reference_raw TEXT,
+  facet                 TEXT,         -- IMPLEMENTED | EVIDENCE | REVIEWED | MATURITY | OTHER
+  baseline_question     TEXT,
+  level3_yes_criteria   TEXT,
+  required_evidence     TEXT,
+  default_owner         TEXT,
+  frequency             TEXT,
+  priority              TEXT,
+  tags                  TEXT,
+  collapse_group_key    TEXT,         -- groups the ~3 rows describing one control
+  raw                   JSONB,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS import_staging_batch_idx ON import_staging_rows(batch_id);
+
+CREATE TABLE IF NOT EXISTS import_clusters (
+  id                         SERIAL PRIMARY KEY,
+  batch_id                   INT NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE,
+  proposed_action            TEXT NOT NULL
+                             CHECK (proposed_action IN ('MERGE_INTO_EXISTING','NEW_CANONICAL','KEEP_SEPARATE')),
+  existing_quest_id          TEXT,    -- canonical questions row (company_id IS NULL)
+  proposed_canonical_question TEXT,
+  proposed_level3            TEXT,
+  proposed_control_area      TEXT,
+  proposed_module_id         TEXT,
+  ai_confidence              NUMERIC,
+  ai_rationale               TEXT,
+  match_method               TEXT CHECK (match_method IN ('llm','fingerprint','manual')),
+  decision                   TEXT CHECK (decision IN ('ACCEPT','REJECT','MODIFIED')),
+  decided_action             TEXT,
+  decided_canonical_question TEXT,
+  decided_level3             TEXT,
+  decided_quest_id           TEXT,    -- filled at commit
+  decided_by                 INT REFERENCES super_admins(id) ON DELETE SET NULL,
+  decided_at                 TIMESTAMPTZ,
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS import_clusters_batch_idx ON import_clusters(batch_id);
+
+CREATE TABLE IF NOT EXISTS import_cluster_members (
+  cluster_id                 INT NOT NULL REFERENCES import_clusters(id) ON DELETE CASCADE,
+  staging_row_id             INT NOT NULL REFERENCES import_staging_rows(id) ON DELETE CASCADE,
+  assigned_framework_key     TEXT,
+  assigned_control_reference TEXT,
+  PRIMARY KEY (cluster_id, staging_row_id)
+);
 
 COMMIT;

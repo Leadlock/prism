@@ -346,6 +346,42 @@ Use "placeholder" if the document is a template with unfilled fields. Use "stron
   }
 }
 
+export async function clusterQuestions({ incoming = [], existing = [] }) {
+  if (!incoming.length) return { clusters: [] };
+
+  const incomingList = incoming.map(q =>
+    `- tempId=${q.tempId} [${q.frameworkKey} ${q.controlReference || ""}] area="${q.controlArea || ""}" facet=${q.facet || "OTHER"} q="${String(q.question || "").slice(0, 200)}"`
+  ).join("\n");
+  const existingList = existing.length
+    ? existing.map(e =>
+        `- questId=${e.questId} area="${e.controlArea || ""}" frameworks=${(e.frameworks || []).map(f => f.key).join(",")} q="${String(e.question || "").slice(0, 200)}"`
+      ).join("\n")
+    : "(none yet)";
+
+  const systemPrompt = `You group compliance-control questions representing the SAME underlying requirement so one canonical question can be answered once and mapped to every framework. Put every incoming tempId in exactly one cluster. Cluster rows describing the same control even if wording differs across frameworks. Use action "MERGE_INTO_EXISTING" (with existingQuestId) when a cluster matches an existing canonical requirement, otherwise "NEW_CANONICAL". Never merge controls that differ in scope. canonicalQuestion should capture the control without the implemented/evidence/reviewed boilerplate. Respond with ONLY valid JSON: {"clusters":[{"memberTempIds":["..."],"action":"...","existingQuestId":null,"canonicalQuestion":"...","level3":"...","confidence":0.0,"rationale":"..."}]}`;
+  const message = `INCOMING:\n${incomingList}\n\nEXISTING canonical:\n${existingList}`;
+
+  const raw = await chatWithDocuments({ systemPrompt, history: [], message });
+  const jsonMatch = String(raw).match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("clusterQuestions: no JSON in model response");
+  const parsed = JSON.parse(jsonMatch[0]);
+  if (!parsed || !Array.isArray(parsed.clusters)) throw new Error("clusterQuestions: bad shape");
+
+  return {
+    clusters: parsed.clusters.map(c => ({
+      memberTempIds: (c.memberTempIds || []).map(String),
+      action: c.action === "MERGE_INTO_EXISTING" ? "MERGE_INTO_EXISTING"
+        : c.action === "KEEP_SEPARATE" ? "KEEP_SEPARATE" : "NEW_CANONICAL",
+      existingQuestId: c.existingQuestId || null,
+      canonicalQuestion: c.canonicalQuestion || "",
+      level3: c.level3 || "",
+      confidence: Math.max(0, Math.min(1, Number(c.confidence) || 0)),
+      rationale: c.rationale || "",
+      matchMethod: "llm",
+    })),
+  };
+}
+
 export async function chatWithDocuments({ systemPrompt, history, message }) {
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const agentId = process.env.AZURE_AGENT_ID;

@@ -183,6 +183,65 @@ If nothing scores 40+, return: []`;
   }
 }
 
+export async function clusterQuestions({ incoming = [], existing = [] }) {
+  if (!incoming.length) return { clusters: [] };
+
+  const incomingList = incoming.map(q =>
+    `- tempId=${q.tempId} [${q.frameworkKey} ${q.controlReference || ""}] area="${q.controlArea || ""}" facet=${q.facet || "OTHER"} q="${String(q.question || "").slice(0, 200)}"`
+  ).join("\n");
+  const existingList = existing.length
+    ? existing.map(e =>
+        `- questId=${e.questId} area="${e.controlArea || ""}" frameworks=${(e.frameworks || []).map(f => f.key).join(",")} q="${String(e.question || "").slice(0, 200)}"`
+      ).join("\n")
+    : "(none yet)";
+
+  const prompt = `You group compliance-control questions that represent the SAME underlying requirement, so one canonical question can be answered once and mapped to every framework.
+
+INCOMING rows (one framework's audit sheet; ~3 near-identical rows per control):
+${incomingList}
+
+EXISTING canonical questions (already curated, company_id IS NULL):
+${existingList}
+
+Rules:
+- Put every incoming tempId in exactly one cluster.
+- Cluster together rows that describe the same control even if wording differs across frameworks.
+- If a cluster matches an EXISTING canonical requirement, set action "MERGE_INTO_EXISTING" and existingQuestId.
+- Otherwise action "NEW_CANONICAL".
+- Never merge controls that differ in scope or intent.
+- canonicalQuestion: one clear question capturing the control (drop "is it implemented / can you provide evidence / is it reviewed" boilerplate — the canonical covers all of it).
+- confidence: 0..1.
+
+Respond with ONLY valid JSON, no markdown:
+{"clusters":[{"memberTempIds":["..."],"action":"NEW_CANONICAL|MERGE_INTO_EXISTING","existingQuestId":null,"canonicalQuestion":"...","level3":"...","confidence":0.0,"rationale":"..."}]}`;
+
+  const command = new ConverseCommand({
+    modelId: MODEL_ID,
+    messages: [{ role: "user", content: [{ text: prompt }] }],
+    inferenceConfig: { maxTokens: 4096, temperature: 0 }
+  });
+  const response = await client.send(command);
+  const raw = response.output?.message?.content?.[0]?.text || "";
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("clusterQuestions: no JSON in model response");
+  const parsed = JSON.parse(jsonMatch[0]);
+  if (!parsed || !Array.isArray(parsed.clusters)) throw new Error("clusterQuestions: bad shape");
+
+  return {
+    clusters: parsed.clusters.map(c => ({
+      memberTempIds: (c.memberTempIds || []).map(String),
+      action: c.action === "MERGE_INTO_EXISTING" ? "MERGE_INTO_EXISTING"
+        : c.action === "KEEP_SEPARATE" ? "KEEP_SEPARATE" : "NEW_CANONICAL",
+      existingQuestId: c.existingQuestId || null,
+      canonicalQuestion: c.canonicalQuestion || "",
+      level3: c.level3 || "",
+      confidence: Math.max(0, Math.min(1, Number(c.confidence) || 0)),
+      rationale: c.rationale || "",
+      matchMethod: "llm",
+    })),
+  };
+}
+
 export async function chatWithDocuments({ systemPrompt, history, message }) {
   console.log(`[AI] Vault chat — ${history.length} prior turns, query: "${message.substring(0, 80)}"`);
 
