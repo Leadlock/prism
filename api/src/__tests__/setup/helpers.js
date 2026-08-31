@@ -7,6 +7,7 @@ export async function truncateAll() {
     TRUNCATE
       findings, automated_evidence_items, evidence_test_results, evidence_collection_runs,
       integration_credentials, integration_connections,
+      company_storage_credentials, storage_migrations,
       evidence_request_comments, evidence_requests,
       question_evidence, evidence_versions, evidence_vault,
       question_dependencies, module_dependencies,

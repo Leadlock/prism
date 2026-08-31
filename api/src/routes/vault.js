@@ -1,6 +1,5 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import fs from "fs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
 import path from "path";
@@ -12,8 +11,21 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { notifyReviewers } from "../utils/notifyReviewers.js";
 import { chatWithDocuments } from "../utils/aiProvider.js";
 import { getCompanyAiProvider } from "../utils/aiSettings.js";
-import { scanFile } from "../utils/scanFile.js";
+import { scanBuffer } from "../utils/scanFile.js";
+import { saveObject, openObjectStream, deleteObject, withLocalCopy } from "../utils/evidenceStorage.js";
+import { extractFileContent } from "../utils/fileExtract.js";
 import { sanitiseText } from "../utils/sanitise.js";
+
+// Stream a stored object to the HTTP response, inline or as an attachment.
+async function serveObject(res, companyId, ref, { filename, contentType, disposition = "inline" }) {
+  const stream = await openObjectStream(companyId, ref);
+  if (!stream) return res.status(404).json({ error: "File not found" });
+  const safeName = (filename || "file").replace(/"/g, "");
+  if (contentType) res.setHeader("Content-Type", contentType);
+  res.setHeader("Content-Disposition", `${disposition}; filename="${safeName}"`);
+  stream.on("error", () => { if (!res.headersSent) res.status(404).end(); });
+  stream.pipe(res);
+}
 
 const router = Router();
 
@@ -107,17 +119,6 @@ const VAULT_DOWNLOADERS = ["ADMIN", "LEAD", "CONTRIBUTOR", "VIEWER"];
 const VAULT_WRITERS = ["ADMIN", "LEAD", "CONTRIBUTOR"];
 const VAULT_DELETERS = ["ADMIN", "LEAD"];
 
-const vaultStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(process.env.UPLOAD_DIR || "./uploads", String(req.user.companyId), "vault");
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`);
-  }
-});
-
 const ALLOWED_MIME = new Set([
   "application/pdf",
   "image/png", "image/jpeg", "image/gif", "image/webp",
@@ -139,7 +140,7 @@ const vaultFileFilter = (req, file, cb) => {
   }
 };
 
-const upload = multer({ storage: vaultStorage, limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: vaultFileFilter });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: vaultFileFilter });
 
 // GET /api/vault — list vault items; ?search= filters by title/desc; ?questId= filters to linked items only; ?source=automated filters to automated items only
 router.get("/", authenticate, requireVaultPin, requireReadOnly(VAULT_READERS), asyncHandler(async (req, res) => {
@@ -303,55 +304,16 @@ router.post("/chat", authenticate, requireVaultPin, requireReadOnly(VAULT_READER
 
   for (const item of topItems) {
     const entry = { title: item.title };
-    if (item.storagePath && fs.existsSync(item.storagePath)) {
+    if (item.storagePath) {
       try {
-        const ext = path.extname(item.fileName || item.storagePath).replace(".", "").toLowerCase();
-        let content = "";
-
-        if (["txt","csv","log","json","md","html","xml"].includes(ext)) {
-          content = fs.readFileSync(item.storagePath, "utf8").substring(0, 6000);
-        } else if (ext === "pdf") {
-          const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
-          const data = await pdfParse(fs.readFileSync(item.storagePath));
-          content = data.text.trim().substring(0, 6000);
-        } else if (ext === "docx") {
-          const mammoth = (await import("mammoth")).default;
-          const result = await mammoth.extractRawText({ path: item.storagePath });
-          content = result.value.trim().substring(0, 6000);
-        } else if (["xlsx","xlsm"].includes(ext)) {
-          const ExcelJS = (await import("exceljs")).default;
-          const { normalizeStrictWorkbook } = await import("../utils/normalizeStrictWorkbook.js");
-          const wb = new ExcelJS.Workbook();
-          try {
-            await wb.xlsx.load(fs.readFileSync(item.storagePath));
-          } catch (xlErr) {
-            if (!/reading 'sheets'/.test(xlErr?.message || "")) throw xlErr;
-            // Strict Open XML Spreadsheet — retry via a Transitional-normalised copy.
-            await wb.xlsx.load(await normalizeStrictWorkbook(fs.readFileSync(item.storagePath)));
+        await withLocalCopy(cid, item.storagePath, async (localPath) => {
+          const ext = path.extname(item.fileName || localPath).replace(".", "").toLowerCase();
+          const extracted = await extractFileContent(localPath, ext);
+          if (extracted?.type === "text" && extracted.content) {
+            entry.content = extracted.content.substring(0, 6000);
           }
-          content = wb.worksheets.map(ws => {
-            const rows = [];
-            ws.eachRow({ includeEmpty: true }, row => {
-              const cells = [];
-              row.eachCell({ includeEmpty: true }, cell => {
-                let v = cell.value;
-                if (v !== null && v !== undefined && typeof v === 'object') {
-                  if ('result' in v) v = v.result ?? '';
-                  else if ('richText' in v) v = v.richText.map(t => t.text).join('');
-                  else if (v instanceof Date) v = v.toISOString();
-                  else v = '';
-                }
-                const s = (v === null || v === undefined) ? '' : String(v);
-                cells.push(s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s);
-              });
-              rows.push(cells.join(','));
-            });
-            return rows.join('\n');
-          }).join('\n').substring(0, 6000);
-        }
-
-        if (content) entry.content = content;
-      } catch { /* skip unreadable files */ }
+        });
+      } catch { /* skip unreadable / missing files */ }
     }
     if (item.description) entry.description = item.description;
     docContexts.push(entry);
@@ -482,17 +444,11 @@ router.get("/:id/view", authenticate, requireVaultPin, requireReadOnly(VAULT_REA
   const item = mapRow(result);
   if (!item || !item.storagePath) return res.status(404).json({ error: "File not found" });
 
-  const uploadRoot = path.resolve(process.env.UPLOAD_DIR || "./uploads");
-  const resolved = path.resolve(item.storagePath); // nosemgrep
-  const safeRoot = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
-
-  if (!resolved.startsWith(safeRoot)) return res.status(400).json({ error: "Invalid file path" });
-  if (!fs.existsSync(resolved)) return res.status(404).json({ error: "File not found on disk" });
-
-  const filename = item.fileName || path.basename(resolved);
-  if (item.fileType) res.setHeader("Content-Type", item.fileType);
-  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
-  fs.createReadStream(resolved).pipe(res);
+  await serveObject(res, req.user.companyId, item.storagePath, {
+    filename: item.fileName || path.basename(item.storagePath),
+    contentType: item.fileType || null,
+    disposition: "inline",
+  });
 }));
 
 // GET /api/vault/:id/download
@@ -505,14 +461,10 @@ router.get("/:id/download", authenticate, requireVaultPin, requireReadOnly(VAULT
 
   if (!item || !item.storagePath) return res.status(404).json({ error: "File not found" });
 
-  const uploadRoot = path.resolve(process.env.UPLOAD_DIR || "./uploads");
-  const resolved = path.resolve(item.storagePath); // nosemgrep
-  const safeRoot = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
-
-  if (!resolved.startsWith(safeRoot)) return res.status(400).json({ error: "Invalid file path" });
-  if (!fs.existsSync(resolved)) return res.status(404).json({ error: "File not found on disk" });
-
-  res.download(resolved, item.fileName || path.basename(resolved));
+  await serveObject(res, req.user.companyId, item.storagePath, {
+    filename: item.fileName || path.basename(item.storagePath),
+    disposition: "attachment",
+  });
 }));
 
 // POST /api/vault/:id/analyze-policy — AI gap analysis for a vault document (onboarding)
@@ -534,21 +486,15 @@ router.post("/:id/analyze-policy", authenticate, requireRole(["ADMIN"]), longReq
   if (!item) return res.status(404).json({ error: "Vault item not found" });
   if (!item.storagePath) return res.status(400).json({ error: "No file available to analyse" });
 
-  const uploadRoot = path.resolve(process.env.UPLOAD_DIR || "./uploads");
-  const resolved = path.resolve(item.storagePath); // nosemgrep
-  const safeRoot = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
-  if (!resolved.startsWith(safeRoot)) return res.status(400).json({ error: "Invalid file path" });
-  if (!fs.existsSync(resolved)) return res.status(400).json({ error: "File not found on disk" });
-
   const fileExt = path.extname(item.fileName || item.storagePath).replace(".", "").toLowerCase();
   const { analyzePolicy } = await import("../utils/aiProvider.js");
 
-  const analysis = await analyzePolicy({
+  const analysis = await withLocalCopy(cid, item.storagePath, (filePath) => analyzePolicy({
     provider: settings?.aiProvider || null,
     policyName: req.body.policyName || item.title,
-    filePath: resolved,
+    filePath,
     fileExt,
-  });
+  }));
 
   res.json(analysis);
 }));
@@ -563,12 +509,18 @@ router.post("/", authenticate, requireVaultPin, requireRole(VAULT_WRITERS), uplo
   const cid = req.user.companyId;
   const uploadedBy = req.user.email || null;
 
+  let storageRef = null;
   if (req.file) {
-    const scan = await scanFile(req.file.path, req.file.mimetype);
+    const scan = await scanBuffer(req.file.buffer, req.file.mimetype);
     if (!scan.safe) {
-      fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: `File rejected: ${scan.reason}` });
     }
+    storageRef = await saveObject(cid, {
+      buffer: req.file.buffer,
+      originalName: req.file.originalname,
+      scope: "vault",
+      contentType: req.file.mimetype,
+    });
   }
 
   const result = await query(
@@ -583,7 +535,7 @@ router.post("/", authenticate, requireVaultPin, requireRole(VAULT_WRITERS), uplo
       req.file?.originalname || null,
       req.file?.mimetype || null,
       req.file?.size || null,
-      req.file?.path || null,
+      storageRef,
       uploadedBy
     ]
   );
@@ -596,7 +548,7 @@ router.post("/", authenticate, requireVaultPin, requireRole(VAULT_WRITERS), uplo
       `INSERT INTO evidence_versions (evidence_id, version_number, file_name, file_type, file_size, storage_path, uploaded_by, version_notes)
        VALUES ($1, 1, $2, $3, $4, $5, $6, 'Initial version')
        ON CONFLICT (evidence_id, version_number) DO NOTHING`,
-      [item.id, req.file.originalname, req.file.mimetype, req.file.size, req.file.path, uploadedBy]
+      [item.id, req.file.originalname, req.file.mimetype, req.file.size, storageRef, uploadedBy]
     );
   }
 
@@ -684,12 +636,7 @@ router.delete("/:id", authenticate, requireVaultPin, requireRole(VAULT_DELETERS)
   if (del.rowCount === 0) return res.status(404).json({ error: "Vault item not found" });
 
   if (file?.storagePath) {
-    try {
-      const uploadRoot = path.resolve(process.env.UPLOAD_DIR || "./uploads");
-      const resolved = path.resolve(file.storagePath); // nosemgrep
-      const safeRoot = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
-      if (resolved.startsWith(safeRoot) && fs.existsSync(resolved)) fs.unlinkSync(resolved);
-    } catch { /* non-fatal */ }
+    try { await deleteObject(cid, file.storagePath); } catch { /* non-fatal */ }
   }
 
   res.status(204).send();
@@ -719,14 +666,20 @@ router.post("/:id/versions", authenticate, requireVaultPin, requireRole(VAULT_WR
 
   if (!req.file) return res.status(400).json({ error: "file is required" });
 
-  const scan = await scanFile(req.file.path, req.file.mimetype);
+  const scan = await scanBuffer(req.file.buffer, req.file.mimetype);
   if (!scan.safe) {
-    fs.unlinkSync(req.file.path);
     return res.status(400).json({ error: `File rejected: ${scan.reason}` });
   }
 
   const check = await query("SELECT id FROM evidence_vault WHERE id = $1 AND company_id = $2", [id, cid]);
   if (check.rows.length === 0) return res.status(404).json({ error: "Vault item not found" });
+
+  const storageRef = await saveObject(cid, {
+    buffer: req.file.buffer,
+    originalName: req.file.originalname,
+    scope: "version",
+    contentType: req.file.mimetype,
+  });
 
   const maxResult = await query(
     "SELECT COALESCE(MAX(version_number), 0) AS max_ver FROM evidence_versions WHERE evidence_id = $1",
@@ -738,13 +691,13 @@ router.post("/:id/versions", authenticate, requireVaultPin, requireRole(VAULT_WR
   const verResult = await query(
     `INSERT INTO evidence_versions (evidence_id, version_number, file_name, file_type, file_size, storage_path, uploaded_by, version_notes)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-    [id, nextVer, req.file.originalname, req.file.mimetype, req.file.size, req.file.path, uploadedBy, versionNotes?.trim() || null]
+    [id, nextVer, req.file.originalname, req.file.mimetype, req.file.size, storageRef, uploadedBy, versionNotes?.trim() || null]
   );
 
   // Update vault pointer to latest version
   await query(
     `UPDATE evidence_vault SET file_name = $1, file_type = $2, file_size = $3, storage_path = $4, updated_at = NOW() WHERE id = $5`,
-    [req.file.originalname, req.file.mimetype, req.file.size, req.file.path, id]
+    [req.file.originalname, req.file.mimetype, req.file.size, storageRef, id]
   );
 
   // Fetch vault title for notification body
@@ -777,17 +730,11 @@ router.get("/:id/versions/:versionId/view", authenticate, requireVaultPin, requi
   const ver = mapRow(result);
   if (!ver || !ver.storagePath) return res.status(404).json({ error: "Version not found" });
 
-  const uploadRoot = path.resolve(process.env.UPLOAD_DIR || "./uploads");
-  const resolved = path.resolve(ver.storagePath); // nosemgrep
-  const safeRoot = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
-
-  if (!resolved.startsWith(safeRoot)) return res.status(400).json({ error: "Invalid file path" });
-  if (!fs.existsSync(resolved)) return res.status(404).json({ error: "File not found on disk" });
-
-  const filename = ver.fileName || path.basename(resolved);
-  if (ver.fileType) res.setHeader("Content-Type", ver.fileType);
-  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
-  fs.createReadStream(resolved).pipe(res);
+  await serveObject(res, cid, ver.storagePath, {
+    filename: ver.fileName || path.basename(ver.storagePath),
+    contentType: ver.fileType || null,
+    disposition: "inline",
+  });
 }));
 
 // GET /api/vault/:id/versions/:versionId/download — download a specific version
@@ -806,14 +753,10 @@ router.get("/:id/versions/:versionId/download", authenticate, requireVaultPin, r
   const ver = mapRow(result);
   if (!ver || !ver.storagePath) return res.status(404).json({ error: "Version not found" });
 
-  const uploadRoot = path.resolve(process.env.UPLOAD_DIR || "./uploads");
-  const resolved = path.resolve(ver.storagePath); // nosemgrep
-  const safeRoot = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
-
-  if (!resolved.startsWith(safeRoot)) return res.status(400).json({ error: "Invalid file path" });
-  if (!fs.existsSync(resolved)) return res.status(404).json({ error: "File not found on disk" });
-
-  res.download(resolved, ver.fileName || path.basename(resolved));
+  await serveObject(res, cid, ver.storagePath, {
+    filename: ver.fileName || path.basename(ver.storagePath),
+    disposition: "attachment",
+  });
 }));
 
 // POST /api/vault/:id/versions/:versionId/restore — restore an older version as the latest

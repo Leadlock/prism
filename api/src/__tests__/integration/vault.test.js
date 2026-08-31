@@ -6,6 +6,7 @@ import { query } from "../../db/index.js";
 
 vi.mock("../../utils/scanFile.js", () => ({
   scanFile: vi.fn().mockResolvedValue({ safe: true }),
+  scanBuffer: vi.fn().mockResolvedValue({ safe: true }),
 }));
 
 vi.mock("../../utils/notifyReviewers.js", () => ({

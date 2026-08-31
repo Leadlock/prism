@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { apiFetch } from "../api/client.js";
+import EvidenceStorageForm from "../components/EvidenceStorageForm.jsx";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 
@@ -372,6 +373,30 @@ function PolicyDocsStep({ token, uploads, onUploadsChange, onNext, onBack }) {
   );
 }
 
+function StorageStep({ token, onNext, onBack }) {
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", margin: "0 0 6px" }}>Evidence Storage</h2>
+        <p style={{ fontSize: 13, color: "var(--text2)", margin: 0, lineHeight: 1.5 }}>
+          Choose where PRISM keeps your evidence files. The default is fully managed for you — pick your own
+          Amazon S3 bucket or Azure Blob container if you need the files to live in your own cloud. You can
+          change this later in Admin → Evidence Storage.
+        </p>
+      </div>
+
+      <EvidenceStorageForm token={token} embedded onSaved={onNext} />
+
+      <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
+        <button className="btn btn-ghost" onClick={onBack}>← Back</button>
+        <button className="btn btn-primary" style={{ flex: 1, padding: "11px 0" }} onClick={onNext}>
+          Skip for now →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TechStackStep({ stack, onStackChange, onNext, onBack, saving }) {
   const allKeys = TECH_STACK.flatMap(g => g.items.map(i => i.key));
   const filledCount = allKeys.filter(k => stack[k]?.trim()).length;
@@ -474,7 +499,7 @@ function DoneStep({ uploadedCount, filledCount, onEnter }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function PolicyOnboarding({ token, onComplete }) {
-  const [step, setStep]       = useState(0); // 0=welcome, 1=docs, 2=tech, 3=done
+  const [step, setStep]       = useState(0); // 0=welcome, 1=docs, 2=storage, 3=tech, 4=done
   const [uploads, setUploads] = useState({});
   const [stack, setStack]     = useState({});
   const [saving, setSaving]   = useState(false);
@@ -494,7 +519,7 @@ export default function PolicyOnboarding({ token, onComplete }) {
       }
       // Mark onboarding complete (no departments in new flow)
       await apiFetch("/api/auth/complete-onboarding", { token, method: "POST", body: JSON.stringify({ departments: [] }) });
-      setStep(3);
+      setStep(4);
     } catch (err) {
       setError(err.message || "Something went wrong. Please try again.");
     } finally {
@@ -511,12 +536,12 @@ export default function PolicyOnboarding({ token, onComplete }) {
       <div style={{
         background: "var(--bg)", borderRadius: 16,
         padding: "32px 32px 28px",
-        width: "100%", maxWidth: step === 2 ? 660 : 560,
+        width: "100%", maxWidth: step === 2 || step === 3 ? 660 : 560,
         boxShadow: "0 24px 80px rgba(0,0,0,0.28)",
         maxHeight: "92vh", overflowY: "auto",
         transition: "max-width 0.2s",
       }}>
-        {step > 0 && step < 3 && <StepDots total={3} current={step - 1} />}
+        {step > 0 && step < 4 && <StepDots total={4} current={step - 1} />}
 
         {step === 0 && <WelcomeStep onNext={() => setStep(1)} />}
 
@@ -531,12 +556,20 @@ export default function PolicyOnboarding({ token, onComplete }) {
         )}
 
         {step === 2 && (
+          <StorageStep
+            token={token}
+            onNext={() => setStep(3)}
+            onBack={() => setStep(1)}
+          />
+        )}
+
+        {step === 3 && (
           <>
             <TechStackStep
               stack={stack}
               onStackChange={setStack}
               onNext={handleFinish}
-              onBack={() => setStep(1)}
+              onBack={() => setStep(2)}
               saving={saving}
             />
             {error && (
@@ -545,7 +578,7 @@ export default function PolicyOnboarding({ token, onComplete }) {
           </>
         )}
 
-        {step === 3 && (
+        {step === 4 && (
           <DoneStep
             uploadedCount={uploadedCount}
             filledCount={filledCount}

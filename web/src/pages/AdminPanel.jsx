@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import DependencySelect from "../components/DependencySelect.jsx";
+import EvidenceStorageForm from "../components/EvidenceStorageForm.jsx";
 import { TECH_CATEGORIES } from "../utils/techCategories.js";
 
 const ROLE_OPTIONS = ["ADMIN", "LEAD", "CONTRIBUTOR", "VIEWER"];
@@ -559,7 +560,7 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
     }
   };
 
-  const VERIFIED_ONLY_SECTIONS = new Set(["reminders", "recurrence", "module-deps", "tech-stack"]);
+  const VERIFIED_ONLY_SECTIONS = new Set(["reminders", "recurrence", "module-deps", "tech-stack", "storage"]);
   const NAV_ITEMS = [
     { key: "invite",      label: "Invite Member" },
     { key: "members",     label: "Team" },
@@ -567,6 +568,7 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
     { key: "recurrence",  label: "Recurrence" },
     { key: "module-deps", label: "Module Order" },
     { key: "tech-stack",  label: "Tech Stack" },
+    { key: "storage",     label: "Evidence Storage" },
     { key: "billing",     label: "Billing & Plan" },
     { key: "danger",      label: "Danger Zone" },
   ].filter(item => isVerified !== false || !VERIFIED_ONLY_SECTIONS.has(item.key));
@@ -1044,6 +1046,17 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
                     </span>
                   )}
                 </div>
+              </section>
+            )}
+
+            {section === "storage" && (
+              <section className="admin-section">
+                <h2>Evidence Storage</h2>
+                <p style={{ color: "var(--text2)", marginBottom: 16, fontSize: 13 }}>
+                  Choose where PRISM stores uploaded and automatically-collected evidence files. Switching to
+                  your own Amazon S3 bucket or Azure Blob container migrates existing files in the background.
+                </p>
+                <EvidenceStorageForm token={token} />
               </section>
             )}
 

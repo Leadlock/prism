@@ -1,7 +1,5 @@
 import { Router } from "express";
-import fs from "fs";
 import multer from "multer";
-import path from "path";
 import { buildUpdate, mapRow, mapRows, query } from "../db/index.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole, requireReadOnly } from "../middleware/roles.js";
@@ -10,21 +8,11 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { writeAuditLog } from "../utils/auditLog.js";
 import { analyzeEvidence } from "../utils/aiProvider.js";
 import { notifyReviewers } from "../utils/notifyReviewers.js";
+import { scanBuffer } from "../utils/scanFile.js";
+import { saveObject, openObjectStream, withLocalCopy } from "../utils/evidenceStorage.js";
+import path from "path";
 
 const router = Router();
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const baseDir = process.env.UPLOAD_DIR || "./uploads";
-    const tenantDir = path.join(baseDir, String(req.user.companyId));
-    fs.mkdirSync(tenantDir, { recursive: true });
-    cb(null, tenantDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
 
 const ALLOWED_MIME = new Set([
   "application/pdf",
@@ -47,7 +35,7 @@ const evidenceFileFilter = (req, file, cb) => {
   }
 };
 
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: evidenceFileFilter });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: evidenceFileFilter });
 
 router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "VIEWER", "AUDITOR"]), asyncHandler(async (req, res) => {
   if (req.user.role === "AUDITOR") {
@@ -90,19 +78,13 @@ router.get("/:id/download", authenticate, requireReadOnly(["ADMIN", "LEAD", "CON
     return res.status(404).json({ error: "Evidence file not found" });
   }
 
-  const uploadRoot = path.resolve(process.env.UPLOAD_DIR || "./uploads");
-  const resolvedPath = path.resolve(evidence.filePath); // nosemgrep
-  const safeRoot = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
+  const stream = await openObjectStream(req.user.companyId, evidence.filePath);
+  if (!stream) return res.status(404).json({ error: "Evidence file not found" });
 
-  if (!resolvedPath.startsWith(safeRoot)) {
-    return res.status(400).json({ error: "Invalid file path" });
-  }
-
-  if (!fs.existsSync(resolvedPath)) {
-    return res.status(404).json({ error: "Evidence file not found" });
-  }
-
-  res.download(resolvedPath, evidence.evidenceName || path.basename(resolvedPath));
+  const filename = evidence.evidenceName || path.basename(evidence.filePath);
+  res.setHeader("Content-Disposition", `attachment; filename="${filename.replace(/"/g, "")}"`);
+  stream.on("error", () => { if (!res.headersSent) res.status(404).end(); });
+  stream.pipe(res);
 }));
 
 // GET /api/evidence/:id/view — serve file inline (auditors can view but not download)
@@ -115,16 +97,13 @@ router.get("/:id/view", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIB
 
   if (!evidence || !evidence.filePath) return res.status(404).json({ error: "Evidence file not found" });
 
-  const uploadRoot = path.resolve(process.env.UPLOAD_DIR || "./uploads");
-  const resolvedPath = path.resolve(evidence.filePath); // nosemgrep
-  const safeRoot = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
+  const stream = await openObjectStream(req.user.companyId, evidence.filePath);
+  if (!stream) return res.status(404).json({ error: "Evidence file not found" });
 
-  if (!resolvedPath.startsWith(safeRoot)) return res.status(400).json({ error: "Invalid file path" });
-  if (!fs.existsSync(resolvedPath)) return res.status(404).json({ error: "Evidence file not found" });
-
-  const filename = evidence.evidenceName || path.basename(resolvedPath);
-  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
-  fs.createReadStream(resolvedPath).pipe(res);
+  const filename = evidence.evidenceName || path.basename(evidence.filePath);
+  res.setHeader("Content-Disposition", `inline; filename="${filename.replace(/"/g, "")}"`);
+  stream.on("error", () => { if (!res.headersSent) res.status(404).end(); });
+  stream.pipe(res);
 }));
 
 router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), upload.single("file"), asyncHandler(async (req, res) => {
@@ -150,9 +129,18 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), up
   };
 
   if (req.file) {
-    data.file_path = req.file.path;
+    const scan = await scanBuffer(req.file.buffer, req.file.mimetype);
+    if (!scan.safe) return res.status(400).json({ error: `File rejected: ${scan.reason}` });
+    data.file_path = await saveObject(req.user.companyId, {
+      buffer: req.file.buffer,
+      originalName: req.file.originalname,
+      scope: "evidence",
+      contentType: req.file.mimetype,
+    });
     data.evidence_name = req.file.originalname;
   }
+  // The stored ref is shared between the evidence row and its vault mirror below.
+  const fileRef = req.file ? data.file_path : null;
 
   const result = await query(
     "INSERT INTO evidence (evidence_id, month, module_id, quest_id, company_id, evidence_type, evidence_name, evidence_link, file_path, uploaded_by, upload_date, reviewer, approval_status, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *",
@@ -203,12 +191,12 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), up
         await query(
           `INSERT INTO evidence_versions (evidence_id, version_number, file_name, file_type, file_size, storage_path, uploaded_by, version_notes)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [existingId, nextVer, req.file.originalname, req.file.mimetype, req.file.size, req.file.path, data.uploaded_by, "Updated via Tracker"]
+          [existingId, nextVer, req.file.originalname, req.file.mimetype, req.file.size, fileRef, data.uploaded_by, "Updated via Tracker"]
         );
 
         await query(
           `UPDATE evidence_vault SET file_name=$1, file_type=$2, file_size=$3, storage_path=$4, updated_at=NOW() WHERE id=$5`,
-          [req.file.originalname, req.file.mimetype, req.file.size, req.file.path, existingId]
+          [req.file.originalname, req.file.mimetype, req.file.size, fileRef, existingId]
         );
 
         // Fetch vault title for notification
@@ -275,7 +263,7 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), up
             `INSERT INTO evidence_versions (evidence_id, version_number, file_name, file_type, file_size, storage_path, uploaded_by, version_notes)
              VALUES ($1, 1, $2, $3, $4, $5, $6, 'Initial version')
              ON CONFLICT (evidence_id, version_number) DO NOTHING`,
-            [vaultItem.id, req.file.originalname, req.file.mimetype, req.file.size, req.file.path, data.uploaded_by]
+            [vaultItem.id, req.file.originalname, req.file.mimetype, req.file.size, fileRef, data.uploaded_by]
           );
         }
       }
@@ -401,17 +389,21 @@ router.post("/:id/analyze", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIB
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const analysis = await analyzeEvidence({
+  const runAnalysis = (filePath) => analyzeEvidence({
     provider: settings?.aiProvider || null,
     evidenceName: evidence.evidenceName,
     evidenceType: evidence.evidenceType,
     questId: evidence.questId,
     moduleId: evidence.moduleId,
     requiredEvidence: evidence.requiredEvidence,
-    filePath: evidence.filePath,
+    filePath,
     recurrenceInterval: evidence.recurrenceInterval || null,
     today
   });
+
+  const analysis = evidence.evidenceType === "FILE" && evidence.filePath
+    ? await withLocalCopy(req.user.companyId, evidence.filePath, runAnalysis)
+    : await runAnalysis(null);
 
   const updateResult = await query(
     `UPDATE evidence

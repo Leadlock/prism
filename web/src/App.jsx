@@ -94,6 +94,7 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "light");
   const [branding, setBranding] = useState(() => getStoredBranding());
   const [blockedMessage, setBlockedMessage] = useState("");
+  const [storageMigrating, setStorageMigrating] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -143,10 +144,19 @@ export default function App() {
       };
       setBranding(brandingData);
       localStorage.setItem("branding", JSON.stringify(brandingData));
+      setStorageMigrating(settings.evidenceStorage?.migrationStatus === "in_progress");
     } catch {
       // Non-critical - use defaults
     }
   };
+
+  // While an evidence-storage migration is running, re-poll settings so the
+  // banner clears itself when the background job finishes.
+  useEffect(() => {
+    if (!storageMigrating || !auth.token) return;
+    const id = setInterval(() => fetchBranding(auth.token), 30000);
+    return () => clearInterval(id);
+  }, [storageMigrating, auth.token]);
 
   const handleLogin = (session) => {
     localStorage.setItem("token",   session.token);
@@ -277,6 +287,15 @@ export default function App() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {isAuthenticated && storageMigrating && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, zIndex: 9500,
+          background: "#f59e0b", color: "#1a1200", fontSize: 12.5, fontWeight: 600,
+          textAlign: "center", padding: "6px 12px",
+        }}>
+          Evidence storage migration in progress — some files may be briefly unavailable to download.
         </div>
       )}
       {showOnboarding && (

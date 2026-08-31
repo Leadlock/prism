@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { query } from "../db/index.js";
+import { deleteCompanyObjects } from "./evidenceStorage.js";
 
 const uploadRoot = () => path.resolve(process.env.UPLOAD_DIR || "./uploads");
 
@@ -16,6 +17,21 @@ function isWithinRoot(root, target) {
 // disk hiccup never blocks the (authoritative) database deletion.
 export async function deleteCompanyFiles(companyId) {
   const root = uploadRoot();
+
+  // If the company stores evidence on its own S3 / Azure Blob, purge that too.
+  // Read the backend before the company_settings row cascades away. Best-effort.
+  try {
+    const result = await query(
+      "SELECT evidence_storage_backend FROM company_settings WHERE company_id = $1",
+      [companyId]
+    );
+    const backend = result.rows[0]?.evidence_storage_backend;
+    if (backend && backend !== "local") {
+      await deleteCompanyObjects(companyId, backend);
+    }
+  } catch (err) {
+    console.error(`[deleteCompanyFiles] failed to purge remote storage for company ${companyId}:`, err.message);
+  }
 
   try {
     const tenantDir = path.resolve(root, String(companyId));

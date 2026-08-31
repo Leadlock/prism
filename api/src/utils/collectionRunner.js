@@ -1,11 +1,10 @@
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
 import { query, mapRow } from "../db/index.js";
 import { getActiveCredential } from "../db/integrationCredentials.js";
 import { getConnector } from "../connectors/registry.js";
 import { writeAuditLog } from "./auditLog.js";
 import { renderFindingEvidencePdf } from "./findingEvidencePdf.js";
+import { saveObject } from "./evidenceStorage.js";
 
 function stableStringify(value) {
   if (Array.isArray(value)) {
@@ -79,16 +78,18 @@ async function generateFindingEvidenceVaultItem({ companyId, connectionId, resul
     integrationKey: conn?.integrationKey,
   });
 
-  const dir = path.join(process.env.UPLOAD_DIR || "./uploads", String(companyId), "vault");
-  fs.mkdirSync(dir, { recursive: true });
   const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}.pdf`;
-  const storagePath = path.join(dir, fileName);
-  fs.writeFileSync(storagePath, pdfBuffer);
+  const storageRef = await saveObject(companyId, {
+    buffer: pdfBuffer,
+    originalName: fileName,
+    scope: "vault",
+    contentType: "application/pdf",
+  });
 
   const vaultResult = await query(
     `INSERT INTO evidence_vault (company_id, title, description, file_name, file_type, file_size, storage_path, uploaded_by)
      VALUES ($1, $2, $3, $4, 'application/pdf', $5, $6, 'automated') RETURNING *`,
-    [companyId, `${result.testKey} — ${result.resourceId}`, result.message, fileName, pdfBuffer.length, storagePath]
+    [companyId, `${result.testKey} — ${result.resourceId}`, result.message, fileName, pdfBuffer.length, storageRef]
   );
   const vault = mapRow(vaultResult);
   await linkVaultToQuestions({ companyId, testKey: result.testKey, vaultId: vault.id });

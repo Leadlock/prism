@@ -1148,6 +1148,45 @@ ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS vault_pin_hash TEXT;
 -- Per-company AI provider override. NULL = use the platform default (PRISM_AI_PROVIDER env).
 ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS ai_provider TEXT
   CHECK (ai_provider IS NULL OR ai_provider IN ('bedrock', 'azure'));
+
+-- Per-company evidence storage backend (BYO S3 / Azure Blob). 'local' = PRISM-managed
+-- disk under UPLOAD_DIR (the historical default). Non-secret connection details
+-- (bucket, region, prefix, container) live in evidence_storage_config; the actual
+-- credentials are AES-GCM encrypted in company_storage_credentials.
+ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS evidence_storage_backend TEXT NOT NULL DEFAULT 'local'
+  CHECK (evidence_storage_backend IN ('local', 's3', 'azure_blob'));
+ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS evidence_storage_config JSONB;
+ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS evidence_storage_migration_status TEXT
+  CHECK (evidence_storage_migration_status IS NULL OR evidence_storage_migration_status IN ('in_progress', 'failed'));
+ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS evidence_storage_migration_error TEXT;
+ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS evidence_storage_migration_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS company_storage_credentials (
+  company_id  INT PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,
+  auth_type   TEXT NOT NULL,                        -- 'access_key' | 'iam_role' | 'connection_string'
+  ciphertext  TEXT,
+  iv          TEXT,
+  auth_tag    TEXT,
+  key_id      TEXT NOT NULL DEFAULT 'local-v1',
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Pending / failed evidence-storage migration jobs. One row per company while a
+-- backend switch is being migrated; holds the *source* backend descriptor and its
+-- encrypted credential so a migration can be resumed after an API restart without
+-- the admin re-entering the previous credentials. Row exists iff
+-- company_settings.evidence_storage_migration_status IS NOT NULL.
+CREATE TABLE IF NOT EXISTS storage_migrations (
+  company_id     INT PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,
+  from_backend   TEXT NOT NULL,                     -- 'local' | 's3' | 'azure_blob'
+  from_config    JSONB,                             -- previous evidence_storage_config (non-secret)
+  from_auth_type TEXT,                              -- NULL when from_backend = 'local'
+  ciphertext     TEXT,
+  iv             TEXT,
+  auth_tag       TEXT,
+  key_id         TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 ALTER TABLE companies      ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE;
 -- One-time backfill for companies that predate the is_verified column (run once, 2026-08-12).
 -- Deliberately not re-added: with init.sql now re-applied on every `docker compose up`

@@ -23,6 +23,17 @@ const ZIP_MIMES = new Set([
   "application/vnd.ms-powerpoint",
 ]);
 
+function checkMagicBytesBuffer(buf, declaredMime) {
+  if (ZIP_MIMES.has(declaredMime)) {
+    return buf[0] === 0x50 && buf[1] === 0x4B; // PK
+  }
+
+  const entry = MAGIC.find(m => m.mime === declaredMime);
+  if (!entry) return false;        // unknown type — reject
+  if (!entry.bytes) return true;   // text — no magic check needed
+  return entry.bytes.every((b, i) => buf[i] === b);
+}
+
 function checkMagicBytes(filePath, declaredMime) {
   const buf = Buffer.alloc(12);
   const fd = fs.openSync(filePath, "r");
@@ -87,6 +98,42 @@ export async function scanFile(filePath, declaredMime) {
   if (clam) {
     try {
       const { isInfected, viruses } = await clam.scanFile(filePath);
+      if (isInfected) {
+        return { safe: false, reason: `Malware detected: ${viruses.join(", ")}` };
+      }
+    } catch (e) {
+      // ClamAV scan error — log and fail open so uploads aren't blocked by infra issues
+      console.warn("[scanFile] ClamAV scan error:", e.message);
+    }
+  }
+
+  return { safe: true };
+}
+
+/**
+ * Buffer equivalent of scanFile — for callers that hold the upload in memory
+ * (multer.memoryStorage) instead of on disk. Same two checks:
+ *   1. Magic byte mismatch (spoofed MIME type)
+ *   2. Malware via ClamAV (if configured; scanned via stream)
+ *
+ * Returns { safe: true } or { safe: false, reason: string }
+ */
+export async function scanBuffer(buffer, declaredMime) {
+  if (!Buffer.isBuffer(buffer)) {
+    return { safe: false, reason: "Could not read file for validation" };
+  }
+
+  // 1. Magic bytes
+  if (!checkMagicBytesBuffer(buffer.subarray(0, 12), declaredMime)) {
+    return { safe: false, reason: "File content does not match its declared type" };
+  }
+
+  // 2. ClamAV
+  const clam = await getClamClient();
+  if (clam) {
+    try {
+      const { Readable } = await import("stream");
+      const { isInfected, viruses } = await clam.scanStream(Readable.from(buffer));
       if (isInfected) {
         return { safe: false, reason: `Malware detected: ${viruses.join(", ")}` };
       }
