@@ -7,7 +7,7 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import { parseExcelImport } from "../utils/excelParser.js";
-import { importFrameworkQuestions } from "./frameworks.js";
+import { importFrameworkQuestions, provisionTemplate } from "./frameworks.js";
 import { deleteCompanyFiles } from "../utils/deleteCompanyFiles.js";
 
 const router = Router();
@@ -80,41 +80,7 @@ router.patch("/companies/:id/status", authenticate, requireSuperAdmin, asyncHand
       const tplClient = await getClient();
       try {
         await tplClient.query("BEGIN");
-        for (const mod of modules) {
-          const sortOrder = deriveSortOrder(mod.module_id);
-          await tplClient.query(
-            `INSERT INTO modules (module_id, company_id, name, primary_owner, frequency, total_quests, purpose, sort_order, framework_key)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (company_id, module_id) DO UPDATE SET framework_key = EXCLUDED.framework_key`,
-            [mod.module_id, company.id, mod.name, mod.primary_owner, mod.frequency, mod.total_quests, mod.purpose, sortOrder, frameworkKey]
-          );
-        }
-        for (const q of questions) {
-          await tplClient.query(
-            `INSERT INTO questions (quest_id, company_id, module_id, module_name, control_area,
-             iso_reference, baseline_question, level3_yes_criteria, required_evidence,
-             default_owner, frequency, priority, tags)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (company_id, quest_id) DO NOTHING`,
-            [q.quest_id, company.id, q.module_id, q.module_name, q.control_area,
-             q.iso_reference, q.baseline_question, q.level3_yes_criteria,
-             q.required_evidence, q.default_owner, q.frequency, normPriority(q.priority), q.tags || null]
-          );
-        }
-        // Activate the framework for this company and insert control mappings
-        if (frameworkKey) {
-          await tplClient.query(
-            `INSERT INTO company_frameworks (company_id, framework_key) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-            [company.id, frameworkKey]
-          );
-          for (const q of questions) {
-            if (q.iso_reference) {
-              await tplClient.query(
-                `INSERT INTO question_framework_controls (company_id, quest_id, framework_key, control_reference)
-                 VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-                [company.id, q.quest_id, frameworkKey, q.iso_reference]
-              );
-            }
-          }
-        }
+        await provisionTemplate(tplClient, { companyId: company.id, modules, questions, frameworkKey });
         await tplClient.query("COMMIT");
         templateProvisioned = true;
       } catch (err) {
@@ -599,51 +565,9 @@ router.post("/templates/:templateId/assign", authenticate, requireSuperAdmin, as
 
   try {
     await client.query('BEGIN');
-
-    for (const mod of modules) {
-      const sortOrder = deriveSortOrder(mod.module_id);
-      const insertResult = await client.query(
-        `INSERT INTO modules (module_id, company_id, name, primary_owner, frequency, total_quests, purpose, sort_order, framework_key)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (company_id, module_id) DO UPDATE SET framework_key = EXCLUDED.framework_key
-         RETURNING id`,
-        [mod.module_id, companyId, mod.name, mod.primary_owner, mod.frequency, mod.total_quests, mod.purpose, sortOrder, frameworkKey]
-      );
-      if (insertResult.rows.length > 0) moduleCount++;
-    }
-
-    for (const q of questions) {
-      const insertResult = await client.query(
-        `INSERT INTO questions (quest_id, company_id, module_id, module_name, control_area,
-         iso_reference, baseline_question, level3_yes_criteria, required_evidence,
-         default_owner, frequency, priority, tags)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-         ON CONFLICT (company_id, quest_id) DO NOTHING
-         RETURNING quest_id`,
-        [q.quest_id, companyId, q.module_id, q.module_name, q.control_area,
-         q.iso_reference, q.baseline_question, q.level3_yes_criteria,
-         q.required_evidence, q.default_owner, q.frequency, normPriority(q.priority), q.tags || null]
-      );
-      if (insertResult.rows.length > 0) questionCount++;
-    }
-
-    // Activate framework and insert control mappings when frameworkKey is supplied
-    if (frameworkKey) {
-      await client.query(
-        `INSERT INTO company_frameworks (company_id, framework_key) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-        [companyId, frameworkKey]
-      );
-      for (const q of questions) {
-        if (q.iso_reference) {
-          await client.query(
-            `INSERT INTO question_framework_controls (company_id, quest_id, framework_key, control_reference)
-             VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-            [companyId, q.quest_id, frameworkKey, q.iso_reference]
-          );
-        }
-      }
-    }
-
+    const counts = await provisionTemplate(client, { companyId, modules, questions, frameworkKey });
+    moduleCount = counts.moduleCount;
+    questionCount = counts.questionCount;
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');

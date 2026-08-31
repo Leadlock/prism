@@ -1262,6 +1262,11 @@ CREATE TABLE IF NOT EXISTS question_framework_controls (
 CREATE INDEX IF NOT EXISTS qfc_company_framework_idx ON question_framework_controls(company_id, framework_key);
 CREATE INDEX IF NOT EXISTS qfc_quest_idx             ON question_framework_controls(company_id, quest_id);
 
+-- The base (company_id, quest_id) unique index treats NULLs as distinct, so it
+-- would not stop two global canonical questions sharing a quest_id. This partial
+-- index enforces uniqueness across the global canonical set.
+CREATE UNIQUE INDEX IF NOT EXISTS questions_global_quest_id_idx ON questions(quest_id) WHERE company_id IS NULL;
+
 -- Seed framework catalog
 INSERT INTO frameworks (key, name, description) VALUES
   ('ISO27001', 'ISO/IEC 27001',    'International standard for information security management systems'),

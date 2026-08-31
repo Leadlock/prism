@@ -442,7 +442,7 @@ function findClauseRef(row) {
  * (e.g. "Art. 5(2), 24" or "CC1.1, CC1.2" or "Sec 8 / Sec 10") into distinct refs.
  * Conservative: only splits on ";" or "/" or a comma that is NOT inside parentheses.
  */
-function splitRefs(raw) {
+export function splitRefs(raw) {
   const s = String(raw || '').trim();
   if (!s) return [];
   const parts = [];

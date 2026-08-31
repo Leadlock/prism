@@ -11,6 +11,8 @@ export async function truncateAll() {
       evidence_request_comments, evidence_requests,
       question_evidence, evidence_versions, evidence_vault,
       question_dependencies, module_dependencies,
+      import_cluster_members, import_clusters, import_staging_rows, import_batches,
+      question_framework_controls, company_frameworks, module_templates,
       notifications, actions, assessments, evidence,
       questions, modules, invitations,
       audit_logs, auditor_profiles, reminders,

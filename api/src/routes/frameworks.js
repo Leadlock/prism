@@ -1,11 +1,33 @@
 import { Router } from "express";
+import multer from "multer";
+import fs from "fs";
+import path from "path";
 import { query, mapRow, mapRows, getClient } from "../db/index.js";
 import { authenticate } from "../middleware/auth.js";
-import { requireRole } from "../middleware/roles.js";
+import { requireRole, requireSuperAdmin } from "../middleware/roles.js";
+import { longRequestTimeout } from "../middleware/timeout.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { deriveSortOrder } from "../utils/prismOrder.js";
+import { parseExcelImport, splitRefs } from "../utils/excelParser.js";
+import { clusterQuestions } from "../utils/aiProvider.js";
 
 const router = Router();
+
+const importUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const dir = path.resolve("uploads");
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) =>
+    path.extname(file.originalname).toLowerCase() === ".xlsx"
+      ? cb(null, true)
+      : cb(new Error("Only .xlsx files are allowed")),
+});
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,6 +117,134 @@ export async function importFrameworkQuestions(client, { companyId, frameworkKey
   }
 
   return { questionsInserted, mappingsInserted };
+}
+
+const PRIORITIES = ["Critical", "High", "Medium", "Low"];
+const normPriority = (p) => (PRIORITIES.includes(p) ? p : "Medium");
+
+/**
+ * Instantiate a module template into a company: upsert its modules and questions,
+ * then activate every framework the questions map to and copy the crosswalk rows
+ * per-company.
+ *
+ * Handles both shapes of `question_data[]`:
+ *   - legacy   : { quest_id, iso_reference, ... }        + a template-level frameworkKey
+ *   - canonical: { quest_id, canonical:true, controls:[{ framework_key,
+ *                  control_reference, original_quest_id, original_question,
+ *                  original_control_area, original_level3, original_facets }] }
+ *
+ * Must run inside a transaction (caller owns BEGIN/COMMIT).
+ * @returns {Promise<{ moduleCount:number, questionCount:number, frameworks:string[] }>}
+ */
+export async function provisionTemplate(client, { companyId, modules = [], questions = [], frameworkKey = null }) {
+  let moduleCount = 0;
+  let questionCount = 0;
+
+  for (const mod of modules) {
+    const r = await client.query(
+      `INSERT INTO modules (module_id, company_id, name, primary_owner, frequency, total_quests, purpose, sort_order, framework_key)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (company_id, module_id)
+         DO UPDATE SET framework_key = COALESCE(EXCLUDED.framework_key, modules.framework_key)
+       RETURNING id`,
+      [mod.module_id, companyId, mod.name || mod.module_id, mod.primary_owner || null, mod.frequency || null,
+       mod.total_quests || 0, mod.purpose || null, deriveSortOrder(mod.module_id),
+       mod.framework_key || frameworkKey || null]
+    );
+    if (r.rows.length > 0) moduleCount++;
+  }
+
+  const activated = new Set();
+  for (const q of questions) {
+    const controls = Array.isArray(q.controls) && q.controls.length
+      ? q.controls
+      : (frameworkKey && (q.iso_reference || q.control_reference)
+          ? [{ framework_key: frameworkKey, control_reference: q.iso_reference || q.control_reference }]
+          : []);
+
+    const r = await client.query(
+      `INSERT INTO questions (quest_id, company_id, module_id, module_name, control_area,
+         iso_reference, baseline_question, level3_yes_criteria, required_evidence,
+         default_owner, frequency, priority, tags)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       ON CONFLICT (company_id, quest_id) DO NOTHING
+       RETURNING quest_id`,
+      [q.quest_id, companyId, q.module_id, q.module_name || q.module_id, q.control_area || null,
+       q.iso_reference || controls[0]?.control_reference || null, q.baseline_question || null,
+       q.level3_yes_criteria || null, q.required_evidence || null, q.default_owner || null,
+       q.frequency || null, normPriority(q.priority), q.tags || null]
+    );
+    if (r.rows.length > 0) questionCount++;
+
+    for (const c of controls) {
+      if (!c.framework_key || !c.control_reference) continue;
+      if (!activated.has(c.framework_key)) {
+        await client.query(
+          `INSERT INTO company_frameworks (company_id, framework_key) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+          [companyId, c.framework_key]
+        );
+        activated.add(c.framework_key);
+      }
+      await client.query(
+        `INSERT INTO question_framework_controls
+           (company_id, quest_id, framework_key, control_reference,
+            original_quest_id, original_question, original_control_area, original_level3, original_facets)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT ON CONSTRAINT qfc_uniq_nnd DO NOTHING`,
+        [companyId, q.quest_id, c.framework_key, c.control_reference,
+         c.original_quest_id || null, c.original_question || null, c.original_control_area || null,
+         c.original_level3 || null, c.original_facets ? JSON.stringify(c.original_facets) : null]
+      );
+    }
+  }
+
+  return { moduleCount, questionCount, frameworks: [...activated] };
+}
+
+const FACET_ORDER = { IMPLEMENTED: 0, EVIDENCE: 1, REVIEWED: 2, MATURITY: 3, OTHER: 4 };
+
+/**
+ * Collapse parsed questions into one staging unit per control (grouped by
+ * `collapse_group_key`), merging the ~3 facet rows. The facet wording is kept in
+ * `original_facets` so the review UI can show it.
+ */
+function collapseForStaging(questions, frameworkKey) {
+  const groups = new Map();
+  for (const q of questions) {
+    const key = q.collapse_group_key || `${q.module_id}|${q.control_area}|${q.quest_id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(q);
+  }
+
+  const units = [];
+  for (const members of groups.values()) {
+    members.sort((a, b) => (FACET_ORDER[a.facet] ?? 9) - (FACET_ORDER[b.facet] ?? 9));
+    const rep = members[0];
+    const facets = {};
+    for (const m of members) if (m.facet && !facets[m.facet]) facets[m.facet] = m.baseline_question;
+    const level3 = members.map(m => m.level3_yes_criteria || "").sort((a, b) => b.length - a.length)[0] || "";
+
+    units.push({
+      framework_key: frameworkKey,
+      source_quest_id: rep.quest_id,
+      module_id: rep.module_id,
+      module_name: rep.module_name || rep.module_id,
+      control_area: rep.control_area || "",
+      control_reference: (rep.control_references && rep.control_references[0]) || rep.iso_reference || "",
+      control_reference_raw: rep.iso_reference || "",
+      facet: rep.facet || "OTHER",
+      baseline_question: rep.baseline_question || "",
+      level3_yes_criteria: level3,
+      required_evidence: rep.required_evidence || "",
+      default_owner: rep.default_owner || "",
+      frequency: rep.frequency || "",
+      priority: rep.priority || "",
+      tags: rep.tags || "",
+      collapse_group_key: rep.collapse_group_key || null,
+      raw: { members, original_facets: facets, control_references: rep.control_references || splitRefs(rep.iso_reference) },
+    });
+  }
+  return units;
 }
 
 // ─── Routes ────────────────────────────────────────────────────────────────────
@@ -347,5 +497,431 @@ router.get("/:key/dashboard", authenticate, asyncHandler(async (req, res) => {
     },
   });
 }));
+
+// ═══ Framework import: AI clustering + human review (superadmin) ═══════════════
+
+async function loadGlobalCanonical() {
+  const qs = await query(
+    `SELECT quest_id, module_id, control_area, baseline_question, level3_yes_criteria
+       FROM questions WHERE company_id IS NULL ORDER BY quest_id`
+  );
+  const maps = await query(
+    `SELECT quest_id, framework_key, control_reference
+       FROM question_framework_controls WHERE company_id IS NULL`
+  );
+  const byQuest = new Map();
+  for (const m of maps.rows) {
+    if (!byQuest.has(m.quest_id)) byQuest.set(m.quest_id, []);
+    byQuest.get(m.quest_id).push({ key: m.framework_key, ref: m.control_reference });
+  }
+  return qs.rows.map(q => ({
+    questId: q.quest_id,
+    moduleId: q.module_id,
+    controlArea: q.control_area,
+    question: q.baseline_question,
+    level3: q.level3_yes_criteria,
+    frameworks: byQuest.get(q.quest_id) || [],
+  }));
+}
+
+// POST /api/frameworks/import/batches — parse a framework sheet, collapse controls,
+// stage a review batch. Body: frameworkKey (defaults to the filename guess).
+router.post("/import/batches", authenticate, requireSuperAdmin, importUpload.single("file"),
+  asyncHandler(async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const filePath = req.file.path;
+    try {
+      const parsed = await parseExcelImport(filePath, { originalName: req.file.originalname });
+      const frameworkKey = req.body.frameworkKey || parsed.frameworkGuess;
+      if (!frameworkKey) {
+        return res.status(400).json({ error: "Could not determine the framework — pass frameworkKey.", frameworkGuess: null });
+      }
+      const fw = await query("SELECT key FROM frameworks WHERE key = $1", [frameworkKey]);
+      if (fw.rows.length === 0) return res.status(400).json({ error: `Unknown framework: ${frameworkKey}` });
+
+      const units = collapseForStaging(parsed.questions, frameworkKey);
+
+      const client = await getClient();
+      try {
+        await client.query("BEGIN");
+        const batch = await client.query(
+          `INSERT INTO import_batches (kind, primary_framework_key, source_file_name, status, raw_stats, ai_provider, created_by)
+           VALUES ('IMPORT', $1, $2, 'STAGED', $3, $4, $5) RETURNING id`,
+          [frameworkKey, req.file.originalname,
+           JSON.stringify({ rows: parsed.questions.length, controls: units.length, modules: parsed.modules.length, parseErrors: parsed.errors }),
+           (process.env.PRISM_AI_PROVIDER || "bedrock"), req.user.userId || null]
+        );
+        const batchId = batch.rows[0].id;
+
+        for (const u of units) {
+          await client.query(
+            `INSERT INTO import_staging_rows
+              (batch_id, framework_key, source_quest_id, module_id, module_name, control_area,
+               control_reference, control_reference_raw, facet, baseline_question, level3_yes_criteria,
+               required_evidence, default_owner, frequency, priority, tags, collapse_group_key, raw)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+            [batchId, u.framework_key, u.source_quest_id, u.module_id, u.module_name, u.control_area,
+             u.control_reference, u.control_reference_raw, u.facet, u.baseline_question, u.level3_yes_criteria,
+             u.required_evidence, u.default_owner, u.frequency, u.priority, u.tags, u.collapse_group_key,
+             JSON.stringify(u.raw)]
+          );
+        }
+        await client.query("COMMIT");
+        res.status(201).json({
+          batchId, frameworkKey, frameworkGuess: parsed.frameworkGuess || null,
+          counts: { rows: parsed.questions.length, controls: units.length, modules: parsed.modules.length },
+          parseErrors: parsed.errors,
+        });
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+    } finally {
+      try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* ignore */ }
+    }
+  }));
+
+// POST /api/frameworks/import/batches/:id/cluster — run AI clustering, move to REVIEW.
+router.post("/import/batches/:id/cluster", authenticate, requireSuperAdmin, longRequestTimeout(120000),
+  asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const b = await query("SELECT * FROM import_batches WHERE id = $1", [id]);
+    const batch = b.rows[0];
+    if (!batch) return res.status(404).json({ error: "Batch not found" });
+    if (batch.status === "COMMITTED") return res.status(409).json({ error: "Batch already committed" });
+
+    const decided = await query(
+      "SELECT COUNT(*)::int AS n FROM import_clusters WHERE batch_id = $1 AND decision IS NOT NULL", [id]
+    );
+    if (decided.rows[0].n > 0) {
+      return res.status(409).json({ error: "Re-clustering would discard review decisions already made" });
+    }
+
+    const staging = await query("SELECT * FROM import_staging_rows WHERE batch_id = $1 ORDER BY id", [id]);
+    const incoming = staging.rows.map(r => ({
+      tempId: String(r.id),
+      frameworkKey: r.framework_key,
+      moduleId: r.module_id,
+      controlArea: r.control_area,
+      controlReference: r.control_reference,
+      question: r.baseline_question,
+      level3: r.level3_yes_criteria,
+      requiredEvidence: r.required_evidence,
+      facet: r.facet,
+    }));
+    const existing = await loadGlobalCanonical();
+
+    const { clusters } = await clusterQuestions({ incoming, existing });
+
+    const client = await getClient();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM import_clusters WHERE batch_id = $1", [id]);
+
+      const assigned = new Set();
+      for (const c of clusters) {
+        const ins = await client.query(
+          `INSERT INTO import_clusters
+             (batch_id, proposed_action, existing_quest_id, proposed_canonical_question,
+              proposed_level3, proposed_control_area, proposed_module_id, ai_confidence, ai_rationale, match_method)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+          [id, c.action, c.existingQuestId || null, c.canonicalQuestion || null, c.level3 || null,
+           null, null, c.confidence ?? null, c.rationale || null, c.matchMethod || "fingerprint"]
+        );
+        const clusterId = ins.rows[0].id;
+        for (const tempId of c.memberTempIds) {
+          const rowId = parseInt(tempId);
+          if (assigned.has(rowId)) continue;
+          await client.query(
+            `INSERT INTO import_cluster_members (cluster_id, staging_row_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [clusterId, rowId]
+          );
+          assigned.add(rowId);
+        }
+      }
+
+      // Any staging row the clusterer omitted becomes its own KEEP_SEPARATE cluster.
+      for (const r of staging.rows) {
+        if (assigned.has(r.id)) continue;
+        const ins = await client.query(
+          `INSERT INTO import_clusters (batch_id, proposed_action, proposed_canonical_question, match_method)
+           VALUES ($1, 'KEEP_SEPARATE', $2, 'fingerprint') RETURNING id`,
+          [id, r.baseline_question]
+        );
+        await client.query(
+          "INSERT INTO import_cluster_members (cluster_id, staging_row_id) VALUES ($1, $2)",
+          [ins.rows[0].id, r.id]
+        );
+      }
+
+      await client.query("UPDATE import_batches SET status = 'REVIEW', updated_at = NOW() WHERE id = $1", [id]);
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    const count = await query("SELECT COUNT(*)::int AS n FROM import_clusters WHERE batch_id = $1", [id]);
+    res.json({ batchId: id, status: "REVIEW", clusters: count.rows[0].n });
+  }));
+
+// GET /api/frameworks/import/batches — list batches with progress.
+router.get("/import/batches", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const result = await query(
+    `SELECT b.*,
+            (SELECT COUNT(*)::int FROM import_clusters c WHERE c.batch_id = b.id) AS cluster_count,
+            (SELECT COUNT(*)::int FROM import_clusters c WHERE c.batch_id = b.id AND c.decision IS NOT NULL) AS decided_count
+       FROM import_batches b ORDER BY b.created_at DESC`
+  );
+  res.json(mapRows(result));
+}));
+
+// GET /api/frameworks/import/batches/:id — full review payload.
+router.get("/import/batches/:id", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const b = await query("SELECT * FROM import_batches WHERE id = $1", [id]);
+  const batch = mapRow(b);
+  if (!batch) return res.status(404).json({ error: "Batch not found" });
+
+  const clusters = await query("SELECT * FROM import_clusters WHERE batch_id = $1 ORDER BY id", [id]);
+  const members = await query(
+    `SELECT m.cluster_id, m.assigned_framework_key, m.assigned_control_reference, s.*
+       FROM import_cluster_members m
+       JOIN import_staging_rows s ON s.id = m.staging_row_id
+      WHERE s.batch_id = $1 ORDER BY m.cluster_id, s.id`,
+    [id]
+  );
+  const canonical = await loadGlobalCanonical();
+  const canonMap = new Map(canonical.map(c => [c.questId, c]));
+
+  const memByCluster = new Map();
+  for (const m of members.rows) {
+    if (!memByCluster.has(m.cluster_id)) memByCluster.set(m.cluster_id, []);
+    memByCluster.get(m.cluster_id).push(m);
+  }
+
+  res.json({
+    batch,
+    clusters: clusters.rows.map(c => ({
+      ...c,
+      members: (memByCluster.get(c.id) || []),
+      existing: c.existing_quest_id ? canonMap.get(c.existing_quest_id) || null : null,
+    })),
+  });
+}));
+
+// PATCH /api/frameworks/import/batches/:id/clusters/:clusterId — record a decision.
+router.patch("/import/batches/:id/clusters/:clusterId", authenticate, requireSuperAdmin,
+  asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const clusterId = parseInt(req.params.clusterId);
+    const { decision, action, existingQuestId, canonicalQuestion, level3, memberOverrides } = req.body;
+    if (!["ACCEPT", "REJECT", "MODIFIED"].includes(decision)) {
+      return res.status(400).json({ error: "decision must be ACCEPT, REJECT or MODIFIED" });
+    }
+    const c = await query("SELECT * FROM import_clusters WHERE id = $1 AND batch_id = $2", [clusterId, id]);
+    if (c.rows.length === 0) return res.status(404).json({ error: "Cluster not found" });
+
+    const client = await getClient();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `UPDATE import_clusters
+            SET decision = $1,
+                decided_action = COALESCE($2, decided_action, proposed_action),
+                decided_canonical_question = COALESCE($3, decided_canonical_question, proposed_canonical_question),
+                decided_level3 = COALESCE($4, decided_level3, proposed_level3),
+                existing_quest_id = COALESCE($5, existing_quest_id),
+                decided_by = $6, decided_at = NOW(), updated_at = NOW()
+          WHERE id = $7`,
+        [decision, action || null, canonicalQuestion || null, level3 || null,
+         existingQuestId || null, req.user.userId || null, clusterId]
+      );
+      for (const o of (memberOverrides || [])) {
+        await client.query(
+          `UPDATE import_cluster_members
+              SET assigned_framework_key = $1, assigned_control_reference = $2
+            WHERE cluster_id = $3 AND staging_row_id = $4`,
+          [o.frameworkKey || null, o.controlReference || null, clusterId, o.stagingRowId]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+    res.json({ ok: true });
+  }));
+
+// POST /api/frameworks/import/batches/:id/commit — write canonical questions +
+// question_framework_controls (company_id IS NULL) and rewrite the framework template.
+router.post("/import/batches/:id/commit", authenticate, requireSuperAdmin, longRequestTimeout(120000),
+  asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const b = await query("SELECT * FROM import_batches WHERE id = $1", [id]);
+    const batch = b.rows[0];
+    if (!batch) return res.status(404).json({ error: "Batch not found" });
+    if (batch.status === "COMMITTED") return res.status(409).json({ error: "Batch already committed" });
+
+    const clusters = await query("SELECT * FROM import_clusters WHERE batch_id = $1 ORDER BY id", [id]);
+    const undecided = clusters.rows.filter(c => !c.decision);
+    if (undecided.length > 0) {
+      return res.status(400).json({ error: `${undecided.length} cluster(s) still need a decision` });
+    }
+    const members = await query(
+      `SELECT m.cluster_id, m.assigned_framework_key, m.assigned_control_reference, s.*
+         FROM import_cluster_members m JOIN import_staging_rows s ON s.id = m.staging_row_id
+        WHERE s.batch_id = $1`, [id]
+    );
+    const memByCluster = new Map();
+    for (const m of members.rows) {
+      if (!memByCluster.has(m.cluster_id)) memByCluster.set(m.cluster_id, []);
+      memByCluster.get(m.cluster_id).push(m);
+    }
+
+    const summary = { canonicalCreated: 0, merged: 0, mappings: 0, skipped: 0 };
+    const templateQuestions = [];
+    const templateModules = new Map();
+
+    const client = await getClient();
+    try {
+      await client.query("BEGIN");
+
+      for (const cl of clusters.rows) {
+        const mem = memByCluster.get(cl.id) || [];
+        if (cl.decision === "REJECT" || mem.length === 0) { summary.skipped++; continue; }
+
+        const action = cl.decided_action || cl.proposed_action;
+        const canonicalQuestion = cl.decided_canonical_question || cl.proposed_canonical_question || mem[0].baseline_question;
+        const level3 = cl.decided_level3 || cl.proposed_level3 || mem[0].level3_yes_criteria || null;
+        const rep = mem[0];
+
+        let questId;
+        if (action === "MERGE_INTO_EXISTING" && cl.existing_quest_id) {
+          questId = cl.existing_quest_id;
+          summary.merged++;
+          if (cl.decision === "MODIFIED") {
+            await client.query(
+              `UPDATE questions SET baseline_question = $1, level3_yes_criteria = COALESCE($2, level3_yes_criteria), updated_at = NOW()
+                 WHERE company_id IS NULL AND quest_id = $3`,
+              [canonicalQuestion, level3, questId]
+            );
+          }
+        } else {
+          // Mint a stable canonical quest_id from the representative source id.
+          const base = rep.source_quest_id || `${batch.primary_framework_key}-${cl.id}`;
+          questId = base;
+          for (let n = 2; ; n++) {
+            const clash = await client.query(
+              "SELECT 1 FROM questions WHERE company_id IS NULL AND quest_id = $1", [questId]
+            );
+            if (clash.rows.length === 0) break;
+            questId = `${base}-${n}`;
+          }
+          await client.query(
+            `INSERT INTO questions (quest_id, company_id, module_id, module_name, control_area,
+               iso_reference, baseline_question, level3_yes_criteria, required_evidence,
+               default_owner, frequency, priority, tags)
+             VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            [questId, rep.module_id, rep.module_name || rep.module_id, rep.control_area,
+             rep.control_reference || null, canonicalQuestion, level3, rep.required_evidence || null,
+             rep.default_owner || null, rep.frequency || null,
+             ["Critical", "High", "Medium", "Low"].includes(rep.priority) ? rep.priority : "Medium",
+             rep.tags || null]
+          );
+          summary.canonicalCreated++;
+        }
+
+        await client.query(
+          "UPDATE import_clusters SET decided_quest_id = $1, updated_at = NOW() WHERE id = $2",
+          [questId, cl.id]
+        );
+
+        const controls = [];
+        for (const m of mem) {
+          const fw = m.assigned_framework_key || m.framework_key;
+          const refs = m.assigned_control_reference
+            ? [m.assigned_control_reference]
+            : splitRefs(m.control_reference_raw || m.control_reference);
+          const facets = (m.raw && m.raw.original_facets) || null;
+          for (const ref of (refs.length ? refs : [m.control_reference])) {
+            if (!fw || !ref) continue;
+            const ins = await client.query(
+              `INSERT INTO question_framework_controls
+                 (company_id, quest_id, framework_key, control_reference,
+                  original_quest_id, original_question, original_control_area, original_level3, original_facets)
+               VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8)
+               ON CONFLICT ON CONSTRAINT qfc_uniq_nnd DO NOTHING RETURNING id`,
+              [questId, fw, ref, m.source_quest_id, m.baseline_question, m.control_area,
+               m.level3_yes_criteria, facets ? JSON.stringify(facets) : null]
+            );
+            if (ins.rows.length) summary.mappings++;
+            controls.push({
+              framework_key: fw, control_reference: ref,
+              original_quest_id: m.source_quest_id, original_question: m.baseline_question,
+              original_control_area: m.control_area, original_facets: facets,
+            });
+          }
+          if (!templateModules.has(m.module_id)) {
+            templateModules.set(m.module_id, { module_id: m.module_id, name: m.module_name || m.module_id, framework_key: batch.primary_framework_key });
+          }
+        }
+
+        templateQuestions.push({
+          quest_id: questId, canonical: true,
+          module_id: rep.module_id, module_name: rep.module_name || rep.module_id,
+          control_area: rep.control_area, baseline_question: canonicalQuestion,
+          level3_yes_criteria: level3, required_evidence: rep.required_evidence || "",
+          default_owner: rep.default_owner || "", frequency: rep.frequency || "",
+          priority: rep.priority || "Medium", tags: rep.tags || "",
+          iso_reference: controls[0]?.control_reference || null,
+          controls,
+        });
+      }
+
+      // Rewrite (or create) the canonical template for this framework.
+      const fwRow = await client.query("SELECT name FROM frameworks WHERE key = $1", [batch.primary_framework_key]);
+      const tplName = `${fwRow.rows[0]?.name || batch.primary_framework_key} (canonical)`;
+      const modArr = [...templateModules.values()];
+      const existingTpl = await client.query(
+        "SELECT id FROM module_templates WHERE framework_key = $1 AND name = $2",
+        [batch.primary_framework_key, tplName]
+      );
+      if (existingTpl.rows.length > 0) {
+        await client.query(
+          "UPDATE module_templates SET module_data = $1, question_data = $2, updated_at = NOW() WHERE id = $3",
+          [JSON.stringify(modArr), JSON.stringify(templateQuestions), existingTpl.rows[0].id]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO module_templates (name, description, file_name, module_data, question_data, framework_key, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [tplName, "Canonical cross-framework question set", batch.source_file_name || null,
+           JSON.stringify(modArr), JSON.stringify(templateQuestions), batch.primary_framework_key, req.user.userId || null]
+        );
+      }
+
+      await client.query(
+        "UPDATE import_batches SET status = 'COMMITTED', committed_at = NOW(), updated_at = NOW() WHERE id = $1",
+        [id]
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      await query("UPDATE import_batches SET status = 'FAILED', error = $2, updated_at = NOW() WHERE id = $1",
+        [id, String(err.message).slice(0, 500)]).catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    res.json({ batchId: id, status: "COMMITTED", summary });
+  }));
 
 export default router;
