@@ -13,7 +13,10 @@
  * Each provider module must export:
  *   analyzeEvidence({ evidenceName, evidenceType, questId, moduleId, requiredEvidence, filePath })
  *   suggestEvidence({ questionContext, vaultItems })  — optional; falls back to keywordSuggest
+ *   mapRegulatoryExposure({ departments, provisionIndex })  — optional; falls back to { mappings: [] }
  */
+
+import { lookupProvision, provisionIndexForPrompt } from "./provisionIndex.js";
 
 const ENV_PROVIDER = (process.env.PRISM_AI_PROVIDER || "bedrock").toLowerCase();
 
@@ -61,6 +64,9 @@ const NONE_PROVIDER = {
   async clusterQuestions(args) {
     return deterministicCluster(args);
   },
+  // No mapRegulatoryExposure — the router below only calls it when the
+  // provider module defines it, so "none" naturally yields { mappings: [] }
+  // and callers fall back to the static reference table.
 };
 
 async function loadProvider(override) {
@@ -192,6 +198,76 @@ export async function clusterQuestions(args) {
     for (const c of deterministicCluster({ incoming: missing, existing }).clusters) all.push(c);
   }
   return { clusters: all };
+}
+
+/**
+ * Map a company's self-assessment open items (per department: gap + partial
+ * question text) to specific regulatory/standard provisions, grounded against
+ * the checked-in provision index (provisionIndex.js) so the model can only
+ * ever cite a provision id that's actually in that index — see
+ * api/src/data/legal/README.md.
+ *
+ * @param {{ provider?:string, departments: Array<{ dept:string,
+ *   gapQuestions:Array<{id:string,text:string}>,
+ *   partialQuestions:Array<{id:string,text:string}> }> }} args
+ * @returns {Promise<{ mappings: Array<{ dept, framework, frameworkName,
+ *   provisionId, title, url, penalty, rationale, relatedQuestionIds }> }>}
+ */
+export async function mapRegulatoryExposure(args) {
+  const { provider, rest } = splitProvider(args);
+  const departments = Array.isArray(rest.departments) ? rest.departments : [];
+  if (!departments.length) return { mappings: [] };
+
+  const { name, module: m } = await loadProvider(provider);
+  if (typeof m.mapRegulatoryExposure !== "function") return { mappings: [] };
+
+  const deptIndex = new Map(departments.map(d => [
+    d.dept,
+    new Set([...(d.gapQuestions || []), ...(d.partialQuestions || [])].map(q => String(q.id))),
+  ]));
+  const provisionIndex = provisionIndexForPrompt();
+
+  try {
+    const raw = await m.mapRegulatoryExposure({ departments, provisionIndex });
+    return { mappings: validExposureMapping(raw, deptIndex) };
+  } catch (e) {
+    console.warn(`[AI] mapRegulatoryExposure failed (${name}), no exposure mapping this round:`, e.message); // nosemgrep
+    return { mappings: [] };
+  }
+}
+
+/**
+ * Drop any model-returned mapping that isn't grounded: an unknown department,
+ * a (framework, provisionId) pair that isn't in the checked-in index, or
+ * relatedQuestionIds that aren't real open items for that department. Every
+ * surviving mapping's title/url/penalty is looked up from the index — never
+ * taken from the model's own output, even if it echoed one back.
+ */
+export function validExposureMapping(out, deptQuestionIds) {
+  if (!out || !Array.isArray(out.mappings)) return [];
+  const validated = [];
+  for (const raw of out.mappings) {
+    const knownIds = deptQuestionIds.get(raw?.dept);
+    if (!knownIds) continue;
+    const provision = lookupProvision(raw.framework, raw.provisionId);
+    if (!provision) continue;
+    const relatedQuestionIds = (Array.isArray(raw.relatedQuestionIds) ? raw.relatedQuestionIds : [])
+      .map(String)
+      .filter(id => knownIds.has(id));
+    if (!relatedQuestionIds.length) continue;
+    validated.push({
+      dept: raw.dept,
+      framework: provision.framework,
+      frameworkName: provision.frameworkName,
+      provisionId: provision.id,
+      title: provision.title,
+      url: provision.url,
+      penalty: provision.penalty,
+      rationale: typeof raw.rationale === "string" ? raw.rationale.slice(0, 400) : "",
+      relatedQuestionIds,
+    });
+  }
+  return validated;
 }
 
 // ─── Deterministic question clustering (the "none" provider + universal fallback) ──

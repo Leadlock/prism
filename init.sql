@@ -246,6 +246,20 @@ CREATE TABLE IF NOT EXISTS self_assessment_submissions (
 CREATE UNIQUE INDEX IF NOT EXISTS self_assess_submissions_unique
   ON self_assessment_submissions (company_id, user_email, department);
 ALTER TABLE self_assessment_submissions ADD COLUMN IF NOT EXISTS answers JSONB NOT NULL DEFAULT '{}';
+
+-- Caches the AI-generated regulatory-exposure mapping (aiProvider.mapRegulatoryExposure)
+-- for a company's current set of self-assessment submissions, so GET /api/self-assessment
+-- only re-runs the AI call when submissions_fingerprint changes (every submission edit
+-- changes it) rather than on every page view/email. `mappings` holds the already-validated
+-- result (see aiProvider.js validExposureMapping) — never raw model output.
+CREATE TABLE IF NOT EXISTS self_assessment_reports (
+  company_id INT PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,
+  submissions_fingerprint TEXT NOT NULL,
+  mappings JSONB NOT NULL DEFAULT '[]',
+  ai_provider TEXT,
+  generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS invitations_company_id_idx ON invitations(company_id);
 CREATE INDEX IF NOT EXISTS invitations_token_idx ON invitations(token);
 
