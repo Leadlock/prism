@@ -316,6 +316,13 @@ function buildRoadmap({ priorityFocus, quickWins, notAssessedDepts, dataQualityN
 // never model-authored text. Fallback path: the static FALLBACK_REFERENCE
 // table, dept-bucket matched, used only when nothing AI-validated is available.
 
+// DPDPA ids in the index are bare ("8(5)"); GDPR/ISO already carry their own
+// prefix ("Art. 32", "A.5.15"). Present DPDPA as "Sec. 8(5)" to match how the
+// Act is normally cited.
+function provisionLabelFor(framework, id) {
+  return framework === "DPDPA" && !/^sec/i.test(id) ? `Sec. ${id}` : id;
+}
+
 function buildRegulatoryExposureFromAI(aiExposureMappings) {
   const byProvision = new Map();
   for (const m of aiExposureMappings) {
@@ -325,16 +332,27 @@ function buildRegulatoryExposureFromAI(aiExposureMappings) {
         source: "ai",
         framework: m.frameworkName,
         provisionId: m.provisionId,
-        provisionLabel: m.provisionId,
+        provisionLabel: provisionLabelFor(m.framework, m.provisionId),
         summary: m.title,
         penalty: m.penalty || "Not specified — see official source",
         url: m.url,
-        triggeredBy: [],
+        _byDept: new Map(),
       });
     }
-    byProvision.get(key).triggeredBy.push({ dept: m.dept, rationale: m.rationale, questionCount: m.relatedQuestionIds.length });
+    // The model can emit more than one mapping for the same (provision, dept)
+    // pair — merge them into one triggeredBy entry, unioning the question ids.
+    const dedup = byProvision.get(key)._byDept;
+    const existing = dedup.get(m.dept);
+    if (existing) {
+      existing.questionIds = [...new Set([...existing.questionIds, ...m.relatedQuestionIds])];
+    } else {
+      dedup.set(m.dept, { dept: m.dept, rationale: m.rationale, questionIds: [...m.relatedQuestionIds] });
+    }
   }
-  return [...byProvision.values()];
+  return [...byProvision.values()].map(({ _byDept, ...row }) => ({
+    ...row,
+    triggeredBy: [..._byDept.values()].map(e => ({ dept: e.dept, rationale: e.rationale, questionCount: e.questionIds.length })),
+  }));
 }
 
 function buildFallbackExposure(deptRows) {

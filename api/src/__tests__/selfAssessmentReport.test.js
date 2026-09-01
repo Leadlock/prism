@@ -120,7 +120,20 @@ describe("buildSelfAssessmentReport — regulatory exposure: AI vs. fallback", (
     expect(regulatoryExposureSource).toBe("ai");
     expect(regulatoryExposure).toHaveLength(1);
     expect(regulatoryExposure[0]).toMatchObject({ source: "ai", framework: "DPDPA 2023 (India)", provisionId: "8(5)", url: "https://example.org/dpdpa#8-5" });
+    // DPDPA ids get a "Sec." prefix for display; GDPR/ISO keep their own.
+    expect(regulatoryExposure[0].provisionLabel).toBe("Sec. 8(5)");
     expect(regulatoryExposure[0].triggeredBy).toEqual([{ dept: "IT", rationale: "MFA is not enabled.", questionCount: 1 }]);
+  });
+
+  test("merges duplicate (provision, department) mappings from the model into one triggeredBy entry", () => {
+    const aiExposureMappings = [
+      { dept: "IT", framework: "DPDPA", frameworkName: "DPDPA 2023 (India)", provisionId: "8", title: "General obligations", url: "u", penalty: null, rationale: "r1", relatedQuestionIds: ["it-15"] },
+      { dept: "IT", framework: "DPDPA", frameworkName: "DPDPA 2023 (India)", provisionId: "8", title: "General obligations", url: "u", penalty: null, rationale: "r2", relatedQuestionIds: ["it-16"] },
+    ];
+    const { regulatoryExposure } = buildSelfAssessmentReport({ companyName: "Acme", submissions, aiExposureMappings });
+    expect(regulatoryExposure).toHaveLength(1);
+    expect(regulatoryExposure[0].triggeredBy).toHaveLength(1);
+    expect(regulatoryExposure[0].triggeredBy[0]).toMatchObject({ dept: "IT", questionCount: 2 });
   });
 });
 

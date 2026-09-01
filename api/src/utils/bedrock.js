@@ -6,6 +6,7 @@ import fs from "fs";
 import path from "path";
 import { extractFileContent } from "./fileExtract.js";
 import { extractFirstJson } from "./jsonExtract.js";
+import { buildExposurePrompt, normaliseMappings } from "./regulatoryExposurePrompt.js";
 
 const client = new BedrockRuntimeClient({
   region: process.env.AWS_REGION || "eu-north-1",
@@ -246,54 +247,19 @@ Respond with ONLY valid JSON, no markdown:
 export async function mapRegulatoryExposure({ departments = [], provisionIndex = {} }) {
   if (!departments.length) return { mappings: [] };
 
-  const deptBlock = departments.map(d => {
-    const lines = [
-      ...(d.gapQuestions || []).map(q => `  - [GAP id=${q.id}] ${q.text}`),
-      ...(d.partialQuestions || []).map(q => `  - [PARTIAL id=${q.id}] ${q.text}`),
-    ];
-    return `${d.dept}:\n${lines.length ? lines.join("\n") : "  (no open items)"}`;
-  }).join("\n\n");
-
-  const indexBlock = Object.entries(provisionIndex)
-    .map(([fw, provisions]) => `${fw}:\n${provisions.map(p => `  - id="${p.id}" — ${p.title}`).join("\n")}`)
-    .join("\n\n");
-
-  const prompt = `You map a company's open self-assessment items (unresolved "gaps" and "partial" controls, one department at a time) to the specific regulatory/standard provisions they put at risk.
-
-OPEN ITEMS BY DEPARTMENT:
-${deptBlock}
-
-PROVISION INDEX — the ONLY provisions you may cite. You MUST NOT invent an id that isn't listed here, and provisionId must be copied EXACTLY as given (including punctuation):
-${indexBlock}
-
-Rules:
-- Only cite a provision for a department if a real open item of that department's actually relates to it. Do not cite a provision just because the department exists.
-- Cite the specific open-item id(s) responsible in relatedQuestionIds — never leave it empty.
-- A department may map to zero, one, or several provisions; a provision may apply to several departments.
-- rationale: one sentence explaining why these specific open items put this provision at risk.
-
-Respond with ONLY valid JSON, no markdown fences:
-{"mappings":[{"dept":"...","framework":"DPDPA|GDPR|ISO27001","provisionId":"...","rationale":"...","relatedQuestionIds":["..."]}]}`;
-
   const command = new ConverseCommand({
     modelId: MODEL_ID,
-    messages: [{ role: "user", content: [{ text: prompt }] }],
-    inferenceConfig: { maxTokens: 4096, temperature: 0 }
+    messages: [{ role: "user", content: [{ text: buildExposurePrompt({ departments, provisionIndex }) }] }],
+    inferenceConfig: { maxTokens: 8192, temperature: 0 }
   });
   const response = await client.send(command);
   const raw = response.output?.message?.content?.[0]?.text || "";
-  const parsed = extractFirstJson(raw);
-  if (!parsed || !Array.isArray(parsed.mappings)) throw new Error("mapRegulatoryExposure: no valid JSON object in model response");
-
-  return {
-    mappings: parsed.mappings.map(m => ({
-      dept: String(m.dept ?? ""),
-      framework: String(m.framework ?? ""),
-      provisionId: String(m.provisionId ?? ""),
-      rationale: String(m.rationale ?? ""),
-      relatedQuestionIds: Array.isArray(m.relatedQuestionIds) ? m.relatedQuestionIds.map(String) : [],
-    })),
-  };
+  const mappings = normaliseMappings(extractFirstJson(raw));
+  if (!mappings) {
+    console.error(`[AI] mapRegulatoryExposure — unparseable response (stop=${response.stopReason}): ${raw.slice(0, 400)}`);
+    throw new Error("mapRegulatoryExposure: no valid JSON object in model response");
+  }
+  return { mappings };
 }
 
 export async function chatWithDocuments({ systemPrompt, history, message }) {
