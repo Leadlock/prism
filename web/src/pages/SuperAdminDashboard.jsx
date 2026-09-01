@@ -1607,6 +1607,18 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
             When set, questions are de-duplicated by control and mapped to this framework
             (the framework is activated for the assigned company).
           </p>
+          <p style={{ fontSize: "12px", color: "var(--text2)", margin: "8px 0 0" }}>
+            To merge a control that repeats across frameworks into one canonical question
+            (AI-assisted, with review), use{" "}
+            <button
+              type="button"
+              className="link-button"
+              style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, textDecoration: "underline" }}
+              onClick={() => navigate("/superadmin/framework-import")}
+            >
+              Framework Import &amp; Review
+            </button>.
+          </p>
         </div>
 
         {/* Company Selector */}

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { clusterQuestions, deterministicCluster } from "../utils/aiProvider.js";
+import { clusterQuestions, deterministicCluster, validClusterResponse } from "../utils/aiProvider.js";
 
 const facetRows = (fw, area, ref, ids = ["a", "b", "c"]) => [
   { tempId: ids[0], frameworkKey: fw, controlArea: area, controlReference: ref, facet: "IMPLEMENTED",
@@ -50,6 +50,28 @@ describe("deterministicCluster", () => {
     const areas = clusters.map(c => c.canonicalQuestion);
     expect(areas.some(q => /Accountability framework/.test(q))).toBe(true);
     expect(areas.some(q => /Data breach notification/.test(q))).toBe(true);
+  });
+});
+
+describe("validClusterResponse guard", () => {
+  test("rejects a whole chunk dumped into one bucket", () => {
+    const out = { clusters: [{ memberTempIds: ["a", "b", "c", "d", "e"], action: "NEW_CANONICAL" }] };
+    expect(validClusterResponse(out, 5)).toBeNull();
+  });
+  test("rejects an oversized cluster", () => {
+    const out = { clusters: [
+      { memberTempIds: ["a", "b", "c"] },
+      { memberTempIds: ["d", "e", "f", "g", "h", "i", "j"] },
+    ] };
+    expect(validClusterResponse(out, 10)).toBeNull();
+  });
+  test("accepts a sane response", () => {
+    const out = { clusters: [{ memberTempIds: ["a", "b", "c"] }, { memberTempIds: ["d", "e"] }] };
+    expect(validClusterResponse(out, 5)).toBe(out);
+  });
+  test("rejects empty / malformed", () => {
+    expect(validClusterResponse(null, 3)).toBeNull();
+    expect(validClusterResponse({ clusters: [] }, 3)).toBeNull();
   });
 });
 

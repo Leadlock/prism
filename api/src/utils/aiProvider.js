@@ -136,20 +136,62 @@ export async function suggestEvidence(args) {
  *   existingQuestId?:string|null, canonicalQuestion:string, level3:string,
  *   confidence:number, rationale:string, matchMethod:string }> }>}
  */
+const CLUSTER_CHUNK = 30;
+const MAX_CLUSTER_MEMBERS = 6; // a control has ~3 facet rows; >6 in one bucket ⇒ the model over-merged
+
+/**
+ * A control legitimately produces ~3 rows, so reject any LLM response that dumps
+ * a whole chunk into one bucket or produces an oversized cluster.
+ */
+export function validClusterResponse(out, chunkLen) {
+  if (!out || !Array.isArray(out.clusters) || out.clusters.length === 0) return null;
+  const sizes = out.clusters.map(c => (c.memberTempIds || []).length);
+  const max = Math.max(...sizes);
+  if (max > MAX_CLUSTER_MEMBERS) return null;
+  if (chunkLen >= 4 && out.clusters.length === 1 && max >= chunkLen) return null;
+  return out;
+}
+
 export async function clusterQuestions(args) {
   const { provider, rest } = splitProvider(args);
-  if (!Array.isArray(rest.incoming) || rest.incoming.length === 0) return { clusters: [] };
+  const incoming = Array.isArray(rest.incoming) ? rest.incoming : [];
+  if (incoming.length === 0) return { clusters: [] };
+  const existing = rest.existing || [];
   const { name, module: m } = await loadProvider(provider);
-  if (typeof m.clusterQuestions === "function") {
-    try {
-      const out = await m.clusterQuestions(rest);
-      if (out && Array.isArray(out.clusters) && out.clusters.length) return out;
-      console.warn(`[AI] clusterQuestions (${name}) returned no clusters — using deterministic fallback`); // nosemgrep
-    } catch (e) {
-      console.warn(`[AI] clusterQuestions failed (${name}), deterministic fallback:`, e.message); // nosemgrep
+  const hasLLM = typeof m.clusterQuestions === "function";
+
+  const chunks = [];
+  for (let i = 0; i < incoming.length; i += CLUSTER_CHUNK) chunks.push(incoming.slice(i, i + CLUSTER_CHUNK));
+
+  const all = [];
+  const placed = new Set();
+  for (const chunk of chunks) {
+    let out = null;
+    if (hasLLM) {
+      try {
+        out = validClusterResponse(await m.clusterQuestions({ incoming: chunk, existing }), chunk.length);
+        if (!out) console.warn(`[AI] clusterQuestions (${name}) gave a degenerate response — deterministic for this chunk`); // nosemgrep
+      } catch (e) {
+        console.warn(`[AI] clusterQuestions failed (${name}), deterministic for this chunk:`, e.message); // nosemgrep
+      }
+    }
+    const use = out || deterministicCluster({ incoming: chunk, existing });
+    for (const c of use.clusters) {
+      const ids = (c.memberTempIds || [])
+        .map(String)
+        .filter(id => chunk.some(q => String(q.tempId) === id) && !placed.has(id));
+      if (!ids.length) continue;
+      ids.forEach(id => placed.add(id));
+      all.push({ ...c, memberTempIds: ids });
     }
   }
-  return deterministicCluster(rest);
+
+  // Anything the clusterer dropped becomes its own deterministic cluster.
+  const missing = incoming.filter(q => !placed.has(String(q.tempId)));
+  if (missing.length) {
+    for (const c of deterministicCluster({ incoming: missing, existing }).clusters) all.push(c);
+  }
+  return { clusters: all };
 }
 
 // ─── Deterministic question clustering (the "none" provider + universal fallback) ──
@@ -202,8 +244,11 @@ function bestLevel3(members) {
 }
 
 export function deterministicCluster({ incoming = [], existing = [] } = {}) {
-  // 1. Group incoming rows that describe the same control: exact control-area
-  //    match, or a shared normalised control reference, or high token overlap.
+  // 1. Group incoming rows that describe the same control. Staging has already
+  //    collapsed each control's facet rows, so here we only merge rows whose
+  //    control AREA is the same (exact) or near-identical (token Jaccard ≥ 0.9).
+  //    A shared clause reference alone is NOT enough — frameworks reuse a ref
+  //    (e.g. SOC2 CC1.1) across several distinct controls.
   const groups = [];
   const areaTokens = incoming.map(q => tokenSet(q.controlArea));
 
@@ -213,8 +258,9 @@ export function deterministicCluster({ incoming = [], existing = [] } = {}) {
       const rep = grp.members[0];
       if (normText(rep.controlArea) && normText(rep.controlArea) === normText(q.controlArea)) return true;
       if (rep.frameworkKey === q.frameworkKey
-          && normText(rep.controlReference) && normText(rep.controlReference) === normText(q.controlReference)) return true;
-      return jaccard(areaTokens[grp.repIndex], areaTokens[i]) >= 0.85 && normText(q.controlArea).length > 0;
+          && normText(rep.controlReference) && normText(rep.controlReference) === normText(q.controlReference)
+          && jaccard(areaTokens[grp.repIndex], areaTokens[i]) >= 0.6) return true;
+      return normText(q.controlArea).length > 0 && jaccard(areaTokens[grp.repIndex], areaTokens[i]) >= 0.9;
     });
     if (!g) { g = { members: [], repIndex: i }; groups.push(g); }
     g.members.push(q);

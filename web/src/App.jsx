@@ -13,6 +13,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Review from "./pages/Review.jsx";
 import Tracker from "./pages/Tracker.jsx";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard.jsx";
+import FrameworkImportReview from "./pages/FrameworkImportReview.jsx";
 import QuestionDetail from "./pages/QuestionDetail.jsx";
 import EvidenceVault from "./pages/EvidenceVault.jsx";
 import EvidenceRequests from "./pages/EvidenceRequests.jsx";
@@ -350,6 +351,14 @@ export default function App() {
         <Route
           path="/superadmin"
           element={isAuthenticated && isSuperAdmin ? <SuperAdminDashboard {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
+        />
+        <Route
+          path="/superadmin/framework-import"
+          element={isAuthenticated && isSuperAdmin ? <FrameworkImportReview {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
+        />
+        <Route
+          path="/superadmin/framework-import/:batchId"
+          element={isAuthenticated && isSuperAdmin ? <FrameworkImportReview {...authProps} /> : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />}
         />
 
         {/* Dashboard — all roles (unverified companies stay on self-assess) */}

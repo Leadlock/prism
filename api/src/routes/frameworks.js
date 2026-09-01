@@ -699,17 +699,17 @@ router.get("/import/batches/:id", authenticate, requireSuperAdmin, asyncHandler(
   const canonMap = new Map(canonical.map(c => [c.questId, c]));
 
   const memByCluster = new Map();
-  for (const m of members.rows) {
-    if (!memByCluster.has(m.cluster_id)) memByCluster.set(m.cluster_id, []);
-    memByCluster.get(m.cluster_id).push(m);
+  for (const m of mapRows(members)) {
+    if (!memByCluster.has(m.clusterId)) memByCluster.set(m.clusterId, []);
+    memByCluster.get(m.clusterId).push(m);
   }
 
   res.json({
     batch,
-    clusters: clusters.rows.map(c => ({
+    clusters: mapRows(clusters).map(c => ({
       ...c,
       members: (memByCluster.get(c.id) || []),
-      existing: c.existing_quest_id ? canonMap.get(c.existing_quest_id) || null : null,
+      existing: c.existingQuestId ? canonMap.get(c.existingQuestId) || null : null,
     })),
   });
 }));

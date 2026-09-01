@@ -8298,3 +8298,66 @@ body {
     font-size: 1.7rem;
   }
 }
+
+/* ── Framework Import & Review (superadmin) ─────────────────────────────── */
+.fir-wrap { max-width: 1100px; margin: 0 auto; padding: 24px; color: var(--text); }
+.fir-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.fir-head h2 { font-size: 18px; font-weight: 600; margin: 0; }
+.fir-muted { color: var(--text2); font-size: 13px; }
+.fir-error { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 10px 14px; margin: 12px 0; font-size: 13px; }
+.fir-success { background: color-mix(in srgb, var(--green) 12%, transparent); color: var(--green); border: 1px solid var(--green); border-radius: 8px; padding: 10px 14px; margin: 12px 0; font-size: 13px; }
+
+.fir-card { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 20px; background: var(--bg2, var(--card-bg, transparent)); }
+.fir-upload { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.fir-upload h3 { font-size: 14px; font-weight: 600; margin: 0; width: 100%; }
+
+.fir-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fir-table th { text-align: left; color: var(--text2); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.fir-table td { padding: 10px; border-bottom: 1px solid var(--border); }
+.fir-row { cursor: pointer; }
+.fir-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+.fir-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; border: 1px solid var(--border); }
+.fir-chip-staged { color: var(--text2); }
+.fir-chip-review { color: var(--amber); border-color: var(--amber); }
+.fir-chip-committed { color: var(--green); border-color: var(--green); }
+.fir-chip-failed, .fir-chip-abandoned { color: var(--red); border-color: var(--red); }
+.fir-chip-accept { color: var(--green); border-color: var(--green); }
+.fir-chip-reject { color: var(--red); border-color: var(--red); }
+.fir-chip-modified { color: var(--amber); border-color: var(--amber); }
+
+.fir-progress, .fir-commitbar { display: flex; align-items: center; gap: 12px; margin: 16px 0; font-size: 13px; color: var(--text2); }
+
+.fir-cluster { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+.fir-cluster.fir-decided.fir-accept { border-color: var(--green); }
+.fir-cluster.fir-decided.fir-reject { border-color: var(--red); opacity: .7; }
+.fir-cluster.fir-decided.fir-modified { border-color: var(--amber); }
+.fir-cluster-pane { padding: 14px; }
+.fir-incoming { border-right: 1px solid var(--border); background: color-mix(in srgb, var(--text) 3%, transparent); }
+.fir-cluster-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.fir-rationale { font-size: 12px; font-style: italic; color: var(--text2); margin: 0 0 10px; }
+
+.fir-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+.fir-badge-new_canonical { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.fir-badge-merge_into_existing { background: color-mix(in srgb, var(--green) 18%, transparent); color: var(--green); }
+.fir-badge-keep_separate { background: color-mix(in srgb, var(--text2) 18%, transparent); color: var(--text2); }
+
+.fir-conf { position: relative; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text2); padding-left: 44px; }
+.fir-conf-bar { position: absolute; left: 0; height: 4px; border-radius: 2px; background: var(--accent); width: 0; max-width: 40px; }
+
+.fir-member { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+.fir-member-head { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
+.fir-facet { text-transform: uppercase; letter-spacing: .04em; font-weight: 700; color: var(--accent); }
+.fir-ref { color: var(--text2); }
+.fir-member-area { font-weight: 600; font-size: 13px; margin: 3px 0; }
+.fir-member-q { font-size: 12px; color: var(--text2); }
+
+.fir-canonical label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 10px; }
+.fir-canonical select, .fir-canonical input, .fir-canonical textarea { display: block; width: 100%; margin-top: 4px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg, transparent); color: var(--text); font: inherit; font-size: 13px; font-weight: 400; }
+.fir-existing { font-size: 12px; color: var(--text2); margin: -4px 0 10px; }
+.fir-decide { display: flex; gap: 8px; margin-top: 4px; }
+
+@media (max-width: 800px) {
+  .fir-cluster { grid-template-columns: 1fr; }
+  .fir-incoming { border-right: none; border-bottom: 1px solid var(--border); }
+}
