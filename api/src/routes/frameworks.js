@@ -786,8 +786,13 @@ router.post("/import/batches/:id/commit", authenticate, requireSuperAdmin, longR
     }
 
     const summary = { canonicalCreated: 0, merged: 0, mappings: 0, skipped: 0 };
-    const templateQuestions = [];
-    const templateModules = new Map();
+    // Per-framework canonical template payloads (RECONCILE touches many frameworks;
+    // IMPORT just one).
+    const tplByFw = new Map(); // frameworkKey -> { questions:[], modules:Map }
+    const tplFor = (fw) => {
+      if (!tplByFw.has(fw)) tplByFw.set(fw, { questions: [], modules: new Map() });
+      return tplByFw.get(fw);
+    };
 
     const client = await getClient();
     try {
@@ -815,7 +820,7 @@ router.post("/import/batches/:id/commit", authenticate, requireSuperAdmin, longR
           }
         } else {
           // Mint a stable canonical quest_id from the representative source id.
-          const base = rep.source_quest_id || `${batch.primary_framework_key}-${cl.id}`;
+          const base = rep.source_quest_id || `${batch.primary_framework_key || rep.framework_key || "Q"}-${cl.id}`;
           questId = base;
           for (let n = 2; ; n++) {
             const clash = await client.query(
@@ -843,7 +848,7 @@ router.post("/import/batches/:id/commit", authenticate, requireSuperAdmin, longR
           [questId, cl.id]
         );
 
-        const controls = [];
+        const controlsByFw = new Map();
         for (const m of mem) {
           const fw = m.assigned_framework_key || m.framework_key;
           const refs = m.assigned_control_reference
@@ -862,49 +867,53 @@ router.post("/import/batches/:id/commit", authenticate, requireSuperAdmin, longR
                m.level3_yes_criteria, facets ? JSON.stringify(facets) : null]
             );
             if (ins.rows.length) summary.mappings++;
-            controls.push({
+            const c = {
               framework_key: fw, control_reference: ref,
               original_quest_id: m.source_quest_id, original_question: m.baseline_question,
               original_control_area: m.control_area, original_facets: facets,
-            });
+            };
+            if (!controlsByFw.has(fw)) controlsByFw.set(fw, []);
+            controlsByFw.get(fw).push(c);
           }
-          if (!templateModules.has(m.module_id)) {
-            templateModules.set(m.module_id, { module_id: m.module_id, name: m.module_name || m.module_id, framework_key: batch.primary_framework_key });
-          }
+          if (fw) tplFor(fw).modules.set(m.module_id, { module_id: m.module_id, name: m.module_name || m.module_id, framework_key: fw });
         }
 
-        templateQuestions.push({
-          quest_id: questId, canonical: true,
-          module_id: rep.module_id, module_name: rep.module_name || rep.module_id,
-          control_area: rep.control_area, baseline_question: canonicalQuestion,
-          level3_yes_criteria: level3, required_evidence: rep.required_evidence || "",
-          default_owner: rep.default_owner || "", frequency: rep.frequency || "",
-          priority: rep.priority || "Medium", tags: rep.tags || "",
-          iso_reference: controls[0]?.control_reference || null,
-          controls,
-        });
+        // Add this canonical question to every framework template it touches.
+        for (const [fw, controls] of controlsByFw) {
+          tplFor(fw).questions.push({
+            quest_id: questId, canonical: true,
+            module_id: rep.module_id, module_name: rep.module_name || rep.module_id,
+            control_area: rep.control_area, baseline_question: canonicalQuestion,
+            level3_yes_criteria: level3, required_evidence: rep.required_evidence || "",
+            default_owner: rep.default_owner || "", frequency: rep.frequency || "",
+            priority: rep.priority || "Medium", tags: rep.tags || "",
+            iso_reference: controls[0]?.control_reference || null,
+            controls,
+          });
+        }
       }
 
-      // Rewrite (or create) the canonical template for this framework.
-      const fwRow = await client.query("SELECT name FROM frameworks WHERE key = $1", [batch.primary_framework_key]);
-      const tplName = `${fwRow.rows[0]?.name || batch.primary_framework_key} (canonical)`;
-      const modArr = [...templateModules.values()];
-      const existingTpl = await client.query(
-        "SELECT id FROM module_templates WHERE framework_key = $1 AND name = $2",
-        [batch.primary_framework_key, tplName]
-      );
-      if (existingTpl.rows.length > 0) {
-        await client.query(
-          "UPDATE module_templates SET module_data = $1, question_data = $2, updated_at = NOW() WHERE id = $3",
-          [JSON.stringify(modArr), JSON.stringify(templateQuestions), existingTpl.rows[0].id]
+      // Rewrite (or create) the canonical template for every framework touched.
+      for (const [fw, payload] of tplByFw) {
+        const fwRow = await client.query("SELECT name FROM frameworks WHERE key = $1", [fw]);
+        const tplName = `${fwRow.rows[0]?.name || fw} (canonical)`;
+        const modArr = [...payload.modules.values()];
+        const existingTpl = await client.query(
+          "SELECT id FROM module_templates WHERE framework_key = $1 AND name = $2", [fw, tplName]
         );
-      } else {
-        await client.query(
-          `INSERT INTO module_templates (name, description, file_name, module_data, question_data, framework_key, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [tplName, "Canonical cross-framework question set", batch.source_file_name || null,
-           JSON.stringify(modArr), JSON.stringify(templateQuestions), batch.primary_framework_key, req.user.userId || null]
-        );
+        if (existingTpl.rows.length > 0) {
+          await client.query(
+            "UPDATE module_templates SET module_data = $1, question_data = $2, updated_at = NOW() WHERE id = $3",
+            [JSON.stringify(modArr), JSON.stringify(payload.questions), existingTpl.rows[0].id]
+          );
+        } else {
+          await client.query(
+            `INSERT INTO module_templates (name, description, file_name, module_data, question_data, framework_key, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [tplName, "Canonical cross-framework question set", batch.source_file_name || null,
+             JSON.stringify(modArr), JSON.stringify(payload.questions), fw, req.user.userId || null]
+          );
+        }
       }
 
       await client.query(
@@ -923,5 +932,91 @@ router.post("/import/batches/:id/commit", authenticate, requireSuperAdmin, longR
 
     res.json({ batchId: id, status: "COMMITTED", summary });
   }));
+
+// POST /api/frameworks/reconcile — one-time bulk pass over existing framework
+// module_templates: stage every framework's questions into one RECONCILE batch so
+// the reviewer can merge controls that repeat across frameworks. Body:
+// { templateIds?: number[] }  (default: all templates that have a framework_key).
+router.post("/reconcile", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { templateIds } = req.body || {};
+  const tplRows = await query(
+    templateIds && templateIds.length
+      ? "SELECT * FROM module_templates WHERE id = ANY($1::int[]) AND framework_key IS NOT NULL"
+      : "SELECT * FROM module_templates WHERE framework_key IS NOT NULL AND name NOT LIKE '%(canonical)%'",
+    templateIds && templateIds.length ? [templateIds] : []
+  );
+  if (tplRows.rows.length === 0) {
+    return res.status(400).json({ error: "No framework templates to reconcile. Assign framework_key to templates first." });
+  }
+
+  // Build staging units from each template's question_data, tagged with the
+  // template's framework. Handles both the legacy (iso_reference) and canonical
+  // (controls[]) question shapes.
+  const units = [];
+  for (const tpl of tplRows.rows) {
+    const qd = typeof tpl.question_data === "string" ? JSON.parse(tpl.question_data) : (tpl.question_data || []);
+    for (const q of qd) {
+      const refs = Array.isArray(q.controls) && q.controls.length
+        ? q.controls.map(c => ({ fw: c.framework_key, ref: c.control_reference, orig: c.original_quest_id }))
+        : [{ fw: tpl.framework_key, ref: q.iso_reference || "", orig: q.quest_id }];
+      for (const { fw, ref, orig } of refs) {
+        units.push({
+          framework_key: fw || tpl.framework_key,
+          source_quest_id: orig || q.quest_id,
+          module_id: q.module_id, module_name: q.module_name || q.module_id,
+          control_area: q.control_area || "",
+          control_reference: ref, control_reference_raw: ref,
+          facet: "OTHER",
+          baseline_question: q.baseline_question || "",
+          level3_yes_criteria: q.level3_yes_criteria || "",
+          required_evidence: q.required_evidence || "",
+          default_owner: q.default_owner || "", frequency: q.frequency || "",
+          priority: q.priority || "", tags: q.tags || "",
+          collapse_group_key: null,
+          raw: { fromTemplate: tpl.id },
+        });
+      }
+    }
+  }
+
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const batch = await client.query(
+      `INSERT INTO import_batches (kind, primary_framework_key, source_file_name, status, raw_stats, ai_provider, templates_snapshot, created_by)
+       VALUES ('RECONCILE', NULL, $1, 'STAGED', $2, $3, $4, $5) RETURNING id`,
+      [`reconcile:${tplRows.rows.map(t => t.framework_key).join(",")}`,
+       JSON.stringify({ rows: units.length, controls: units.length, modules: new Set(units.map(u => u.module_id)).size, templates: tplRows.rows.length }),
+       (process.env.PRISM_AI_PROVIDER || "bedrock"),
+       JSON.stringify(tplRows.rows.map(t => ({ id: t.id, name: t.name, framework_key: t.framework_key, module_data: t.module_data, question_data: t.question_data }))),
+       req.user.userId || null]
+    );
+    const batchId = batch.rows[0].id;
+    for (const u of units) {
+      await client.query(
+        `INSERT INTO import_staging_rows
+          (batch_id, framework_key, source_quest_id, module_id, module_name, control_area,
+           control_reference, control_reference_raw, facet, baseline_question, level3_yes_criteria,
+           required_evidence, default_owner, frequency, priority, tags, collapse_group_key, raw)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+        [batchId, u.framework_key, u.source_quest_id, u.module_id, u.module_name, u.control_area,
+         u.control_reference, u.control_reference_raw, u.facet, u.baseline_question, u.level3_yes_criteria,
+         u.required_evidence, u.default_owner, u.frequency, u.priority, u.tags, u.collapse_group_key,
+         JSON.stringify(u.raw)]
+      );
+    }
+    await client.query("COMMIT");
+    res.status(201).json({
+      batchId, kind: "RECONCILE",
+      counts: { controls: units.length, templates: tplRows.rows.length,
+        frameworks: [...new Set(units.map(u => u.framework_key))] },
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}));
 
 export default router;

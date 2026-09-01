@@ -56,6 +56,19 @@ function BatchList({ token }) {
     }
   };
 
+  const reconcile = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/frameworks/reconcile", { token, method: "POST", body: "{}" });
+      navigate(`/superadmin/framework-import/${res.batchId}`);
+    } catch (e) {
+      setError(e.message || "Reconcile failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="fir-wrap">
       <div className="fir-head">
@@ -72,6 +85,9 @@ function BatchList({ token }) {
         </select>
         <button className="btn btn-primary" disabled={!file || busy} onClick={upload}>
           {busy ? "Uploading…" : "Create review batch"}
+        </button>
+        <button className="btn" disabled={busy} onClick={reconcile} title="Bulk-merge every existing framework template into one canonical set">
+          Reconcile existing templates
         </button>
       </div>
 

@@ -235,6 +235,59 @@ describe("framework import — stage / cluster / review / commit (PRISM_AI_PROVI
     expect(maps.rows.map(m => m.framework_key)).toEqual(["GDPR", "SOC2"]);
   });
 
+  test("reconcile: bulk-merges existing framework templates into one canonical set", async () => {
+    const sa = await createSuperAdmin();
+
+    // Two legacy framework templates for the same underlying control.
+    await query(
+      `INSERT INTO module_templates (name, module_data, question_data, framework_key)
+       VALUES ('GDPR set', $1, $2, 'GDPR')`,
+      [JSON.stringify([{ module_id: "G", name: "G" }]),
+       JSON.stringify([{ quest_id: "GDPR-Q1", module_id: "G", control_area: "Access control",
+         baseline_question: "Is access control governed?", iso_reference: "Art. 32" }])]
+    );
+    await query(
+      `INSERT INTO module_templates (name, module_data, question_data, framework_key)
+       VALUES ('SOC2 set', $1, $2, 'SOC2')`,
+      [JSON.stringify([{ module_id: "S", name: "S" }]),
+       JSON.stringify([{ quest_id: "SC-Q1", module_id: "S", control_area: "Access control",
+         baseline_question: "Is logical access controlled?", iso_reference: "CC6.1" }])]
+    );
+
+    const r = await request(app).post("/api/frameworks/reconcile")
+      .set("Authorization", `Bearer ${sa.token}`).send({});
+    expect(r.status).toBe(201);
+    expect(r.body.kind).toBe("RECONCILE");
+    expect(r.body.counts.controls).toBe(2);
+
+    await request(app).post(`/api/frameworks/import/batches/${r.body.batchId}/cluster`)
+      .set("Authorization", `Bearer ${sa.token}`);
+    // deterministic clusterer groups the two "Access control" rows into one
+    const detail = await request(app).get(`/api/frameworks/import/batches/${r.body.batchId}`)
+      .set("Authorization", `Bearer ${sa.token}`);
+    expect(detail.body.clusters).toHaveLength(1);
+    expect(detail.body.clusters[0].members).toHaveLength(2);
+
+    await request(app).patch(`/api/frameworks/import/batches/${r.body.batchId}/clusters/${detail.body.clusters[0].id}`)
+      .set("Authorization", `Bearer ${sa.token}`).send({ decision: "ACCEPT" });
+    const commit = await request(app).post(`/api/frameworks/import/batches/${r.body.batchId}/commit`)
+      .set("Authorization", `Bearer ${sa.token}`);
+    expect(commit.status).toBe(200);
+    expect(commit.body.summary.canonicalCreated).toBe(1);
+
+    const maps = await query(
+      "SELECT framework_key FROM question_framework_controls WHERE company_id IS NULL ORDER BY framework_key"
+    );
+    expect(maps.rows.map(m => m.framework_key)).toEqual(["GDPR", "SOC2"]);
+
+    // Both frameworks got a canonical template pointing at the same quest_id.
+    const tpls = await query("SELECT framework_key, question_data FROM module_templates WHERE name LIKE '%(canonical)%' ORDER BY framework_key");
+    expect(tpls.rows.map(t => t.framework_key)).toEqual(["GDPR", "SOC2"]);
+    const gdprQ = (typeof tpls.rows[0].question_data === "string" ? JSON.parse(tpls.rows[0].question_data) : tpls.rows[0].question_data)[0];
+    const soc2Q = (typeof tpls.rows[1].question_data === "string" ? JSON.parse(tpls.rows[1].question_data) : tpls.rows[1].question_data)[0];
+    expect(gdprQ.quest_id).toBe(soc2Q.quest_id);
+  });
+
   test("provisionTemplate instantiates a canonical template into a company with per-company qfc", async () => {
     const sa = await createSuperAdmin();
     const staged = await stageBatch(sa, "PRISM_GDPR_Audit_Framework.xlsx",
