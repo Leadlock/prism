@@ -13,6 +13,7 @@
 
 import { resolveDeptQuestionText } from "./deptSelfAssessQuestions.js";
 import { PRISM_LOGO_DATA_URI } from "../data/prismLogo.js";
+import { lookupProvision } from "./provisionIndex.js";
 
 const SCORE_VALUE = { YES: 1, PARTIAL: 0.5, NO: 0 };
 
@@ -57,9 +58,9 @@ const FALLBACK_REFERENCE = [
   },
   {
     framework: "DPDPA 2023 (India)",
-    provision: "Sec. 6 & 10 — Consent and notice",
+    provision: "Sec. 5 & 6 — Notice and consent",
     summary: "Valid, informed, and specific consent must be obtained before processing personal data.",
-    penalty: "Up to ₹50 crore",
+    penalty: "Up to ₹50 crore (residuary — Schedule to the DPDP Act, 2023)",
     relatedDepts: ["Marketing", "HR", "Legal"],
   },
   {
@@ -328,14 +329,19 @@ function buildRegulatoryExposureFromAI(aiExposureMappings) {
   for (const m of aiExposureMappings) {
     const key = `${m.framework}|${m.provisionId}`;
     if (!byProvision.has(key)) {
+      // Re-resolve title/url/penalty from the checked-in index at render time
+      // rather than trusting the fields on the mapping — those may have been
+      // cached (self_assessment_reports) before the index was last edited, and
+      // the index is the single source of truth for citation text.
+      const idx = lookupProvision(m.framework, m.provisionId) || {};
       byProvision.set(key, {
         source: "ai",
-        framework: m.frameworkName,
+        framework: idx.frameworkName || m.frameworkName,
         provisionId: m.provisionId,
         provisionLabel: provisionLabelFor(m.framework, m.provisionId),
-        summary: m.title,
-        penalty: m.penalty || "Not specified — see official source",
-        url: m.url,
+        summary: idx.title || m.title,
+        penalty: idx.penalty || m.penalty || "Not specified — see official source",
+        url: idx.url || m.url,
         _byDept: new Map(),
       });
     }

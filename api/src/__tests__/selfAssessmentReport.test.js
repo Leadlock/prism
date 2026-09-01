@@ -110,19 +110,33 @@ describe("buildSelfAssessmentReport — regulatory exposure: AI vs. fallback", (
     expect(FALLBACK_REFERENCE.some(r => r.provision.includes("8(5)"))).toBe(true);
   });
 
-  test("uses the AI-validated mapping when supplied, grouped one row per provision", () => {
+  test("uses the AI-validated mapping when supplied, re-resolving citation text from the checked-in index", () => {
+    // The mapping carries stale/wrong title+url+penalty (e.g. cached in
+    // self_assessment_reports before the index was last edited). The report
+    // must ignore those and re-look-up from api/src/data/legal/dpdpa-2023.json.
     const aiExposureMappings = [
-      { dept: "IT", framework: "DPDPA", frameworkName: "DPDPA 2023 (India)", provisionId: "8(5)", title: "Reasonable security safeguards", url: "https://example.org/dpdpa#8-5", penalty: "Up to ₹250 crore", rationale: "MFA is not enabled.", relatedQuestionIds: ["it-15"] },
+      { dept: "IT", framework: "DPDPA", frameworkName: "DPDPA (stale)", provisionId: "8(5)", title: "stale title", url: "https://example.org/stale", penalty: "Up to ₹1 (stale)", rationale: "MFA is not enabled.", relatedQuestionIds: ["it-15"] },
     ];
     const { regulatoryExposure, regulatoryExposureSource } = buildSelfAssessmentReport({
       companyName: "Acme", submissions, aiExposureMappings,
     });
     expect(regulatoryExposureSource).toBe("ai");
     expect(regulatoryExposure).toHaveLength(1);
-    expect(regulatoryExposure[0]).toMatchObject({ source: "ai", framework: "DPDPA 2023 (India)", provisionId: "8(5)", url: "https://example.org/dpdpa#8-5" });
+    expect(regulatoryExposure[0]).toMatchObject({ source: "ai", framework: "DPDPA 2023 (India)", provisionId: "8(5)", penalty: "Up to ₹250 crore" });
+    expect(regulatoryExposure[0].url).not.toBe("https://example.org/stale");
+    expect(regulatoryExposure[0].summary).not.toBe("stale title");
     // DPDPA ids get a "Sec." prefix for display; GDPR/ISO keep their own.
     expect(regulatoryExposure[0].provisionLabel).toBe("Sec. 8(5)");
     expect(regulatoryExposure[0].triggeredBy).toEqual([{ dept: "IT", rationale: "MFA is not enabled.", questionCount: 1 }]);
+  });
+
+  test("s.6 (no dedicated Schedule entry) resolves to the ₹50 crore residuary penalty via defaultPenalty", () => {
+    const aiExposureMappings = [
+      { dept: "IT", framework: "DPDPA", frameworkName: "DPDPA 2023 (India)", provisionId: "6", title: "Consent", url: "u", penalty: null, rationale: "no consent record", relatedQuestionIds: ["it-15"] },
+    ];
+    const { regulatoryExposure } = buildSelfAssessmentReport({ companyName: "Acme", submissions, aiExposureMappings });
+    expect(regulatoryExposure[0].penalty).toMatch(/₹50 crore/);
+    expect(regulatoryExposure[0].penalty).toMatch(/residuary/i);
   });
 
   test("merges duplicate (provision, department) mappings from the model into one triggeredBy entry", () => {
