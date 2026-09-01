@@ -67,16 +67,23 @@ async function resolveExposureMappings({ companyId, submissions, fingerprint }) 
   const provider = settings?.aiProvider || await getCompanyAiProvider(companyId);
   const { mappings } = await mapRegulatoryExposure({ provider, departments });
 
-  await query(
-    `INSERT INTO self_assessment_reports (company_id, submissions_fingerprint, mappings, ai_provider, generated_at)
-     VALUES ($1, $2, $3, $4, NOW())
-     ON CONFLICT (company_id) DO UPDATE SET
-       submissions_fingerprint = EXCLUDED.submissions_fingerprint,
-       mappings = EXCLUDED.mappings,
-       ai_provider = EXCLUDED.ai_provider,
-       generated_at = NOW()`,
-    [companyId, fingerprint, JSON.stringify(mappings), provider || null]
-  );
+  // Only cache a non-empty result. An empty array almost always means the AI
+  // call failed or the model returned nothing usable (not "genuinely nothing
+  // applies" — open gaps nearly always map to some provision), and caching
+  // that would freeze the report on the static fallback until a submission
+  // changes. Leaving it uncached lets the next view retry.
+  if (mappings.length > 0) {
+    await query(
+      `INSERT INTO self_assessment_reports (company_id, submissions_fingerprint, mappings, ai_provider, generated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (company_id) DO UPDATE SET
+         submissions_fingerprint = EXCLUDED.submissions_fingerprint,
+         mappings = EXCLUDED.mappings,
+         ai_provider = EXCLUDED.ai_provider,
+         generated_at = NOW()`,
+      [companyId, fingerprint, JSON.stringify(mappings), provider || null]
+    );
+  }
 
   return mappings;
 }

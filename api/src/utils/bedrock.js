@@ -5,6 +5,7 @@ import {
 import fs from "fs";
 import path from "path";
 import { extractFileContent } from "./fileExtract.js";
+import { extractFirstJson } from "./jsonExtract.js";
 
 const client = new BedrockRuntimeClient({
   region: process.env.AWS_REGION || "eu-north-1",
@@ -281,10 +282,8 @@ Respond with ONLY valid JSON, no markdown fences:
   });
   const response = await client.send(command);
   const raw = response.output?.message?.content?.[0]?.text || "";
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("mapRegulatoryExposure: no JSON in model response");
-  const parsed = JSON.parse(jsonMatch[0]);
-  if (!parsed || !Array.isArray(parsed.mappings)) throw new Error("mapRegulatoryExposure: bad shape");
+  const parsed = extractFirstJson(raw);
+  if (!parsed || !Array.isArray(parsed.mappings)) throw new Error("mapRegulatoryExposure: no valid JSON object in model response");
 
   return {
     mappings: parsed.mappings.map(m => ({

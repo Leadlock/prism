@@ -617,11 +617,23 @@ function ReportStep({ token, onBack }) {
   );
 
   const {
-    overallScore, deptRows = [], priorityFocus = [], quickWins = [],
+    overallScore, priorityFocus = [], quickWins = [],
     dataQualityNotes = [], roadmap, riskRewardRows = [], regulatoryExposure = [],
     regulatoryExposureSource, executiveSummary, requestedByEmail, html: reportHtml,
   } = extendedReport;
   const overallLabel = scoreLabel(overallScore);
+
+  // Tolerate an older API build that hasn't picked up the new report shape:
+  // normalise each dept row so gap/partial lists are always arrays, and detect
+  // a stale response (no roadmap/exec-summary) so we can tell the user why the
+  // page looks thin instead of white-screening on a missing field.
+  const deptRows = (extendedReport.deptRows || []).map(d => ({
+    ...d,
+    gapQuestions: d.gapQuestions || [],
+    partialQuestions: d.partialQuestions || [],
+    openItems: d.openItems ?? ((d.gapCount || 0) + (d.partialCount || 0)),
+  }));
+  const staleApiShape = !roadmap && !executiveSummary;
 
   // Per-submitter scores for the "Submitted by" chips — the only thing this
   // step still computes client-side. Everything else (gap/partial text,
@@ -652,6 +664,12 @@ function ReportStep({ token, onBack }) {
           <button className="btn btn-secondary" style={{ fontSize: 13 }} onClick={openPrintableReport}>⬇ Download / Print Report</button>
         )}
       </div>
+
+      {staleApiShape && (
+        <div style={{ background: "rgba(245,158,11,0.12)", border: "1px solid #f59e0b55", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12.5, color: "var(--text2)", lineHeight: 1.5 }}>
+          The API is serving an older version of this report (no roadmap / executive summary / grounded regulatory mapping). Restart the API service — <code>docker compose up -d && docker compose restart api</code> — then reopen this page.
+        </div>
+      )}
 
       <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Team Self-Assessment Report</h2>
       <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 16 }}>

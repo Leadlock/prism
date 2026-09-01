@@ -320,7 +320,7 @@ function buildRegulatoryExposureFromAI(aiExposureMappings) {
         provisionId: m.provisionId,
         provisionLabel: m.provisionId,
         summary: m.title,
-        penalty: m.penalty || "Not confirmed against the provision index — see official source",
+        penalty: m.penalty || "Not specified — see official source",
         url: m.url,
         triggeredBy: [],
       });

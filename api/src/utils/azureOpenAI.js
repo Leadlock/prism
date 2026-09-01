@@ -2,6 +2,7 @@ import fetch from "node-fetch";
 import fs from "fs";
 import path from "path";
 import { extractFileContent } from "./fileExtract.js";
+import { extractFirstJson } from "./jsonExtract.js";
 
 // ─── OAuth2 Token Cache ───────────────────────────────────────────────────────
 
@@ -422,10 +423,8 @@ Respond with ONLY valid JSON, no markdown fences:
     throw new Error(`AI mapping failed: ${error.message}`);
   }
 
-  const jsonMatch = String(raw).match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("mapRegulatoryExposure: no JSON in model response");
-  const parsed = JSON.parse(jsonMatch[0]);
-  if (!parsed || !Array.isArray(parsed.mappings)) throw new Error("mapRegulatoryExposure: bad shape");
+  const parsed = extractFirstJson(raw);
+  if (!parsed || !Array.isArray(parsed.mappings)) throw new Error("mapRegulatoryExposure: no valid JSON object in model response");
 
   return {
     mappings: parsed.mappings.map(m => ({
