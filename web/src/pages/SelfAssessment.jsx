@@ -554,362 +554,93 @@ function ResultsStep({ selectedDepts, answers, onRetake, onLogout, onViewReport,
   );
 }
 
-// One report section: a heading with the same spectrum underline used in the
-// emailed report, plus its content. Keeps ReportStep's sections visually and
-// structurally consistent without repeating the heading markup each time.
-function ReportSection({ title, subtitle, children }) {
-  return (
-    <div style={{ marginTop: 28 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: subtitle ? 2 : 12 }}>{title}</h3>
-      {subtitle && <p style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12, lineHeight: 1.5 }}>{subtitle}</p>}
-      {children}
-    </div>
-  );
+// Wraps the server-built report HTML in a minimal document for the iframe /
+// new-tab view. The report body already carries all its own inline styles.
+function wrapReportDoc(inner) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">` +
+    `<meta name="viewport" content="width=device-width, initial-scale=1">` +
+    `<title>Team Self-Assessment Report</title>` +
+    `<style>html,body{margin:0;padding:0;background:#F4F4F6}a{color:#1E3A5F}</style>` +
+    `</head><body>${inner}</body></html>`;
 }
 
-function RoadmapPhase({ label, actions }) {
-  if (!actions?.length) return null;
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>{label}</div>
-      <ol style={{ margin: 0, paddingLeft: 20 }}>
-        {actions.map((a, i) => (
-          <li key={i} style={{ fontSize: 12.5, color: "var(--text2)", marginBottom: 6, lineHeight: 1.5 }}>{a}</li>
-        ))}
-      </ol>
-    </div>
-  );
-}
-
+// The in-app "Team Report". Renders the exact HTML document the server builds
+// (and emails) inside an auto-sized iframe, so the in-app view, the emailed
+// report, and the printable/PDF version are always identical — there is no
+// second React re-implementation to drift.
 function ReportStep({ token, onBack }) {
-  const [submissions, setSubmissions] = useState(null);
-  const [extendedReport, setExtendedReport] = useState(null);
-  const [error, setError] = useState("");
+  const [state, setState] = useState({ status: "loading" });
+  const iframeRef = useRef(null);
 
   useEffect(() => {
     apiFetch("/api/self-assessment", { token })
       .then(data => {
-        setSubmissions(data?.submissions || []);
-        setExtendedReport(data?.report || null);
+        if (!data?.submissions?.length) return setState({ status: "empty" });
+        const html = data?.report?.html;
+        if (!html) return setState({ status: "stale" });
+        setState({ status: "ready", html });
       })
-      .catch(err => setError(err.message || "Failed to load report"));
+      .catch(err => setState({ status: "error", message: err.message || "Failed to load report" }));
   }, [token]);
 
-  if (error) return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
-      <button className="btn btn-ghost" style={{ marginBottom: 16 }} onClick={onBack}>← Back</button>
-      <p style={{ color: "var(--red, #ef4444)" }}>{error}</p>
-    </div>
-  );
+  const fitIframe = () => {
+    const f = iframeRef.current;
+    try {
+      const h = f?.contentWindow?.document?.documentElement?.scrollHeight;
+      if (h) f.style.height = h + "px";
+    } catch { /* cross-origin guard — srcDoc is same-origin so this won't hit */ }
+  };
 
-  if (!submissions) return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "48px 24px", textAlign: "center", color: "var(--text3)" }}>
-      <div className="loading-spinner" style={{ margin: "0 auto 12px" }} />
-      Loading team report…
-    </div>
-  );
-
-  if (submissions.length === 0 || !extendedReport) return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
-      <button className="btn btn-ghost" style={{ marginBottom: 16 }} onClick={onBack}>← Back</button>
-      <p style={{ color: "var(--text3)", fontSize: 14 }}>No submissions yet. Invite colleagues and ask them to complete their department assessment.</p>
-    </div>
-  );
-
-  const {
-    overallScore, priorityFocus = [], quickWins = [],
-    dataQualityNotes = [], roadmap, riskRewardRows = [], regulatoryExposure = [],
-    regulatoryExposureSource, executiveSummary, requestedByEmail, html: reportHtml,
-  } = extendedReport;
-  const overallLabel = scoreLabel(overallScore);
-
-  // Tolerate an older API build that hasn't picked up the new report shape:
-  // normalise each dept row so gap/partial lists are always arrays, and detect
-  // a stale response (no roadmap/exec-summary) so we can tell the user why the
-  // page looks thin instead of white-screening on a missing field.
-  const deptRows = (extendedReport.deptRows || []).map(d => ({
-    ...d,
-    gapQuestions: d.gapQuestions || [],
-    partialQuestions: d.partialQuestions || [],
-    openItems: d.openItems ?? ((d.gapCount || 0) + (d.partialCount || 0)),
-  }));
-  const staleApiShape = !roadmap && !executiveSummary;
-
-  // Per-submitter scores for the "Submitted by" chips — the only thing this
-  // step still computes client-side. Everything else (gap/partial text,
-  // scores, priority ranking, roadmap, regulatory mapping) comes straight
-  // from the server report, so what's shown here always matches what was
-  // just emailed to REPORT_RECIPIENT.
-  const byDept = {};
-  for (const s of submissions) (byDept[s.department] ||= []).push(s);
-
-  // Opens the exact HTML that was just emailed in a new tab, so there's
-  // still a one-shot printable/PDF artifact identical to the emailed report.
-  function openPrintableReport() {
-    if (!reportHtml) return;
-    const blob = new Blob(
-      [`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Team Self-Assessment Report</title></head><body>${reportHtml}</body></html>`],
-      { type: "text/html" }
-    );
-    const url = URL.createObjectURL(blob);
+  function openInNewTab() {
+    if (state.status !== "ready") return;
+    const url = URL.createObjectURL(new Blob([wrapReportDoc(state.html)], { type: "text/html" }));
     window.open(url, "_blank");
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: "32px 24px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, gap: 12 }}>
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 12 }}>
         <button className="btn btn-ghost" style={{ fontSize: 13 }} onClick={onBack}>← Back to Results</button>
-        {reportHtml && (
-          <button className="btn btn-secondary" style={{ fontSize: 13 }} onClick={openPrintableReport}>⬇ Download / Print Report</button>
+        {state.status === "ready" && (
+          <button className="btn btn-secondary" style={{ fontSize: 13 }} onClick={openInNewTab}>⬇ Open / print full report</button>
         )}
       </div>
 
-      {staleApiShape && (
-        <div style={{ background: "rgba(245,158,11,0.12)", border: "1px solid #f59e0b55", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12.5, color: "var(--text2)", lineHeight: 1.5 }}>
-          The API is serving an older version of this report (no roadmap / executive summary / grounded regulatory mapping). Restart the API service — <code>docker compose up -d && docker compose restart api</code> — then reopen this page.
+      {state.status === "loading" && (
+        <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--text3)" }}>
+          <div className="loading-spinner" style={{ margin: "0 auto 12px" }} />
+          Generating team report…
         </div>
       )}
 
-      <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Team Self-Assessment Report</h2>
-      <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 16 }}>
-        {submissions.length} submission{submissions.length !== 1 ? "s" : ""} across {deptRows.length} department{deptRows.length !== 1 ? "s" : ""}
-        {requestedByEmail && <> · Requested by {requestedByEmail}</>}
-      </p>
+      {state.status === "error" && (
+        <p style={{ color: "var(--red, #ef4444)", fontSize: 14 }}>{state.message}</p>
+      )}
 
-      <div style={{ background: "var(--bg3)", border: "1px solid var(--border2)", borderRadius: 8, padding: "10px 14px", marginBottom: 20, fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
-        <strong style={{ color: "var(--text)" }}>Basis of assessment — trust-based self-reporting.</strong> Each department submitted its own responses; no independent verification, evidence review, or third-party validation was performed.
-      </div>
+      {state.status === "empty" && (
+        <p style={{ color: "var(--text3)", fontSize: 14 }}>
+          No submissions yet. Invite colleagues and ask them to complete their department assessment.
+        </p>
+      )}
 
-      {/* Overall score */}
-      <div style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 12, padding: "20px 24px", marginBottom: 8, display: "flex", alignItems: "center", gap: 20 }}>
-        <div style={{ width: 72, height: 72, borderRadius: "50%", flexShrink: 0, border: `4px solid ${overallLabel.color}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: overallLabel.color }}>{overallScore !== null ? `${overallScore}%` : "—"}</div>
+      {state.status === "stale" && (
+        <div style={{ background: "rgba(245,158,11,0.12)", border: "1px solid #f59e0b55", borderRadius: 8, padding: "12px 16px", fontSize: 13, color: "var(--text2)", lineHeight: 1.55 }}>
+          The API is serving an older build that doesn't generate this report. Restart it —{" "}
+          <code>docker compose up -d &amp;&amp; docker compose restart api</code> — then reopen this page.
         </div>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>
-            Overall: <span style={{ color: overallLabel.color }}>{overallLabel.label}</span>
-          </div>
-          <div style={{ fontSize: 12, color: "var(--text3)" }}>
-            Average across {deptRows.filter(d => d.avgScore !== null).length} scored department{deptRows.filter(d => d.avgScore !== null).length !== 1 ? "s" : ""}
-          </div>
+      )}
+
+      {state.status === "ready" && (
+        <div style={{ border: "1px solid var(--border2)", borderRadius: 10, overflow: "hidden", background: "#fff" }}>
+          <iframe
+            ref={iframeRef}
+            title="Team Self-Assessment Report"
+            srcDoc={wrapReportDoc(state.html)}
+            onLoad={fitIframe}
+            style={{ width: "100%", border: "none", display: "block", minHeight: 480 }}
+          />
         </div>
-      </div>
-
-      {executiveSummary?.bullets?.length > 0 && (
-        <ReportSection title="Executive Summary">
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {executiveSummary.bullets.map((b, i) => (
-              <li key={i} style={{ fontSize: 13, color: "var(--text2)", marginBottom: 6, lineHeight: 1.5 }}>{b}</li>
-            ))}
-          </ul>
-        </ReportSection>
-      )}
-
-      {/* Department scorecard */}
-      <ReportSection title="Department Scorecard">
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {deptRows.map(d => {
-            const meta = DEPT_META[d.dept] || { label: d.dept, icon: "🏢" };
-            const { label, color } = scoreLabel(d.avgScore);
-            const subs = byDept[d.dept] || [];
-            const scoredSubs = subs.map(s => {
-              const { byDept: bd } = calcScore(s.answers, [d.dept]);
-              return { ...s, score: bd[d.dept] };
-            });
-
-            return (
-              <div key={d.dept} style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 10, overflow: "hidden" }}>
-                <div style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 12, borderBottom: "1px solid var(--border2)" }}>
-                  <span style={{ fontSize: 22 }}>{meta.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{meta.label || d.dept}</div>
-                    <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>
-                      {d.contributors} contributor{d.contributors !== 1 ? "s" : ""}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 20, fontWeight: 700, color }}>{d.avgScore !== null ? `${d.avgScore}%` : "—"}</div>
-                    <div style={{ fontSize: 11, color }}>{label}</div>
-                  </div>
-                </div>
-
-                <div style={{ height: 4, background: "var(--bg4)" }}>
-                  <div style={{ height: "100%", width: `${d.avgScore ?? 0}%`, background: color, transition: "width 0.5s" }} />
-                </div>
-
-                <div style={{ padding: "10px 18px", borderBottom: d.openItems ? "1px solid var(--border2)" : "none" }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Submitted by</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {scoredSubs.map(s => {
-                      const { color: sc } = scoreLabel(s.score);
-                      return (
-                        <div key={s.userEmail} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--bg3)", borderRadius: 6, padding: "4px 10px", fontSize: 12 }}>
-                          <span style={{ color: "var(--text)" }}>{s.userName}</span>
-                          {s.score !== null && <span style={{ color: sc, fontWeight: 700, fontSize: 11 }}>{s.score}%</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {(d.gapQuestions.length > 0 || d.partialQuestions.length > 0) && (
-                  <div style={{ padding: "10px 18px" }}>
-                    {d.gapQuestions.length > 0 && (
-                      <>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>✗ Gaps ({d.gapQuestions.length})</div>
-                        <ul style={{ margin: 0, paddingLeft: 16, marginBottom: d.partialQuestions.length ? 10 : 0 }}>
-                          {d.gapQuestions.map(q => (
-                            <li key={q.id} style={{ fontSize: 12, color: "var(--text2)", marginBottom: 3, lineHeight: 1.4 }}>{q.text}</li>
-                          ))}
-                        </ul>
-                      </>
-                    )}
-                    {d.partialQuestions.length > 0 && (
-                      <>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: "#f59e0b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>⚠ Partial ({d.partialQuestions.length})</div>
-                        <ul style={{ margin: 0, paddingLeft: 16 }}>
-                          {d.partialQuestions.map(q => (
-                            <li key={q.id} style={{ fontSize: 12, color: "var(--text2)", marginBottom: 3, lineHeight: 1.4 }}>{q.text}</li>
-                          ))}
-                        </ul>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </ReportSection>
-
-      {priorityFocus.length > 0 && (
-        <ReportSection title="Priority Focus Areas" subtitle="Ranking departments purely by score can understate where remediation effort is actually needed — this ranks by raw open-item volume instead.">
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {priorityFocus.map(d => {
-              const meta = DEPT_META[d.dept] || { label: d.dept, icon: "🏢" };
-              return (
-                <div key={d.dept} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 8, padding: "10px 14px" }}>
-                  <span style={{ fontSize: 16 }}>{meta.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{meta.label || d.dept}</div>
-                    <div style={{ fontSize: 11, color: "var(--text3)" }}>{d.openItems} open item{d.openItems !== 1 ? "s" : ""} ({d.gapCount} gap{d.gapCount !== 1 ? "s" : ""}, {d.partialCount} partial{d.partialCount !== 1 ? "s" : ""})</div>
-                  </div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)", whiteSpace: "nowrap" }}>≈{d.shareOfOrgWideTotal}% of total</div>
-                </div>
-              );
-            })}
-          </div>
-        </ReportSection>
-      )}
-
-      {quickWins.length > 0 && (
-        <ReportSection title="Quick-Win Opportunities" subtitle="Departments already close to a perfect score — useful as early, visible progress while larger remediation work is underway elsewhere.">
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {quickWins.map(d => {
-              const meta = DEPT_META[d.dept] || { label: d.dept, icon: "🏢" };
-              return (
-                <div key={d.dept} style={{ background: "var(--bg2)", border: "1px solid #22c55e55", borderRadius: 8, padding: "8px 12px", fontSize: 12 }}>
-                  <span style={{ marginRight: 6 }}>{meta.icon}</span>
-                  <strong style={{ color: "var(--text)" }}>{meta.label || d.dept}</strong>
-                  <span style={{ color: "var(--text3)" }}> — {d.avgScore}% → 100% ({d.gapCount} gap{d.gapCount !== 1 ? "s" : ""} + {d.partialCount} partial{d.partialCount !== 1 ? "s" : ""})</span>
-                </div>
-              );
-            })}
-          </div>
-        </ReportSection>
-      )}
-
-      {riskRewardRows.length > 0 && (
-        <ReportSection title="Risk vs. Reward — by Department">
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {riskRewardRows.map(r => {
-              const meta = DEPT_META[r.dept] || { label: r.dept, icon: "🏢" };
-              return (
-                <div key={r.dept} style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 10, padding: "14px 16px" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
-                    <span>{meta.icon}</span>{meta.label || r.dept}
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <div style={{ borderLeft: `3px solid ${r.hasGaps ? "#ef4444" : "var(--border2)"}`, paddingLeft: 10 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>⚠ Risk — current exposure</div>
-                      {r.riskReasons?.length > 0 ? (
-                        <>
-                          <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.5, marginBottom: 6 }}>
-                            {r.gapsSummary} in {r.dept} fall within scope of:
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                            {r.riskReasons.map((rr, i) => (
-                              <div key={i} style={{ background: "var(--bg3)", borderRadius: 6, padding: "6px 8px" }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)" }}>{rr.framework} — {rr.provision}</div>
-                                <div style={{ fontSize: 11, color: "var(--text3)", margin: "2px 0" }}>{rr.why}</div>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: "#ef4444" }}>Penalty: {rr.penalty}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      ) : (
-                        <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>{r.riskText}</div>
-                      )}
-                    </div>
-                    <div style={{ borderLeft: "3px solid #22c55e", paddingLeft: 10 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>✅ Reward — if gaps close</div>
-                      <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>{r.rewardText}</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </ReportSection>
-      )}
-
-      {regulatoryExposure.length > 0 && (
-        <ReportSection
-          title="Regulatory Exposure Summary"
-          subtitle={regulatoryExposureSource === "ai"
-            ? "Each row below was mapped from your actual open self-assessment items by AI, grounded against a checked-in index of official provisions — the provision id is never invented. Follow \"Official source\" to verify it yourself."
-            : "AI mapping wasn't available for this report, so this falls back to a static, department-bucket-matched reference — not specific to your actual gaps. Penalty figures are commonly-cited public maxima, for awareness only — not legal advice."}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {regulatoryExposure.map((row, i) => (
-              <div key={i} style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 10, padding: "14px 16px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 4 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{row.framework}</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#ef4444", textAlign: "right", whiteSpace: "nowrap" }}>{row.penalty}</div>
-                </div>
-                <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600, marginBottom: 6 }}>{row.provisionLabel}</div>
-                <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.5, marginBottom: 8 }}>{row.summary}</div>
-                <div style={{ fontSize: 11, color: "var(--accent)", lineHeight: 1.5, paddingTop: 8, borderTop: "1px solid var(--border2)", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                  <span><strong>Why this applies to you:</strong> {row.triggeredBy.map(t => t.dept).join(", ")} — self-assessed with open gaps in this exact area.</span>
-                  {row.source === "ai" && row.url && (
-                    <a href={row.url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontWeight: 700, whiteSpace: "nowrap" }}>
-                      AI-mapped from {row.framework} official text ↗
-                    </a>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </ReportSection>
-      )}
-
-      {dataQualityNotes.length > 0 && (
-        <ReportSection title="Basis of Assessment & Data Quality Notes">
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {dataQualityNotes.map((n, i) => (
-              <li key={i} style={{ fontSize: 12.5, color: "var(--text2)", marginBottom: 8, lineHeight: 1.5 }}>{n.text}</li>
-            ))}
-          </ul>
-        </ReportSection>
-      )}
-
-      {roadmap && (
-        <ReportSection title="Recommended Remediation Roadmap">
-          <RoadmapPhase label={`Phase 1 — ${roadmap.phase1.label}`} actions={roadmap.phase1.actions} />
-          <RoadmapPhase label={`Phase 2 — ${roadmap.phase2.label}`} actions={roadmap.phase2.actions} />
-          <RoadmapPhase label={`Phase 3 — ${roadmap.phase3.label}`} actions={roadmap.phase3.actions} />
-        </ReportSection>
       )}
     </div>
   );

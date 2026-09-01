@@ -3,7 +3,7 @@
   "frameworkName": "ISO/IEC 27001:2022",
   "source": "Annex A's four-theme structure (Organizational/People/Physical/Technological) is stable and well-documented; this is a curated subset, not all 93 controls. Control IDs and short titles only — never the standard's own body text (ISO does not publish it for free). See README.md.",
   "url": "https://www.iso.org/standard/27001",
-  "defaultPenalty": "No statutory fine — noncompliance risks certification suspension / audit nonconformities",
+  "defaultPenalty": "No statutory fine (certification / audit risk)",
   "provisions": [
     { "id": "A.5.1", "title": "Policies for information security", "penalty": null },
     { "id": "A.5.9", "title": "Inventory of information and other associated assets", "penalty": null },
