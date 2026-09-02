@@ -59,12 +59,14 @@ async function upsertEvidenceForPass({ companyId, result }) {
 
 // Generates a real pdfkit PDF, writes it to disk, inserts an evidence_vault row with full file metadata,
 // and auto-links it to all matching questions — used only on the fail path.
-async function generateFindingEvidenceVaultItem({ companyId, connectionId, result }) {
-  const [isoRows, connRow] = await Promise.all([
-    query(`SELECT iso_reference FROM test_control_mappings WHERE test_key = $1`, [result.testKey]),
+async function generateFindingEvidenceVaultItem({ companyId, connectionId, result, existingFinding }) {
+  const [mappingRows, connRow, testRow] = await Promise.all([
+    query(`SELECT framework, iso_reference FROM test_control_mappings WHERE test_key = $1`, [result.testKey]),
     query(`SELECT name, integration_key FROM integration_connections WHERE id = $1`, [connectionId]),
+    query(`SELECT description, remediation_guidance FROM automated_tests WHERE test_key = $1`, [result.testKey]),
   ]);
   const conn = mapRow(connRow);
+  const testMeta = mapRow(testRow);
 
   const pdfBuffer = await renderFindingEvidencePdf({
     title: result.failTitle || result.title || result.testKey,
@@ -73,9 +75,19 @@ async function generateFindingEvidenceVaultItem({ companyId, connectionId, resul
     severity: result.severity,
     message: result.message,
     evidencePayload: result.evidencePayload,
-    isoReferences: isoRows.rows.map(r => r.iso_reference),
+    isoReferences: mappingRows.rows.map(r => r.iso_reference),
+    controlMappings: mappingRows.rows.map(r => ({ framework: r.framework, isoReference: r.iso_reference })),
+    testDescription: testMeta?.description ?? null,
+    remediationGuidance: testMeta?.remediationGuidance ?? null,
     connectionName: conn?.name,
     integrationKey: conn?.integrationKey,
+    companyId,
+    connectionId,
+    // A re-detected finding keeps its original detection date and lifecycle
+    // state; a brand-new one is Open as of now.
+    status: existingFinding?.status || "open",
+    firstDetectedAt: existingFinding?.firstDetectedAt ?? null,
+    linkedActionId: existingFinding?.linkedActionId ?? null,
   });
 
   const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}.pdf`;
@@ -99,7 +111,8 @@ async function generateFindingEvidenceVaultItem({ companyId, connectionId, resul
 async function upsertFinding({ companyId, connectionId, result, sourceResultId }) {
   const payloadHash = hashPayload(result.evidencePayload);
   const existing = await query(
-    `SELECT evidence_vault_id, payload_hash FROM findings WHERE company_id = $1 AND connection_id = $2 AND test_key = $3 AND resource_id = $4`,
+    `SELECT evidence_vault_id, payload_hash, status, first_detected_at, linked_action_id
+       FROM findings WHERE company_id = $1 AND connection_id = $2 AND test_key = $3 AND resource_id = $4`,
     [companyId, connectionId, result.testKey, result.resourceId]
   );
   const existingFinding = mapRow(existing);
@@ -107,7 +120,7 @@ async function upsertFinding({ companyId, connectionId, result, sourceResultId }
   // Only generate a new PDF if evidence is new or has changed (dedup by payload hash)
   let vaultId = existingFinding?.evidenceVaultId || null;
   if (!existingFinding || !existingFinding.evidenceVaultId || existingFinding.payloadHash !== payloadHash) {
-    vaultId = await generateFindingEvidenceVaultItem({ companyId, connectionId, result });
+    vaultId = await generateFindingEvidenceVaultItem({ companyId, connectionId, result, existingFinding });
   }
 
   await query(
