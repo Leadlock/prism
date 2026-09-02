@@ -40,12 +40,16 @@ export function StackedBarChart({ data }) {
   );
 }
 
-export function DonutChart({ segments, size = 130 }) {
+export function DonutChart({ segments, size = 130, centerValue, centerCaption = "total" }) {
   const total = segments.reduce((s, d) => s + d.value, 0) || 1;
-  const r = 44;
+  const midValue = centerValue != null ? centerValue : total;
+  const sw = Math.max(8, Math.round(size * 0.11));
+  const r = size / 2 - sw / 2 - 2;
   const cx = size / 2;
   const cy = size / 2;
   const circ = 2 * Math.PI * r;
+  const valSize = Math.max(13, Math.round(size * 0.17));
+  const capSize = Math.max(7.5, Math.round(size * 0.075));
   let offset = 0;
   const arcs = segments.map(seg => {
     const dash = (seg.value / total) * circ;
@@ -59,24 +63,26 @@ export function DonutChart({ segments, size = 130 }) {
   return (
     <div className="chart-donut-wrap">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--bg3)" strokeWidth="14" />
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--dp-line-strong, var(--bg3))" strokeWidth={sw} />
         {arcs.map((arc, i) => (
           <circle
             key={i}
             cx={cx} cy={cy} r={r}
             fill="none"
             stroke={arc.color}
-            strokeWidth="14"
+            strokeWidth={sw}
             strokeDasharray={`${arc.dash} ${circ - arc.dash}`}
             strokeDashoffset={-arc.offset + circ / 4}
           />
         ))}
-        <text x={cx} y={cy - 8} textAnchor="middle" fontSize="20" fontWeight="600" fill="var(--text)">
-          {total}
+        <text x={cx} y={cy} dy={centerCaption ? "-0.15em" : "0.32em"} textAnchor="middle" fontSize={valSize} fontWeight="500" fontFamily="var(--mono)" fill="var(--dp-ink, var(--text))">
+          {midValue}
         </text>
-        <text x={cx} y={cy + 8} textAnchor="middle" fontSize="10" fill="var(--text3)">
-          total
-        </text>
+        {centerCaption && (
+          <text x={cx} y={cy} dy="1em" textAnchor="middle" fontSize={capSize} fill="var(--dp-quiet, var(--text3))" style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            {centerCaption}
+          </text>
+        )}
       </svg>
       <div className="chart-donut-legend">
         {segments.map((seg, i) => (
@@ -88,5 +94,173 @@ export function DonutChart({ segments, size = 130 }) {
         ))}
       </div>
     </div>
+  );
+}
+
+// ── Executive-dashboard primitives ──────────────────────────────────────────
+// Flat, token-driven charts for the /executive view and the restyled /dashboard.
+
+export function Gauge({ value = 0, size = 132, stroke = 12, color = "var(--teal)", caption }) {
+  const v = Math.max(0, Math.min(100, Math.round(value)));
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const dash = (v / 100) * circ;
+  return (
+    <div className="exec-gauge" style={{ width: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${v}%`}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--dp-line)" strokeWidth={stroke} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={`${dash} ${circ - dash}`}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+        <text x="50%" y="47%" textAnchor="middle" dominantBaseline="middle" className="exec-gauge-value">
+          {v}%
+        </text>
+        {caption && (
+          <text x="50%" y="63%" textAnchor="middle" dominantBaseline="middle" className="exec-gauge-caption">
+            {caption}
+          </text>
+        )}
+      </svg>
+    </div>
+  );
+}
+
+export function TrendLine({ data = [], width = 460, height = 170, color = "var(--teal)", pad = 16 }) {
+  const pts = data
+    .map((d, i) => ({ i, month: d.month, value: d.value }))
+    .filter((d) => d.value != null);
+  const hasLine = pts.length >= 2;
+  const vals = pts.map((p) => p.value);
+  const max = hasLine ? Math.max(...vals) : 100;
+  const min = hasLine ? Math.min(...vals) : 0;
+  const span = max - min || 1;
+  const stepX = (width - pad * 2) / Math.max(1, data.length - 1);
+  const xy = (d) => [
+    pad + d.i * stepX,
+    pad + (height - pad * 2) * (1 - (d.value - min) / span),
+  ];
+
+  // Break the polyline into contiguous segments across null gaps.
+  const segments = [];
+  let cur = [];
+  let prevIdx = null;
+  for (const p of pts) {
+    if (prevIdx != null && p.i !== prevIdx + 1) {
+      if (cur.length) segments.push(cur);
+      cur = [];
+    }
+    cur.push(p);
+    prevIdx = p.i;
+  }
+  if (cur.length) segments.push(cur);
+
+  const labels = data.length
+    ? [data[0], data[Math.floor((data.length - 1) / 2)], data[data.length - 1]].map((d) =>
+        d.month?.slice(2)
+      )
+    : [];
+
+  return (
+    <div className="exec-trend">
+      <svg className="exec-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Compliance trend">
+        {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+          <line
+            key={f}
+            x1={pad}
+            x2={width - pad}
+            y1={pad + (height - pad * 2) * f}
+            y2={pad + (height - pad * 2) * f}
+            className="exec-chart-grid"
+          />
+        ))}
+        {hasLine &&
+          segments.map((seg, si) => (
+            <polyline
+              key={si}
+              points={seg.map((d) => xy(d).join(",")).join(" ")}
+              fill="none"
+              stroke={color}
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          ))}
+        {hasLine &&
+          pts.map((d) => {
+            const [x, y] = xy(d);
+            return <circle key={d.i} cx={x} cy={y} r="2.5" fill={color} />;
+          })}
+      </svg>
+      {labels.length > 0 && (
+        <div className="exec-trend-axis">
+          {labels.map((l, i) => (
+            <span key={i}>{l}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const HEAT_RAMP = ["var(--green)", "var(--teal)", "var(--amber)", "var(--red)"];
+
+export function Heatmap({ grid = [], xLabels = [], yLabels = [] }) {
+  const max = Math.max(1, ...grid.flat());
+  const shade = (n) => {
+    if (n === 0) return "var(--dp-surface-2)";
+    const idx = Math.min(HEAT_RAMP.length - 1, Math.ceil((n / max) * HEAT_RAMP.length) - 1);
+    return HEAT_RAMP[Math.max(0, idx)];
+  };
+  return (
+    <div className="exec-heatmap">
+      <div className="exec-heatmap-ylabel">Likelihood</div>
+      <div className="exec-heatmap-body">
+        <div
+          className="exec-heatmap-grid"
+          style={{ gridTemplateColumns: `repeat(${xLabels.length || 1}, 1fr)` }}
+        >
+          {grid.flatMap((row, ri) =>
+            row.map((n, ci) => (
+              <span
+                key={`${ri}-${ci}`}
+                className="exec-heat-cell"
+                style={{ background: shade(n) }}
+                title={`${yLabels[ri] ?? ri} × ${xLabels[ci] ?? ci}: ${n}`}
+              >
+                {n > 0 ? n : ""}
+              </span>
+            ))
+          )}
+        </div>
+        <div
+          className="exec-heatmap-xaxis"
+          style={{ gridTemplateColumns: `repeat(${xLabels.length || 1}, 1fr)` }}
+        >
+          {xLabels.map((l) => (
+            <span key={l}>{l}</span>
+          ))}
+        </div>
+        <div className="exec-heatmap-xlabel">Impact</div>
+      </div>
+    </div>
+  );
+}
+
+export function Meter({ value = 0, color = "var(--teal)" }) {
+  return (
+    <span className="exec-meter" aria-hidden="true">
+      <span
+        className="exec-meter-fill"
+        style={{ width: `${Math.max(3, Math.min(100, value))}%`, background: color }}
+      />
+    </span>
   );
 }

@@ -1,49 +1,5 @@
 import { useState } from "react";
-
-// ── CSV ──────────────────────────────────────────────────────────────────────
-
-function toCSV(rows) {
-  return rows.map(r =>
-    r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")
-  ).join("\n");
-}
-
-function downloadBlob(filename, content, type) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 100);
-}
-
-// ── XML Spreadsheet 2003 (multi-sheet, zero dependencies) ───────────────────
-
-function xmlEsc(v) {
-  return String(v ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function makeXmlSheet(name, rows) {
-  const xmlRows = rows.map(row => {
-    const cells = row.map(cell => {
-      const val = cell ?? "";
-      const isNum = typeof val === "number" || (typeof val === "string" && val !== "" && !isNaN(Number(val)) && val.trim() !== "");
-      const type = isNum ? "Number" : "String";
-      const data = isNum ? val : xmlEsc(val);
-      return `<Cell><Data ss:Type="${type}">${data}</Data></Cell>`;
-    });
-    return `<Row>${cells.join("")}</Row>`;
-  });
-  return `<Worksheet ss:Name="${xmlEsc(name)}"><Table>${xmlRows.join("")}</Table></Worksheet>`;
-}
+import { downloadBlob, makeXmlSheet, buildWorkbook } from "../utils/exportWorkbook.js";
 
 function exportXLS(stats, company) {
   const {
@@ -129,16 +85,7 @@ function exportXLS(stats, company) {
     ] : []),
   ];
 
-  const xml = [
-    `<?xml version="1.0" encoding="UTF-8"?>`,
-    `<?mso-application progid="Excel.Sheet"?>`,
-    `<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"`,
-    ` xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"`,
-    ` xmlns:x="urn:schemas-microsoft-com:office:excel">`,
-    ...sheets,
-    `</Workbook>`,
-  ].join("\n");
-
+  const xml = buildWorkbook(sheets);
   const name = (company?.name || "compliance").replace(/\s+/g, "-").toLowerCase();
   downloadBlob(`${name}-report.xls`, xml, "application/vnd.ms-excel");
 }

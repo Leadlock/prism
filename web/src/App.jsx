@@ -10,6 +10,7 @@ import AcceptInvite from "./pages/AcceptInvite.jsx";
 import AdminPanel from "./pages/AdminPanel.jsx";
 import AuditorPanel from "./pages/AuditorPanel.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
+import Executive from "./pages/Executive.jsx";
 import Review from "./pages/Review.jsx";
 import Tracker from "./pages/Tracker.jsx";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard.jsx";
@@ -367,6 +368,16 @@ export default function App() {
           element={
             isAuthenticated
               ? (!isVerified && !isSuperAdmin && !isAuditor ? <Navigate to="/self-assess" replace /> : <Dashboard {...authProps} />)
+              : <Navigate to="/login" replace />
+          }
+        />
+
+        {/* Executive overview — all roles (unverified companies stay on self-assess) */}
+        <Route
+          path="/executive"
+          element={
+            isAuthenticated
+              ? (!isVerified && !isSuperAdmin && !isAuditor ? <Navigate to="/self-assess" replace /> : <Executive {...authProps} />)
               : <Navigate to="/login" replace />
           }
         />

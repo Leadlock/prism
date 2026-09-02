@@ -230,7 +230,7 @@ test.describe("Dashboard — compliance filter indicator", () => {
     { id: "P1.1", questId: "P1.1", moduleId: "P", area: "Policies", text: "Q1", priority: "High", tags: "ISO27001,GDPR", isOverdue: false },
   ];
 
-  test("filter banner appears when a framework is selected", async ({ page }) => {
+  test("filter banner appears when a tag filter is picked in the Filters popover", async ({ page }) => {
     await setAuth(page, "ADMIN");
     await page.route("**/api/dashboard*", r => r.fulfill({ json: MOCK_DASHBOARD }));
     await page.route("**/api/questions*", r => r.fulfill({ json: TAGGED_QUESTIONS }));
@@ -238,10 +238,10 @@ test.describe("Dashboard — compliance filter indicator", () => {
     await page.goto("/dashboard");
     await expect(page.locator(".dash-card").first()).toBeVisible({ timeout: 10_000 });
 
-    // Select a framework filter
+    await page.getByRole("button", { name: /^⚑ Filters/ }).click();
     const [request] = await Promise.all([
       page.waitForRequest(req => req.url().includes("tag=ISO27001")),
-      page.locator("select.month-selector").nth(3).selectOption("ISO27001"),
+      page.locator(".dash-filter-field", { hasText: "Tag" }).locator("select").selectOption("ISO27001"),
     ]);
 
     // Filter banner should appear. Scope to the banner's <strong> tag —
@@ -251,7 +251,7 @@ test.describe("Dashboard — compliance filter indicator", () => {
     expect(request.url()).toContain("tag=ISO27001");
   });
 
-  test("clear filters button removes the banner", async ({ page }) => {
+  test("clear all filters removes the banner", async ({ page }) => {
     await setAuth(page, "ADMIN");
     await page.route("**/api/dashboard*", r => r.fulfill({ json: MOCK_DASHBOARD }));
     await page.route("**/api/questions*", r => r.fulfill({ json: TAGGED_QUESTIONS }));
@@ -259,10 +259,11 @@ test.describe("Dashboard — compliance filter indicator", () => {
     await page.goto("/dashboard");
     await expect(page.locator(".dash-card").first()).toBeVisible({ timeout: 10_000 });
 
-    await page.locator("select.month-selector").nth(3).selectOption("GDPR");
+    await page.getByRole("button", { name: /^⚑ Filters/ }).click();
+    await page.locator(".dash-filter-field", { hasText: "Tag" }).locator("select").selectOption("GDPR");
     await expect(page.getByText("Filtered:")).toBeVisible({ timeout: 5_000 });
 
-    await page.getByRole("button", { name: /Clear filters/ }).click();
+    await page.getByRole("button", { name: "Clear all filters" }).click();
     await expect(page.getByText("Filtered:")).not.toBeVisible({ timeout: 3_000 });
   });
 });

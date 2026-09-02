@@ -37,7 +37,7 @@ test.describe("Dashboard workflows", () => {
     });
   });
 
-  test("Dashboard loads and shows overall KPI widget", async ({ page }) => {
+  test("Dashboard loads and shows the audit-standing hero", async ({ page }) => {
     await setAuth(page, "ADMIN");
     await page.route("**/api/dashboard*", r => r.fulfill({ json: MOCK_DASHBOARD }));
 
@@ -45,11 +45,12 @@ test.describe("Dashboard workflows", () => {
 
     // Wait for loading to finish
     await expect(page.locator("p:has-text('Loading dashboard')")).not.toBeVisible({ timeout: 10_000 });
-    await expect(page.locator(".dash-card").first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".dash-standing")).toBeVisible({ timeout: 5_000 });
 
-    // Overall completion KPI values from MOCK_DASHBOARD
-    await expect(page.locator(".dash-kpi-val").filter({ hasText: "25" })).toBeVisible();
-    await expect(page.locator(".dash-kpi-val").filter({ hasText: "10" })).toBeVisible();
+    // 10 of 25 signed off -> 40%
+    await expect(page.locator(".dash-standing-num")).toHaveText(/40%/);
+    await expect(page.locator(".dash-standing-sentence")).toContainText("18 of 25");
+    await expect(page.locator(".dash-standing-sentence")).toContainText("10 signed off");
   });
 
   test("Month selector fires a new dashboard request with updated month param", async ({ page }) => {
@@ -86,14 +87,14 @@ test.describe("Dashboard workflows", () => {
     await expect(page).toHaveURL(/\/tracker/, { timeout: 5_000 });
   });
 
-  test("Dashboard shows Automated Coverage tile", async ({ page }) => {
+  test("Dashboard shows the automated coverage widget", async ({ page }) => {
     await setAuth(page, "ADMIN");
     await page.route("**/api/dashboard*", r => r.fulfill({ json: MOCK_DASHBOARD }));
 
     await page.goto("/dashboard");
 
     await expect(page.locator(".dash-card").first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("Automated Coverage")).toBeVisible();
-    await expect(page.locator(".dash-kpi-val").filter({ hasText: "3" })).toBeVisible();
+    await expect(page.getByText("Automated coverage")).toBeVisible();
+    await expect(page.locator(".dash-figure-val").filter({ hasText: "3" })).toBeVisible();
   });
 });

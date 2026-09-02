@@ -60,7 +60,7 @@ const FALLBACK_REFERENCE = [
     framework: "DPDPA 2023 (India)",
     provision: "Sec. 5 & 6 — Notice and consent",
     summary: "Valid, informed, and specific consent must be obtained before processing personal data.",
-    penalty: "Up to ₹50 crore (residuary — Schedule to the DPDP Act, 2023)",
+    penalty: "Up to ₹50 crore (residuary — The Schedule to the DPDP Act, 2023)",
     relatedDepts: ["Marketing", "HR", "Legal"],
   },
   {
