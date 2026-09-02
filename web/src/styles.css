@@ -2067,6 +2067,59 @@ body {
   justify-content: flex-end;
 }
 
+/* FINDINGS ROWS — long cloud resource IDs + a stack of row actions */
+.finding-table .admin-row {
+  grid-template-columns: minmax(0, 1fr) 84px 96px;
+}
+
+.finding-table .admin-row.finding-row-actions {
+  grid-template-columns: minmax(0, 1fr) 84px 96px 190px;
+}
+
+.finding-row {
+  align-items: start;
+}
+
+.finding-row > span {
+  min-width: 0;
+}
+
+.finding-title {
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+  margin-bottom: 4px;
+}
+
+.finding-resource {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text3);
+  overflow-wrap: anywhere;
+}
+
+.finding-status {
+  font-size: 12px;
+  text-transform: capitalize;
+  color: var(--text2);
+}
+
+.finding-table .finding-row span.finding-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.finding-actions .btn {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 11px;
+  text-align: center;
+}
+
 @media (max-width: 880px) {
   .action-fields {
     grid-template-columns: 1fr;
@@ -2084,6 +2137,16 @@ body {
   .admin-row {
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+
+  .finding-table .admin-row,
+  .finding-table .admin-row.finding-row-actions {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .finding-table .admin-row-header {
+    display: none;
   }
 }
 
