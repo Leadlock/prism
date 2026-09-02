@@ -184,8 +184,8 @@ export default function Findings({ token, user, company, onLogout, theme, onThem
           </select>
         </div>
 
-        <div className="admin-table">
-          <div className="admin-row admin-row-header" style={{ gridTemplateColumns: "2.5fr 1fr 1fr 2fr" }}>
+        <div className="admin-table finding-table">
+          <div className="admin-row admin-row-header finding-row-actions">
             <span>Finding</span>
             <span>Severity</span>
             <span>Status</span>
@@ -195,14 +195,14 @@ export default function Findings({ token, user, company, onLogout, theme, onThem
             <div className="admin-row admin-row-empty"><span>No findings match these filters.</span></div>
           )}
           {findings.map(f => (
-            <div key={f.id} className="admin-row" style={{ gridTemplateColumns: "2.5fr 1fr 1fr 2fr" }}>
+            <div key={f.id} className="admin-row finding-row finding-row-actions">
               <span>
-                <div style={{ fontWeight: 600 }}>{f.title}</div>
-                <div style={{ fontSize: 11, color: "var(--text3)" }}>{f.resourceId}</div>
+                <div className="finding-title">{f.title}</div>
+                {f.resourceId && <div className="finding-resource">{f.resourceId}</div>}
               </span>
               <span><SeverityPill severity={f.severity} /></span>
-              <span style={{ fontSize: 12 }}>{f.status}</span>
-              <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <span className="finding-status">{String(f.status || "").replace(/_/g, " ")}</span>
+              <span className="finding-actions">
                 {/* Evidence PDF download — available to any role that can view findings (matches VAULT_DOWNLOADERS) */}
                 {f.evidenceVaultId && (
                   <button className="btn btn-ghost" disabled={busyId === f.id} onClick={() => downloadEvidencePdf(f.evidenceVaultId)}>

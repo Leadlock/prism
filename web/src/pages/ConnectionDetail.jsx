@@ -306,8 +306,8 @@ export default function ConnectionDetail({ token, user, company, onLogout, theme
 
         <section className="admin-section">
           <h2>Findings</h2>
-          <div className="admin-table">
-            <div className="admin-row admin-row-header" style={{ gridTemplateColumns: "2.5fr 1fr 1fr" }}>
+          <div className="admin-table finding-table">
+            <div className="admin-row admin-row-header">
               <span>Finding</span>
               <span>Severity</span>
               <span>Status</span>
@@ -316,13 +316,13 @@ export default function ConnectionDetail({ token, user, company, onLogout, theme
               <div className="admin-row admin-row-empty"><span>No findings for this connection yet.</span></div>
             )}
             {findings.map(f => (
-              <div key={f.id} className="admin-row" style={{ gridTemplateColumns: "2.5fr 1fr 1fr" }}>
+              <div key={f.id} className="admin-row finding-row">
                 <span>
-                  <div style={{ fontWeight: 600 }}>{f.title}</div>
-                  <div style={{ fontSize: 11, color: "var(--text3)" }}>{f.resourceId}</div>
+                  <div className="finding-title">{f.title}</div>
+                  {f.resourceId && <div className="finding-resource">{f.resourceId}</div>}
                 </span>
                 <span><SeverityPill severity={f.severity} /></span>
-                <span style={{ fontSize: 12 }}>{f.status}</span>
+                <span className="finding-status">{String(f.status || "").replace(/_/g, " ")}</span>
               </div>
             ))}
           </div>
