@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import SeverityPill from "../components/SeverityPill.jsx";
+import GlassSelect from "../components/GlassSelect.jsx";
+import UserMenu from "../components/UserMenu.jsx";
 
 const STATUS_OPTIONS = ["open", "acknowledged", "resolved", "suppressed", "false_positive"];
 
@@ -158,30 +160,40 @@ export default function Findings({ token, user, company, onLogout, theme, onThem
           </div>
           <div className="admin-actions">
             <button className="btn btn-ghost" onClick={() => exportFindingsListPDF(findings, company)}>↓ Export PDF</button>
-            <button className="btn btn-ghost theme-toggle" onClick={onThemeToggle} title="Toggle theme">
-              {theme === "dark" ? "☀" : "☾"}
-            </button>
-            {isLeadOrAdmin && <button className="btn btn-ghost" onClick={() => navigate("/settings/integrations")}>Integrations</button>}
             <button className="btn btn-ghost" onClick={() => navigate("/dashboard")}>Dashboard</button>
-            <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
+            <UserMenu
+              user={user}
+              company={company}
+              theme={theme}
+              onThemeToggle={onThemeToggle}
+              onLogout={onLogout}
+            />
           </div>
         </div>
 
         {error && <p className="error-text">{error}</p>}
         {successMessage && <p style={{ color: "var(--green)" }}>{successMessage}</p>}
 
-        <div style={{ display: "flex", gap: 12, marginTop: 16, marginBottom: 8 }}>
-          <select className="month-selector" value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}>
-            <option value="">All severities</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
-          <select className="month-selector" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-            <option value="">All statuses</option>
-            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+        <div style={{ display: "flex", gap: 12, marginTop: 16, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+          <GlassSelect
+            value={severityFilter}
+            onChange={val => setSeverityFilter(val)}
+            options={[
+              { value: "", label: "All severities" },
+              { value: "critical", label: "Critical" },
+              { value: "high", label: "High" },
+              { value: "medium", label: "Medium" },
+              { value: "low", label: "Low" },
+            ]}
+          />
+          <GlassSelect
+            value={statusFilter}
+            onChange={val => setStatusFilter(val)}
+            options={[
+              { value: "", label: "All statuses" },
+              ...STATUS_OPTIONS.map(s => ({ value: s, label: s.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()) }))
+            ]}
+          />
         </div>
 
         <div className="admin-table finding-table">

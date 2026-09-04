@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, apiUpload, clearCooldown, getCooldownInfo } from "../api/client.js";
 import NotificationBell from "../components/NotificationBell.jsx";
+import UserMenu from "../components/UserMenu.jsx";
 
 function formatBytes(n) {
   if (!n) return "—";
@@ -52,7 +53,7 @@ function fileIcon(type) {
   return "📄";
 }
 
-export default function EvidenceVault({ token, user, onLogout, theme, onThemeToggle, isVerified }) {
+export default function EvidenceVault({ token, user, company, onLogout, theme, onThemeToggle, isVerified }) {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -608,168 +609,215 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
       <div className="review-header" style={{ justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div className="logo" style={{ cursor: "pointer" }} onClick={() => navigate("/tracker")}>PRISM</div>
-          <div className="review-title">Evidence Vault {pinSet && <span style={{ fontSize: 13, color: "var(--text3)" }}>🔒</span>}</div>
+          <div className="review-title">
+            Evidence Vault
+            {pinSet && <span style={{ fontSize: 14, color: "var(--dp-quiet)" }}>🔒</span>}
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <NotificationBell token={token} />
-          <button className="btn btn-ghost theme-toggle" onClick={onThemeToggle} title="Toggle theme">
-            {theme === "dark" ? "☀" : "☾"}
-          </button>
-          <button className="btn btn-ghost" onClick={() => navigate("/tracker")}>Tracker</button>
           <button className="btn btn-ghost" onClick={() => navigate("/dashboard")}>Dashboard</button>
           {isAdmin && (
-            <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => { setShowSetPin(true); setNewPin(""); setAdminPinError(""); }}>
-              {pinSet ? "🔑 Reset PIN" : "🔑 Set PIN"}
+            <button className="btn btn-ghost" onClick={() => { setShowSetPin(true); setNewPin(""); setAdminPinError(""); }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 2 }}>
+                <path d="M21 2l-2 2m-1.5 1.5L14 9l-2-2-4 4 1.5 1.5-1.5 1.5L6.5 13 4 15.5 2.5 14 1 15.5 4.5 19 6 17.5 7.5 19 10 16.5l-1-1 1.5-1.5L12 15.5l2-2-2-2 3.5-3.5 1.5 1.5 2-2z"/>
+              </svg>
+              {pinSet ? "Reset PIN" : "Set PIN"}
             </button>
           )}
           {canWrite && (
             <button className="btn btn-primary" onClick={() => { setShowUpload(true); setUploadError(""); }}>
-              + Upload Evidence
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Upload Evidence
             </button>
           )}
-          <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
+          <UserMenu
+            user={user}
+            company={company}
+            theme={theme}
+            onThemeToggle={onThemeToggle}
+            onLogout={onLogout}
+            isVerified={isVerified}
+          />
         </div>
       </div>
 
       <div className="review-content">
         {error && (
-          <div style={{ padding: "10px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid var(--red)", borderRadius: 8, color: "var(--red)", marginBottom: 16, fontSize: 13, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ padding: "12px 18px", background: "rgba(239,68,68,0.1)", border: "1px solid var(--red)", borderRadius: 12, color: "var(--red)", marginBottom: 18, fontSize: 13.5, display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ flex: 1 }}>{error}</span>
             {getCooldownInfo().active && (
-              <button onClick={() => { setCooldownPinInput(""); setCooldownPinError(""); setCooldownPinModal(true); }} style={{ background: "none", border: "1px solid var(--red)", borderRadius: 4, color: "var(--red)", cursor: "pointer", fontSize: 12, padding: "2px 8px" }}>Reset &amp; retry</button>
+              <button onClick={() => { setCooldownPinInput(""); setCooldownPinError(""); setCooldownPinModal(true); }} style={{ background: "none", border: "1px solid var(--red)", borderRadius: 6, color: "var(--red)", cursor: "pointer", fontSize: 12, padding: "3px 10px", fontWeight: 600 }}>Reset &amp; retry</button>
             )}
-            <button onClick={() => setError("")} style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 14 }}>×</button>
+            <button onClick={() => setError("")} style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 16 }}>×</button>
           </div>
         )}
 
-        {/* Source tabs */}
-        <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
-          {["all", "automated"].map(s => (
-            <button key={s} onClick={() => setSource(s)} style={{
-              background: "none", border: "none", cursor: "pointer",
-              padding: "8px 16px", fontSize: 13, fontWeight: 500,
-              color: source === s ? "var(--accent2)" : "var(--text2)",
-              borderBottom: source === s ? "2px solid var(--accent)" : "2px solid transparent",
-              fontFamily: "var(--sans)"
-            }}>
-              {s === "all" ? "All Evidence" : "Automated"}
-            </button>
-          ))}
+        {/* Source Segmented Tabs */}
+        <div className="dash-segment" style={{ marginBottom: 20, width: "fit-content" }}>
+          <button
+            className={`dash-segment-btn ${source === "all" ? "active" : ""}`}
+            onClick={() => setSource("all")}
+          >
+            All Evidence
+          </button>
+          <button
+            className={`dash-segment-btn ${source === "automated" ? "active" : ""}`}
+            onClick={() => setSource("automated")}
+          >
+            Automated
+          </button>
         </div>
 
-        {/* Search */}
-        <div style={{ marginBottom: 20 }}>
+        {/* Search Bar */}
+        <div className="vault-search-wrap" style={{ marginBottom: 24 }}>
           <input
             type="text"
+            className="vault-search-input"
             placeholder="Search by title or description…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            style={{ width: "100%", maxWidth: 480, padding: "9px 14px", borderRadius: 8, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 14, boxSizing: "border-box" }}
           />
           {search && (
-            <button onClick={() => setSearch("")} style={{ marginLeft: 8, background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 18, verticalAlign: "middle" }}>×</button>
+            <button className="vault-search-clear" onClick={() => setSearch("")}>×</button>
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+        <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
           {/* Item list */}
           <div style={{ flex: 1, minWidth: 0 }}>
             {loading ? (
-              <div style={{ textAlign: "center", padding: 40, color: "var(--text3)" }}>
+              <div style={{ textAlign: "center", padding: 48, color: "var(--dp-quiet)" }}>
                 <div className="loading-spinner" />
-                <p style={{ marginTop: 12 }}>Loading vault…</p>
+                <p style={{ marginTop: 14, fontSize: 14.5 }}>Loading vault…</p>
               </div>
             ) : items.length === 0 ? (
-              <div className="card" style={{ textAlign: "center", padding: 40 }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>🗄</div>
-                <p style={{ color: "var(--text3)", margin: 0 }}>
+              <div className="card" style={{ textAlign: "center", padding: 48 }}>
+                <div style={{ fontSize: 36, marginBottom: 14 }}>🗄</div>
+                <p style={{ color: "var(--dp-quiet)", margin: 0, fontSize: 15 }}>
                   {search ? "No evidence matches your search." : "No evidence in the vault yet."}
                 </p>
                 {canWrite && !search && (
-                  <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowUpload(true)}>
+                  <button className="btn btn-primary" style={{ marginTop: 18 }} onClick={() => setShowUpload(true)}>
                     Upload first evidence
                   </button>
                 )}
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {items.map(item => (
                   <div
                     key={item.id}
                     className="card"
                     style={{
-                      padding: "14px 18px", cursor: "pointer",
-                      border: selected?.id === item.id ? "1px solid var(--accent)" : "1px solid var(--border)",
-                      transition: "border-color 0.15s"
+                      padding: "16px 20px", cursor: "pointer",
+                      border: selected?.id === item.id ? "1.5px solid var(--dp-accent)" : "1px solid var(--dp-line, rgba(163, 178, 204, 0.6))",
+                      transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
                     }}
                     onClick={() => selected?.id === item.id ? closeDetail() : openDetail(item)}
                   >
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-                      <div style={{ fontSize: 28, flexShrink: 0, lineHeight: 1 }}>{fileIcon(item.fileType)}</div>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+                      <div style={{
+                        fontSize: 26, flexShrink: 0, width: 44, height: 44,
+                        borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+                        background: "var(--dp-surface-2, rgba(163, 178, 204, 0.2))",
+                        boxShadow: "var(--neu-inset-sm)"
+                      }}>
+                        {fileIcon(item.fileType)}
+                      </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text)", marginBottom: 2, wordBreak: "break-word" }}>
+                        <div style={{
+                          fontFamily: "var(--dp-font-sans, 'Sora', sans-serif)",
+                          fontWeight: 700, fontSize: 15.5, color: "var(--dp-ink, #0F172A)",
+                          marginBottom: 4, wordBreak: "break-word", letterSpacing: "-0.01em"
+                        }}>
                           {item.title}
                           {item.locked && (
-                            <span title="Locked — linked to a reviewer-approved control" style={{ marginLeft: 8, fontSize: 12, cursor: "default" }}>🔒</span>
+                            <span title="Locked — linked to a reviewer-approved control" style={{ marginLeft: 8, fontSize: 13, cursor: "default" }}>🔒</span>
                           )}
                         </div>
                         {item.description && (
-                          <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <div style={{
+                            fontFamily: "var(--dp-font-sans, 'Sora', sans-serif)",
+                            fontSize: 13.5, color: "var(--dp-quiet, #475569)",
+                            marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.4
+                          }}>
                             {item.description}
                           </div>
                         )}
-                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, color: "var(--text3)" }}>
-                          {item.fileType && <span>{item.fileType.split("/")[1]?.toUpperCase() || item.fileType}</span>}
+                        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: "var(--dp-quiet, #64748B)", fontFamily: "var(--dp-font-mono, monospace)", alignItems: "center" }}>
+                          {item.fileType && <span style={{ fontWeight: 600 }}>{item.fileType.split("/")[1]?.toUpperCase() || item.fileType}</span>}
                           {item.fileSize && <span>{formatBytes(item.fileSize)}</span>}
-                          <span>Uploaded by {item.uploadedBy || "—"}</span>
+                          <span style={{ fontFamily: "var(--dp-font-sans)" }}>Uploaded by {item.uploadedBy || "—"}</span>
                           {item.freshnessStatus && (
                             <span style={{
                               color: item.freshnessStatus === "fresh" ? "var(--green)" : item.freshnessStatus === "stale" ? "var(--amber)" : "var(--red)",
-                              fontWeight: 600
+                              fontWeight: 700
                             }}>
                               {item.freshnessStatus}
                             </span>
                           )}
                           <span>{formatDate(item.uploadedAt)}</span>
-                          <span style={{ color: item.linkedCount > 0 ? "var(--accent)" : "var(--text3)", fontWeight: item.linkedCount > 0 ? 600 : 400 }}>
+                          <span style={{ color: item.linkedCount > 0 ? "var(--dp-accent)" : "var(--dp-quiet)", fontWeight: item.linkedCount > 0 ? 700 : 500 }}>
                             {item.linkedCount} question{item.linkedCount !== 1 ? "s" : ""} linked
                           </span>
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                         {item.storagePath && canDownload && (
                           <button
                             className="btn btn-ghost"
-                            style={{ fontSize: 11, padding: "4px 10px" }}
+                            style={{ fontSize: 12.5, padding: "6px 12px" }}
                             onClick={e => { e.stopPropagation(); handleDownload(item); }}
                           >
-                            ↓ Download
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                              <polyline points="7 10 12 15 17 10"></polyline>
+                              <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            Download
                           </button>
                         )}
                         {item.storagePath && !canDownload && (
                           <button
                             className="btn btn-ghost"
-                            style={{ fontSize: 11, padding: "4px 10px" }}
+                            style={{ fontSize: 12.5, padding: "6px 12px" }}
                             onClick={e => { e.stopPropagation(); handleView(item); }}
                           >
-                            ↗ View
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                              <polyline points="15 3 21 3 21 9"></polyline>
+                              <line x1="10" y1="14" x2="21" y2="3"></line>
+                            </svg>
+                            View
                           </button>
                         )}
                         {canWrite && (
                           <button
                             className="btn btn-ghost"
-                            style={{ fontSize: 11, padding: "4px 10px" }}
+                            style={{ fontSize: 12.5, padding: "6px 12px" }}
                             onClick={e => { e.stopPropagation(); setEditing(item); setEditTitle(item.title); setEditDesc(item.description || ""); }}
                           >
-                            ✎ Edit
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                            Edit
                           </button>
                         )}
                         {canDelete && !item.locked && (
                           <button
                             className="btn btn-ghost"
-                            style={{ fontSize: 11, padding: "4px 10px", color: "var(--red)" }}
+                            style={{ fontSize: 12.5, padding: "6px 12px", color: "var(--red)" }}
                             onClick={e => { e.stopPropagation(); handleDeleteClick(item); }}
                           >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
                             Delete
                           </button>
                         )}
@@ -783,55 +831,76 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
 
           {/* Detail panel */}
           {selected && (
-            <div className="card" style={{ width: 340, flexShrink: 0, padding: 20, position: "sticky", top: 20 }}>
+            <div className="card" style={{ width: 360, flexShrink: 0, padding: 22, position: "sticky", top: 20 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-                <div style={{ fontSize: 32 }}>{fileIcon(selected.fileType)}</div>
-                <button onClick={closeDetail} style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 20, lineHeight: 1 }}>×</button>
+                <div style={{
+                  fontSize: 26, width: 46, height: 46, borderRadius: 12,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "var(--dp-surface-2, rgba(163, 178, 204, 0.2))",
+                  boxShadow: "var(--neu-inset-sm)"
+                }}>
+                  {fileIcon(selected.fileType)}
+                </div>
+                <button onClick={closeDetail} style={{ background: "none", border: "none", color: "var(--dp-quiet)", cursor: "pointer", fontSize: 20, lineHeight: 1 }}>×</button>
               </div>
 
               {detailLoading ? (
-                <div style={{ textAlign: "center", padding: 20, color: "var(--text3)" }}>Loading…</div>
+                <div style={{ textAlign: "center", padding: 24, color: "var(--dp-quiet)" }}>Loading…</div>
               ) : selectedDetail ? (
                 <>
-                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6, wordBreak: "break-word" }}>{selectedDetail.title}</div>
+                  <div style={{ fontFamily: "var(--dp-font-sans, 'Sora')", fontWeight: 700, fontSize: 16, marginBottom: 8, wordBreak: "break-word", color: "var(--dp-ink)" }}>
+                    {selectedDetail.title}
+                  </div>
                   {selectedDetail.locked && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text3)", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 6, padding: "5px 10px", marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--red)", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 8, padding: "6px 12px", marginBottom: 12, fontWeight: 600 }}>
                       🔒 <span>Locked — linked to a reviewer-approved control</span>
                     </div>
                   )}
                   {selectedDetail.description && (
-                    <div style={{ fontSize: 13, color: "var(--text2)", marginBottom: 14, lineHeight: 1.5 }}>{selectedDetail.description}</div>
+                    <div style={{ fontFamily: "var(--dp-font-sans)", fontSize: 13.5, color: "var(--dp-quiet)", marginBottom: 14, lineHeight: 1.5 }}>
+                      {selectedDetail.description}
+                    </div>
                   )}
 
                   {/* Image preview */}
                   {previewUrl && (
-                    <div style={{ marginBottom: 14, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border2)" }}>
+                    <div style={{ marginBottom: 14, borderRadius: 10, overflow: "hidden", border: "1px solid var(--dp-line, rgba(163,178,204,0.6))" }}>
                       <img src={previewUrl} alt={selectedDetail.title} style={{ width: "100%", display: "block", maxHeight: 200, objectFit: "contain" }} />
                     </div>
                   )}
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, marginBottom: 16 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12.5, fontFamily: "var(--dp-font-mono)", color: "var(--dp-ink)", marginBottom: 18 }}>
                     {selectedDetail.fileName && (
-                      <div><span style={{ color: "var(--text3)" }}>File: </span>{selectedDetail.fileName}</div>
+                      <div><span style={{ color: "var(--dp-quiet)" }}>File: </span>{selectedDetail.fileName}</div>
                     )}
                     {selectedDetail.fileType && (
-                      <div><span style={{ color: "var(--text3)" }}>Type: </span>{selectedDetail.fileType}</div>
+                      <div><span style={{ color: "var(--dp-quiet)" }}>Type: </span>{selectedDetail.fileType}</div>
                     )}
                     {selectedDetail.fileSize && (
-                      <div><span style={{ color: "var(--text3)" }}>Size: </span>{formatBytes(selectedDetail.fileSize)}</div>
+                      <div><span style={{ color: "var(--dp-quiet)" }}>Size: </span>{formatBytes(selectedDetail.fileSize)}</div>
                     )}
-                    <div><span style={{ color: "var(--text3)" }}>Uploaded by: </span>{selectedDetail.uploadedBy || "—"}</div>
-                    <div><span style={{ color: "var(--text3)" }}>Date: </span>{formatDate(selectedDetail.uploadedAt)}</div>
+                    <div><span style={{ color: "var(--dp-quiet)" }}>Uploaded by: </span>{selectedDetail.uploadedBy || "—"}</div>
+                    <div><span style={{ color: "var(--dp-quiet)" }}>Date: </span>{formatDate(selectedDetail.uploadedAt)}</div>
                   </div>
 
                   {selectedDetail.storagePath && (
                     <button className="btn btn-ghost" style={{ width: "100%", marginBottom: 8 }} onClick={() => handleViewInBrowser(selectedDetail)}>
-                      ↗ View file in browser
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                      </svg>
+                      View file in browser
                     </button>
                   )}
                   {selectedDetail.storagePath && canDownload && (
                     <button className="btn btn-primary" style={{ width: "100%", marginBottom: 8 }} onClick={() => handleDownload(selectedDetail)}>
-                      ↓ Download
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                      </svg>
+                      Download
                     </button>
                   )}
                   {canWrite && (
@@ -840,7 +909,12 @@ export default function EvidenceVault({ token, user, onLogout, theme, onThemeTog
                       style={{ width: "100%", marginBottom: 8, fontSize: 13 }}
                       onClick={() => { setShowUploadVersion(true); setVersionError(""); }}
                     >
-                      ↑ Upload New Version
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                      </svg>
+                      Upload New Version
                     </button>
                   )}
 

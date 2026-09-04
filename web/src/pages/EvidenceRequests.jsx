@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch, apiUpload } from "../api/client.js";
+import GlassSelect from "../components/GlassSelect.jsx";
+import UserMenu from "../components/UserMenu.jsx";
 
 // ── Constants ─────────────────────────────────────────────────────────
 const STATUS_OPTIONS = ["Open", "In Progress", "Submitted", "Completed", "Cancelled"];
@@ -72,7 +74,7 @@ function vaultFileIcon(type) {
 }
 
 // ── Main Component ────────────────────────────────────────────────────
-export default function EvidenceRequests({ token, user, onLogout, theme, onThemeToggle, isVerified }) {
+export default function EvidenceRequests({ token, user, company, onLogout, theme, onThemeToggle, isVerified }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -355,85 +357,102 @@ export default function EvidenceRequests({ token, user, onLogout, theme, onTheme
           <div className="logo" style={{ cursor: "pointer" }} onClick={() => navigate("/tracker")}>PRISM</div>
           <div className="review-title">Evidence Requests</div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="btn btn-ghost theme-toggle" onClick={onThemeToggle}>{theme === "dark" ? "☀" : "☾"}</button>
-          <button className="btn btn-ghost" onClick={() => navigate("/vault")}>Vault</button>
-          <button className="btn btn-ghost" onClick={() => navigate("/dashboard")}>Dashboard</button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {canWrite && (
             <button className="btn btn-primary" onClick={() => { setShowCreate(true); setCreateError(""); }}>
-              + New Request
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              New Request
             </button>
           )}
-          <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
+          <button className="btn btn-ghost" onClick={() => navigate("/dashboard")}>Dashboard</button>
+          <UserMenu
+            user={user}
+            company={company}
+            theme={theme}
+            onThemeToggle={onThemeToggle}
+            onLogout={onLogout}
+            isVerified={isVerified}
+          />
         </div>
       </div>
 
       <div className="review-content">
         {error && (
-          <div style={{ padding: "10px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid var(--red)", borderRadius: 8, color: "var(--red)", marginBottom: 16, fontSize: 13 }}>
+          <div style={{ padding: "12px 18px", background: "rgba(239,68,68,0.1)", border: "1px solid var(--red)", borderRadius: 12, color: "var(--red)", marginBottom: 18, fontSize: 13.5 }}>
             {error}
-            <button onClick={() => setError("")} style={{ marginLeft: 12, background: "none", border: "none", color: "var(--red)", cursor: "pointer" }}>×</button>
+            <button onClick={() => setError("")} style={{ marginLeft: 12, background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 16 }}>×</button>
           </div>
         )}
 
         {/* ── View tabs + filters ── */}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 20, alignItems: "center" }}>
           {canManage && (
-            <div style={{ display: "flex", borderRadius: 8, border: "1px solid var(--border2)", overflow: "hidden" }}>
+            <div className="dash-segment">
               <button
+                className={`dash-segment-btn ${mine ? "active" : ""}`}
                 onClick={() => setMine(true)}
-                style={{ padding: "6px 16px", fontSize: 13, background: mine ? "var(--accent)" : "var(--bg3)", color: mine ? "#fff" : "var(--text2)", border: "none", cursor: "pointer", fontWeight: mine ? 600 : 400 }}
-              >My Requests</button>
+              >
+                My Requests
+              </button>
               <button
+                className={`dash-segment-btn ${!mine ? "active" : ""}`}
                 onClick={() => setMine(false)}
-                style={{ padding: "6px 16px", fontSize: 13, background: !mine ? "var(--accent)" : "var(--bg3)", color: !mine ? "#fff" : "var(--text2)", border: "none", cursor: "pointer", fontWeight: !mine ? 600 : 400 }}
-              >All Requests</button>
+              >
+                All Requests
+              </button>
             </div>
           )}
 
-          <select
+          <GlassSelect
             value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13 }}
-          >
-            <option value="">All statuses</option>
-            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-
-          <select
-            value={priorityFilter}
-            onChange={e => setPriorityFilter(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13 }}
-          >
-            <option value="">All priorities</option>
-            {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-
-          <input
-            type="text"
-            placeholder="Search requests…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, flex: "1 1 200px", maxWidth: 320 }}
+            onChange={val => setStatusFilter(val)}
+            options={[
+              { value: "", label: "All statuses" },
+              ...STATUS_OPTIONS.map(s => ({ value: s, label: s }))
+            ]}
           />
-          {search && <button onClick={() => setSearch("")} style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 18 }}>×</button>}
+
+          <GlassSelect
+            value={priorityFilter}
+            onChange={val => setPriorityFilter(val)}
+            options={[
+              { value: "", label: "All priorities" },
+              ...PRIORITY_OPTIONS.map(p => ({ value: p, label: p }))
+            ]}
+          />
+
+          <div className="vault-search-wrap" style={{ maxWidth: 300, flex: "1 1 200px" }}>
+            <input
+              type="text"
+              className="vault-search-input"
+              placeholder="Search requests…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+            {search && (
+              <button className="vault-search-clear" onClick={() => setSearch("")}>×</button>
+            )}
+          </div>
         </div>
 
         {/* ── Two-panel layout ── */}
-        <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+        <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
           {/* ── Request list ── */}
           <div style={{ flex: 1, minWidth: 0 }}>
             {loading ? (
-              <div style={{ textAlign: "center", padding: 40, color: "var(--text3)" }}>
+              <div style={{ textAlign: "center", padding: 48, color: "var(--dp-quiet)" }}>
                 <div className="loading-spinner" />
-                <p style={{ marginTop: 12 }}>Loading requests…</p>
+                <p style={{ marginTop: 14, fontSize: 14.5 }}>Loading requests…</p>
               </div>
             ) : items.length === 0 ? (
-              <div className="card" style={{ textAlign: "center", padding: 40 }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-                <p style={{ color: "var(--text3)", margin: 0 }}>No evidence requests found.</p>
+              <div className="card" style={{ textAlign: "center", padding: 48 }}>
+                <div style={{ fontSize: 36, marginBottom: 14 }}>📋</div>
+                <p style={{ color: "var(--dp-quiet)", margin: 0, fontSize: 15 }}>No evidence requests found.</p>
                 {canWrite && (
-                  <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowCreate(true)}>
+                  <button className="btn btn-primary" style={{ marginTop: 18 }} onClick={() => setShowCreate(true)}>
                     Create first request
                   </button>
                 )}

@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import DependencySelect from "../components/DependencySelect.jsx";
 import EvidenceStorageForm from "../components/EvidenceStorageForm.jsx";
+import GlassSelect from "../components/GlassSelect.jsx";
+import UserMenu from "../components/UserMenu.jsx";
 import { TECH_CATEGORIES } from "../utils/techCategories.js";
 
 const ROLE_OPTIONS = ["ADMIN", "LEAD", "CONTRIBUTOR", "VIEWER"];
@@ -611,12 +613,15 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
             {company?.domain && <p className="admin-domain">{company.domain}</p>}
           </div>
           <div className="admin-actions">
-            <button className="btn btn-ghost theme-toggle" onClick={onThemeToggle} title="Toggle theme">
-              {theme === "dark" ? "☀" : "☾"}
-            </button>
-            <button className="btn btn-ghost" onClick={() => navigate("/auditors")}>Auditors</button>
-            <button className="btn btn-ghost" onClick={() => (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate("/tracker")}>← Back</button>
-            <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
+            <button className="btn btn-ghost" onClick={() => (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate("/dashboard")}>← Back</button>
+            <UserMenu
+              user={user}
+              company={company}
+              theme={theme}
+              onThemeToggle={onThemeToggle}
+              onLogout={onLogout}
+              isVerified={isVerified}
+            />
           </div>
         </div>
 
@@ -651,15 +656,12 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
                   </div>
                   <div className="form-group">
                     <label htmlFor="inviteRole">Role</label>
-                    <select
-                      id="inviteRole"
+                    <GlassSelect
                       value={inviteRole}
-                      onChange={(e) => setInviteRole(e.target.value)}
-                    >
-                      {ROLE_OPTIONS.map((role) => (
-                        <option key={role} value={role}>{role}</option>
-                      ))}
-                    </select>
+                      onChange={val => setInviteRole(val)}
+                      options={ROLE_OPTIONS.map(r => ({ value: r, label: r }))}
+                      style={{ width: "100%" }}
+                    />
                   </div>
                   <button type="submit" className="btn btn-primary">Create invite</button>
                 </form>
@@ -691,17 +693,15 @@ export default function AdminPanel({ token, company, user, onLogout, theme, onTh
                         <div key={u.id} className="admin-row">
                           <span>{u.email}</span>
                           <span>
-                            <select
+                            <GlassSelect
                               value={u.role}
-                              onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                              disabled={isSelf}
-                              title={isSelf ? "Cannot change your own role" : ""}
-                            >
-                              {ROLE_OPTIONS.map((role) => (
-                                <option key={role} value={role}>{role}</option>
-                              ))}
-                              {u.role === "AUDITOR" && <option value="AUDITOR">AUDITOR</option>}
-                            </select>
+                              onChange={val => handleRoleChange(u.id, val)}
+                              options={[
+                                ...ROLE_OPTIONS.map(role => ({ value: role, label: role })),
+                                ...(u.role === "AUDITOR" ? [{ value: "AUDITOR", label: "AUDITOR" }] : [])
+                              ]}
+                              style={{ width: "100%", maxWidth: 160 }}
+                            />
                           </span>
                           <span>
                             <button className="btn btn-ghost" onClick={() => handleDeleteUser(u.id)}>Remove</button>

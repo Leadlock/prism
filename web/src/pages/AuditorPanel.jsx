@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
+import GlassSelect from "../components/GlassSelect.jsx";
+import UserMenu from "../components/UserMenu.jsx";
 
 const fmt       = (d) => d ? new Date(d).toLocaleDateString() : "—";
 const isoDate   = (d) => new Date(d).toISOString().slice(0, 10);
@@ -45,18 +47,12 @@ function DurationPicker({ startDate, value, unit, onChange }) {
             fontFamily: "var(--mono)"
           }}
         />
-        <select
+        <GlassSelect
           value={unit}
-          onChange={e => onChange({ value, unit: e.target.value })}
-          style={{
-            flex: 1, padding: "9px 10px",
-            background: "var(--bg3)", border: "1px solid var(--border)",
-            borderRadius: 6, color: "var(--text)", fontSize: 14,
-            fontFamily: "var(--sans)"
-          }}
-        >
-          {UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-        </select>
+          onChange={val => onChange({ value, unit: val })}
+          options={UNITS}
+          style={{ flex: 1 }}
+        />
       </div>
       <div style={{ marginTop: 6, fontSize: 11, color: "var(--text3)", fontFamily: "var(--mono)" }}>
         expires {fmt(expiry)} &nbsp;·&nbsp; {durationLabel(startDate, expiry)}
@@ -90,7 +86,7 @@ function ReactivateModal({ auditor, onConfirm, onClose }) {
   );
 }
 
-export default function AuditorPanel({ token, company, onLogout, theme, onThemeToggle }) {
+export default function AuditorPanel({ token, user, company, onLogout, theme, onThemeToggle, isVerified }) {
   const navigate = useNavigate();
   const [auditors,  setAuditors]  = useState([]);
   const [logs,      setLogs]      = useState([]);
@@ -108,23 +104,29 @@ export default function AuditorPanel({ token, company, onLogout, theme, onThemeT
   });
   const [creating, setCreating] = useState(false);
 
-  const loadAuditors = useCallback(async () => {
-    const data = await apiFetch("/api/auditors", { token });
-    setAuditors(data || []);
-  }, [token]);
-
-  const loadLogs = useCallback(async () => {
-    const data = await apiFetch("/api/auditors/logs?limit=100", { token });
-    setLogs(data.logs || []);
-    setLogTotal(data.total || 0);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [auditorsData, logsData] = await Promise.all([
+        apiFetch("/api/auditors", { token }).catch((e) => {
+          setError(e.message || "Failed to load auditors");
+          return [];
+        }),
+        apiFetch("/api/auditors/logs?limit=100", { token }).catch(() => ({ logs: [], total: 0 })),
+      ]);
+      setAuditors(Array.isArray(auditorsData) ? auditorsData : []);
+      setLogs(Array.isArray(logsData?.logs) ? logsData.logs : []);
+      setLogTotal(logsData?.total || 0);
+    } catch (e) {
+      setError(e.message || "Failed to load auditor data");
+    } finally {
+      setLoading(false);
+    }
   }, [token]);
 
   useEffect(() => {
-    setLoading(true);
-    Promise.all([loadAuditors(), loadLogs()])
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [loadAuditors, loadLogs]);
+    loadData();
+  }, [loadData]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -137,7 +139,7 @@ export default function AuditorPanel({ token, company, onLogout, theme, onThemeT
         body: JSON.stringify({ email: form.email, password: form.password, startDate: form.startDate, expiryDate })
       });
       setForm({ email: "", password: "", startDate: today(), dur: { value: "14", unit: "days" } });
-      await loadAuditors();
+      await loadData();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -149,7 +151,7 @@ export default function AuditorPanel({ token, company, onLogout, theme, onThemeT
     if (!window.confirm("Deactivate this auditor?")) return;
     try {
       await apiFetch(`/api/auditors/${id}`, { token, method: "PUT", body: JSON.stringify({ active: false }) });
-      await Promise.all([loadAuditors(), loadLogs()]);
+      await loadData();
     } catch (err) { setError(err.message); }
   };
 
@@ -160,7 +162,7 @@ export default function AuditorPanel({ token, company, onLogout, theme, onThemeT
         body: JSON.stringify({ active: true, expiryDate })
       });
       setReactivating(null);
-      await Promise.all([loadAuditors(), loadLogs()]);
+      await loadData();
     } catch (err) { setError(err.message); }
   };
 
@@ -168,7 +170,7 @@ export default function AuditorPanel({ token, company, onLogout, theme, onThemeT
     if (!window.confirm("Permanently delete this auditor account?")) return;
     try {
       await apiFetch(`/api/auditors/${id}`, { token, method: "DELETE" });
-      await Promise.all([loadAuditors(), loadLogs()]);
+      await loadData();
     } catch (err) { setError(err.message); }
   };
 
@@ -207,12 +209,14 @@ export default function AuditorPanel({ token, company, onLogout, theme, onThemeT
             {company?.domain && <p className="admin-domain">{company.domain}</p>}
           </div>
           <div className="admin-actions">
-            <button className="btn btn-ghost theme-toggle" onClick={onThemeToggle} title="Toggle theme">
-              {theme === "dark" ? "☀" : "☾"}
-            </button>
-            <button className="btn btn-ghost" onClick={() => navigate("/admin")}>Admin</button>
-            <button className="btn btn-ghost" onClick={() => navigate("/tracker")}>Tracker</button>
-            <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
+            <button className="btn btn-primary" onClick={() => navigate("/dashboard")}>Dashboard</button>
+            <UserMenu
+              user={user}
+              company={company}
+              theme={theme}
+              onThemeToggle={onThemeToggle}
+              onLogout={onLogout}
+            />
           </div>
         </div>
 

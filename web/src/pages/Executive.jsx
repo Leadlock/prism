@@ -5,6 +5,8 @@ import { Gauge, TrendLine, Heatmap, Meter } from "../components/Charts.jsx";
 import ExecutiveExportMenu from "../components/ExecutiveExportMenu.jsx";
 import Logo from "../components/Logo";
 import NotificationBell from "../components/NotificationBell.jsx";
+import GlassSelect from "../components/GlassSelect.jsx";
+import UserMenu from "../components/UserMenu.jsx";
 
 const SEV_LABEL = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
 
@@ -64,33 +66,23 @@ export default function Executive({ token, user, company, theme, onThemeToggle, 
             <Link to="/dashboard" className="dash-segment-btn">Detailed</Link>
             <span className="dash-segment-btn active">Executive</span>
           </div>
-          <select className="month-selector" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
-            <option value={6}>Last 6 months</option>
-            <option value={12}>Last 12 months</option>
-          </select>
+          <GlassSelect
+            value={months}
+            onChange={(val) => setMonths(Number(val))}
+            options={[
+              { value: 6, label: "Last 6 months" },
+              { value: 12, label: "Last 12 months" },
+            ]}
+          />
           <NotificationBell token={token} />
           <ExecutiveExportMenu data={data} company={company} />
-          <button className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 16, lineHeight: 1 }} onClick={onThemeToggle} title="Toggle theme">
-            {theme === "dark" ? "☀" : "☾"}
-          </button>
-          <div style={{ position: "relative" }}>
-            <button className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 18, lineHeight: 1 }} onClick={() => setMenuOpen((v) => !v)} title="More">⋮</button>
-            {menuOpen && (
-              <>
-                <div style={{ position: "fixed", inset: 0, zIndex: 1999 }} onClick={() => setMenuOpen(false)} />
-                <div style={{
-                  position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 2000,
-                  background: "var(--bg2)", border: "1px solid var(--dp-line)", borderRadius: 10,
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.18)", minWidth: 160, padding: "6px 0",
-                }}>
-                  <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setMenuOpen(false); navigate("/dashboard"); }}>Detailed dashboard</button>
-                  <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setMenuOpen(false); navigate("/findings"); }}>Findings</button>
-                  <div style={{ height: 1, background: "var(--dp-line)", margin: "4px 0" }} />
-                  <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13, color: "var(--red, #ef4444)" }} onClick={() => { setMenuOpen(false); onLogout(); }}>Logout</button>
-                </div>
-              </>
-            )}
-          </div>
+          <UserMenu
+            user={user}
+            company={company}
+            theme={theme}
+            onThemeToggle={onThemeToggle}
+            onLogout={onLogout}
+          />
         </div>
       </div>
 

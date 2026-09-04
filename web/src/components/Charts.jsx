@@ -40,7 +40,7 @@ export function StackedBarChart({ data }) {
   );
 }
 
-export function DonutChart({ segments, size = 130, centerValue, centerCaption = "total" }) {
+export function DonutChart({ segments, size = 130, centerValue, centerCaption = "total", vertical = false }) {
   const total = segments.reduce((s, d) => s + d.value, 0) || 1;
   const midValue = centerValue != null ? centerValue : total;
   const sw = Math.max(8, Math.round(size * 0.11));
@@ -48,8 +48,8 @@ export function DonutChart({ segments, size = 130, centerValue, centerCaption = 
   const cx = size / 2;
   const cy = size / 2;
   const circ = 2 * Math.PI * r;
-  const valSize = Math.max(13, Math.round(size * 0.17));
-  const capSize = Math.max(7.5, Math.round(size * 0.075));
+  const valSize = Math.max(18, Math.round(size * 0.24));
+  const capSize = Math.max(10, Math.round(size * 0.085));
   let offset = 0;
   const arcs = segments.map(seg => {
     const dash = (seg.value / total) * circ;
@@ -57,13 +57,25 @@ export function DonutChart({ segments, size = 130, centerValue, centerCaption = 
     offset += dash;
     return arc;
   });
-  const largestSegment = segments.reduce((max, seg) => seg.value > max.value ? seg : max, segments[0] || { value: 0 });
-  const pct = Math.round((largestSegment.value / total) * 100);
 
   return (
-    <div className="chart-donut-wrap">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--dp-line-strong, var(--bg3))" strokeWidth={sw} />
+    <div
+      className={`chart-donut-wrap ${vertical ? "chart-donut-vertical" : ""}`}
+      style={{
+        display: "flex",
+        flexDirection: vertical ? "column" : "row",
+        alignItems: "center",
+        gap: vertical ? 16 : 20,
+        width: "100%",
+      }}
+    >
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        style={{ flexShrink: 0, textRendering: "geometricPrecision", shapeRendering: "geometricPrecision" }}
+      >
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--dp-surface-2, rgba(226, 232, 240, 0.8))" strokeWidth={sw} />
         {arcs.map((arc, i) => (
           <circle
             key={i}
@@ -73,23 +85,64 @@ export function DonutChart({ segments, size = 130, centerValue, centerCaption = 
             strokeWidth={sw}
             strokeDasharray={`${arc.dash} ${circ - arc.dash}`}
             strokeDashoffset={-arc.offset + circ / 4}
+            strokeLinecap="round"
           />
         ))}
-        <text x={cx} y={cy} dy={centerCaption ? "-0.15em" : "0.32em"} textAnchor="middle" fontSize={valSize} fontWeight="500" fontFamily="var(--mono)" fill="var(--dp-ink, var(--text))">
+        <text
+          x={cx}
+          y={cy}
+          dy={centerCaption ? "-0.10em" : "0.34em"}
+          textAnchor="middle"
+          fontSize={valSize}
+          fontWeight="700"
+          fontFamily="var(--dp-font-mono, monospace)"
+          fill="var(--dp-ink, #0F172A)"
+          style={{ letterSpacing: "-0.03em" }}
+        >
           {midValue}
         </text>
         {centerCaption && (
-          <text x={cx} y={cy} dy="1em" textAnchor="middle" fontSize={capSize} fill="var(--dp-quiet, var(--text3))" style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          <text
+            x={cx}
+            y={cy}
+            dy="1.15em"
+            textAnchor="middle"
+            fontSize={capSize}
+            fontWeight="700"
+            fontFamily="var(--dp-font-sans, sans-serif)"
+            fill="var(--dp-quiet, #64748B)"
+            style={{ textTransform: "uppercase", letterSpacing: "0.08em" }}
+          >
             {centerCaption}
           </text>
         )}
       </svg>
-      <div className="chart-donut-legend">
+      <div
+        className="chart-donut-legend"
+        style={{
+          width: "100%",
+          display: "flex",
+          flexDirection: "column",
+          gap: 7,
+        }}
+      >
         {segments.map((seg, i) => (
-          <div key={i} className="chart-legend-item">
-            <span className="chart-legend-dot" style={{ background: seg.color }} />
-            <span className="chart-legend-label">{seg.label}</span>
-            <span className="chart-legend-val">{seg.value}</span>
+          <div
+            key={i}
+            className="chart-legend-item"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              width: "100%",
+              fontSize: 13.5,
+            }}
+          >
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <span className="chart-legend-dot" style={{ background: seg.color, width: 8, height: 8, borderRadius: 999, flexShrink: 0 }} />
+              <span className="chart-legend-label" style={{ color: "var(--dp-quiet, #475569)", fontWeight: 500, fontSize: 13.5 }}>{seg.label}</span>
+            </span>
+            <span className="chart-legend-val" style={{ color: "var(--dp-ink, #0F172A)", fontFamily: "var(--dp-font-mono, monospace)", fontWeight: 700, fontSize: 13.5 }}>{seg.value}</span>
           </div>
         ))}
       </div>
@@ -264,3 +317,8 @@ export function Meter({ value = 0, color = "var(--teal)" }) {
     </span>
   );
 }
+
+export { RingChart } from "./RingChart.jsx";
+export { BKColumnChart } from "./BKColumnChart.jsx";
+
+

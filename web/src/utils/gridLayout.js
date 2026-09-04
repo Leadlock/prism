@@ -42,25 +42,41 @@ export function compact(items) {
 }
 
 /**
- * Resolve every overlap by pushing the lower/later item straight down, then
- * compact. `priority` (an id) is never displaced — everything yields to it.
+ * Resolve every overlap by ensuring each item settles into a collision-free slot.
+ * `priorityId` (if provided) is locked in place and never displaced.
  */
 export function resolveCollisions(items, priorityId) {
-  let result = items.map((i) => ({ ...i }));
-  const order = [...result].sort((a, b) =>
-    a.id === priorityId ? -1 : b.id === priorityId ? 1 : a.y - b.y || a.x - b.x
-  );
-  for (let i = 0; i < order.length; i++) {
-    for (let j = i + 1; j < order.length; j++) {
-      if (collides(order[i], order[j])) {
-        order[j].y = order[i].y + order[i].h;
+  const result = items.map((i) => ({ ...i }));
+  const prio = priorityId ? result.find((i) => i.id === priorityId) : null;
+  const nonPrio = priorityId ? result.filter((i) => i.id !== priorityId) : result;
+  
+  const placed = prio ? [prio] : [];
+  const sorted = [...nonPrio].sort((a, b) => a.y - b.y || a.x - b.x);
+
+  for (const it of sorted) {
+    let x = it.x;
+    let y = it.y;
+    // If initially overlapping any placed item, push downward
+    while (placed.some((p) => collides({ ...it, x, y }, p))) {
+      y++;
+    }
+    // Pull upward and leftward as far as possible without collision
+    let moved = true;
+    while (moved) {
+      moved = false;
+      while (y > 0 && !placed.some((p) => collides({ ...it, x, y: y - 1 }, p))) {
+        y--;
+        moved = true;
+      }
+      while (x > 0 && !placed.some((p) => collides({ ...it, x: x - 1, y }, p))) {
+        x--;
+        moved = true;
       }
     }
+    placed.push({ ...it, x, y });
   }
-  const compacted = compact(order.filter((i) => i.id !== priorityId));
-  const prio = order.find((i) => i.id === priorityId);
-  const merged = prio ? [prio, ...compacted] : compacted;
-  return items.map((it) => merged.find((m) => m.id === it.id));
+
+  return items.map((it) => placed.find((m) => m.id === it.id) || it);
 }
 
 /** Move `id` to (x, y); push whatever it lands on out of the way, then compact. */
@@ -75,12 +91,12 @@ export function moveItem(items, id, x, y) {
   return resolveCollisions(next, id);
 }
 
+export const MIN_H = 3;     // shortest a widget may be resized
+
 /**
  * Resize `id` to `w` cols / `h` rows; reflow whatever it now overlaps, compact.
- * `minH` (content-fit floor, row units) keeps a widget from ever clipping its
- * content — there are no scrollbars inside widgets.
  */
-export function resizeItem(items, id, w, h, minH = 2) {
+export function resizeItem(items, id, w, h, minH = MIN_H) {
   const it = items.find((i) => i.id === id);
   if (!it) return items;
   const next = items.map((i) =>
@@ -105,16 +121,28 @@ export function firstFreeSlot(existing, w, h) {
 /**
  * Build a full item list for `order`. Honours saved {x,y,w,h}; for widgets with
  * no saved height, uses the measured content height (`heights`, row units).
- * User-set heights win outright — content that overflows scrolls.
+ * User-set heights win outright.
  */
-export function buildLayout(order, saved, heights, defaultW) {
+export function buildLayout(order, saved, heights, defaultW, defaultH) {
   const placed = [];
   for (const id of order) {
     const s = saved[id];
     const w = clamp(s?.w || defaultW(id), MIN_W, GRID_COLS);
-    // content-fit height is always the floor — widgets never scroll
-    const contentH = heights[id] || 12;
-    const h = Math.max(contentH, s?.h || 0);
+    const defH = typeof defaultH === "function" ? defaultH(id) : 9;
+    const measuredH = heights[id] ? Math.max(MIN_H, heights[id]) : null;
+    
+    // Minimum required height to display 100% of content without cropping
+    const minRequiredH = measuredH || defH;
+
+    let h;
+    if (id === "module-donuts") {
+      h = minRequiredH;
+    } else if (s?.h) {
+      h = Math.max(minRequiredH, s.h);
+    } else {
+      h = minRequiredH;
+    }
+
     const hasPos = s && Number.isFinite(s.x) && Number.isFinite(s.y);
     const pos = hasPos
       ? { x: clamp(s.x, 0, GRID_COLS - w), y: Math.max(0, s.y) }

@@ -123,7 +123,6 @@ export default function Sidebar({
           value={searchTerm || ""}
           onChange={(e) => onSearchTermChange(e.target.value)}
           placeholder="Question, area, notes…"
-          style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, boxSizing: "border-box" }}
         />
       </div>
 

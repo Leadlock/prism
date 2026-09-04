@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+// #!/usr/bin/env node
 // Dev-only scaffold for a new evidence-collection connector. NOT part of the
 // runtime request path — no route wiring, no auth. Generates the skeleton a
 // connector author would otherwise hand-write, mirroring the structure of an

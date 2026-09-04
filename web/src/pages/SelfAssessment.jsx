@@ -81,27 +81,39 @@ function scoreLabel(pct) {
 
 function WelcomeStep({ onStart }) {
   return (
-    <div style={{ textAlign: "center", maxWidth: 560, margin: "0 auto", padding: "48px 24px" }}>
-      <div style={{ fontSize: 56, marginBottom: 20 }}>🛡️</div>
-      <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 12, color: "var(--text)" }}>Compliance Self-Assessment</h1>
-      <p style={{ fontSize: 15, color: "var(--text2)", lineHeight: 1.7, marginBottom: 12 }}>
+    <div className="self-assess-card" style={{ maxWidth: 640, textAlign: "center", margin: "40px auto" }}>
+      <div className="self-assess-hero-icon">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        </svg>
+      </div>
+      <h1 className="self-assess-title">Compliance Self-Assessment</h1>
+      <p className="self-assess-desc">
         This tool helps you understand your organisation's current data protection posture across key departments.
       </p>
-      <p style={{ fontSize: 14, color: "var(--text2)", lineHeight: 1.7, marginBottom: 32 }}>
+      <p className="self-assess-desc" style={{ marginBottom: 28 }}>
         Select the departments you want to assess and answer a short set of questions. You'll receive a compliance score with a summary of gaps to address.
       </p>
-      <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: "14px 20px", marginBottom: 32, textAlign: "left" }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "#f59e0b", marginBottom: 4 }}>⏳ Pending Verification</div>
-        <div style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.5 }}>
+      <div className="self-assess-alert">
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: "#D97706", marginBottom: 6, display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--dp-font-mono, monospace)" }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 22h14"></path>
+            <path d="M5 2h14"></path>
+            <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"></path>
+            <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path>
+          </svg>
+          Pending Verification
+        </div>
+        <div style={{ fontSize: 13, color: "var(--dp-ink)", lineHeight: 1.6 }}>
           Your account is awaiting approval. This self-assessment gives you a head start on understanding your compliance posture. Once verified, you'll get access to the full PRISM platform with detailed assessments and remediation workflows.
         </div>
       </div>
       <button
         className="btn btn-primary"
-        style={{ padding: "12px 36px", fontSize: 15, borderRadius: 10 }}
+        style={{ padding: "12px 36px", fontSize: 15, borderRadius: 12 }}
         onClick={onStart}
       >
-        Start Assessment →
+        <span>Start Assessment →</span>
       </button>
     </div>
   );
@@ -109,12 +121,12 @@ function WelcomeStep({ onStart }) {
 
 function DeptSelectStep({ selected, onToggle, onCustomAdd, customDept, setCustomDept, onNext, onBack }) {
   return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
+    <div className="self-assess-card" style={{ maxWidth: 760, margin: "32px auto" }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Select Departments</h2>
-        <p style={{ fontSize: 14, color: "var(--text2)" }}>Choose the departments you want to assess. You can select multiple.</p>
+        <h2 className="self-assess-title" style={{ fontSize: 22, marginBottom: 6 }}>Select Departments</h2>
+        <p className="self-assess-desc">Choose the departments you want to assess. You can select multiple.</p>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 14, marginBottom: 24 }}>
         {DEFAULT_DEPTS.map(dept => {
           const meta = DEPT_META[dept];
           const active = selected.includes(dept);
@@ -122,56 +134,51 @@ function DeptSelectStep({ selected, onToggle, onCustomAdd, customDept, setCustom
             <button
               key={dept}
               onClick={() => onToggle(dept)}
-              style={{
-                padding: "16px 14px", borderRadius: 10, border: `2px solid ${active ? "var(--accent)" : "var(--border2)"}`,
-                background: active ? "rgba(99,102,241,0.08)" : "var(--bg2)",
-                textAlign: "left", cursor: "pointer", transition: "all 0.15s",
-              }}
+              className={`self-assess-dept-card ${active ? "selected" : ""}`}
             >
-              <div style={{ fontSize: 24, marginBottom: 6 }}>{meta.icon}</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: active ? "var(--accent)" : "var(--text)", marginBottom: 4 }}>{meta.label}</div>
-              <div style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.4 }}>{meta.description}</div>
+              <div style={{ fontSize: 26, marginBottom: 8 }}>{meta.icon}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: active ? "var(--dp-accent, #4F46E5)" : "var(--dp-ink)", marginBottom: 4 }}>{meta.label}</div>
+              <div style={{ fontSize: 12, color: "var(--dp-quiet)", lineHeight: 1.45 }}>{meta.description}</div>
             </button>
           );
         })}
       </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 28 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
         <input
           type="text"
           value={customDept}
           onChange={e => setCustomDept(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && customDept.trim()) { onCustomAdd(); } }}
           placeholder="Add custom department…"
-          style={{ flex: 1, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13 }}
+          className="link-input"
+          style={{ padding: "10px 14px" }}
         />
         <button
           className="btn btn-ghost"
           disabled={!customDept.trim()}
           onClick={onCustomAdd}
+          style={{ height: 40 }}
         >
           Add
         </button>
       </div>
       {selected.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24 }}>
           {selected.map(dept => {
             const isCustom = !DEFAULT_DEPTS.includes(dept);
             const meta = DEPT_META[dept];
             return (
               <div
                 key={dept}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  background: "var(--bg3)", border: "1px solid var(--border2)",
-                  borderRadius: 20, padding: "5px 10px 5px 12px", fontSize: 12, color: "var(--text)",
-                }}
+                className="pill pill-module"
+                style={{ fontSize: 12.5 }}
               >
                 <span>{meta ? `${meta.icon} ${meta.label}` : dept}</span>
                 {isCustom && (
                   <button
                     onClick={() => onToggle(dept)}
                     aria-label={`Remove ${dept}`}
-                    style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: 0 }}
+                    style={{ background: "none", border: "none", color: "var(--dp-quiet)", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: 0, marginLeft: 4 }}
                   >×</button>
                 )}
               </div>
@@ -182,7 +189,7 @@ function DeptSelectStep({ selected, onToggle, onCustomAdd, customDept, setCustom
       <div style={{ display: "flex", gap: 12 }}>
         <button className="btn btn-ghost" onClick={onBack}>← Back</button>
         <button className="btn btn-primary" disabled={selected.length === 0} onClick={onNext}>
-          Continue →
+          <span>Continue →</span>
         </button>
       </div>
     </div>
@@ -296,10 +303,10 @@ function CollaboratorInput({ dept, collaborators, onChange, orgDomain, token, us
 
 function CollabsStep({ depts, collaborators, onChange, orgDomain, token, userRole, onNext, onBack }) {
   return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
+    <div className="self-assess-card" style={{ maxWidth: 760, margin: "32px auto" }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Add Collaborators</h2>
-        <p style={{ fontSize: 14, color: "var(--text2)" }}>
+        <h2 className="self-assess-title" style={{ fontSize: 22, marginBottom: 6 }}>Add Collaborators</h2>
+        <p className="self-assess-desc">
           Optionally invite colleagues to help answer questions for each department before you begin. You can skip this and continue on your own.
         </p>
       </div>
@@ -308,9 +315,9 @@ function CollabsStep({ depts, collaborators, onChange, orgDomain, token, userRol
           const meta = DEPT_META[dept] || { label: dept, icon: "🏢" };
           return (
             <div key={dept}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 18 }}>{meta.icon}</span>
-                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{meta.label}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 20 }}>{meta.icon}</span>
+                <span style={{ fontSize: 14.5, fontWeight: 700, color: "var(--dp-ink)" }}>{meta.label}</span>
               </div>
               <CollaboratorInput
                 dept={dept}
@@ -327,7 +334,7 @@ function CollabsStep({ depts, collaborators, onChange, orgDomain, token, userRol
       <div style={{ display: "flex", gap: 12 }}>
         <button className="btn btn-ghost" onClick={onBack}>← Back</button>
         <button className="btn btn-primary" onClick={onNext}>
-          Start Questions →
+          <span>Start Questions →</span>
         </button>
       </div>
     </div>
@@ -343,39 +350,45 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
   const isDelegated = delegatedTo.length > 0 && !answerMyself;
 
   return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-        <span style={{ fontSize: 28 }}>{meta.icon}</span>
+    <div className="self-assess-card" style={{ maxWidth: 760, margin: "32px auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
+        <span style={{ fontSize: 32 }}>{meta.icon}</span>
         <div>
-          <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 2 }}>
+          <div style={{ fontSize: 11.5, fontFamily: "var(--dp-font-mono, monospace)", color: "var(--dp-quiet)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.06em", marginBottom: 2 }}>
             Department {deptIndex + 1} of {totalDepts}
           </div>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)" }}>{meta.label}</h2>
+          <h2 className="self-assess-title" style={{ fontSize: 20, marginBottom: 0 }}>{meta.label}</h2>
+        </div>
+        <div style={{ marginLeft: "auto", textAlign: "right" }}>
+          <span className="pill" style={{ fontSize: 12, fontWeight: 700 }}>
+            {answered} / {questions.length} answered
+          </span>
         </div>
       </div>
 
       {isDelegated ? (
-        <div style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 12, padding: "20px 24px", marginBottom: 28 }}>
+        <div className="self-assess-alert" style={{ marginBottom: 28 }}>
           <div style={{ fontSize: 28, marginBottom: 10 }}>🔗</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Delegated to the department head</div>
-          <p style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.6, marginBottom: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--dp-ink)", marginBottom: 6 }}>Delegated to the department head</div>
+          <p style={{ fontSize: 13.5, color: "var(--dp-quiet)", lineHeight: 1.6, marginBottom: 16 }}>
             Copy the link below and send it to the department head. Once they fill it in, results will appear here automatically — you don't need to answer these questions yourself.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
             {delegatedTo.map(c => (
               <div key={c.email}>
-                <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 4 }}>{c.email}</div>
+                <div style={{ fontSize: 12, color: "var(--dp-quiet)", marginBottom: 4, fontFamily: "var(--dp-font-mono)" }}>{c.email}</div>
                 {c.inviteLink && (
                   <div style={{ display: "flex", gap: 6 }}>
                     <input
                       readOnly
                       value={c.inviteLink}
-                      style={{ flex: 1, padding: "7px 10px", borderRadius: 6, fontSize: 12, border: "1px solid var(--border2)", background: "var(--bg)", color: "var(--text2)", fontFamily: "monospace" }}
+                      className="link-input"
+                      style={{ padding: "8px 12px", fontSize: 12 }}
                       onFocus={e => e.target.select()}
                     />
                     <button
                       className="btn btn-ghost"
-                      style={{ fontSize: 12, padding: "6px 12px", whiteSpace: "nowrap" }}
+                      style={{ fontSize: 12, padding: "6px 14px", whiteSpace: "nowrap" }}
                       onClick={() => navigator.clipboard.writeText(c.inviteLink)}
                     >
                       Copy link
@@ -392,15 +405,15 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
       ) : (
         <>
           {delegatedTo.length > 0 && (
-            <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 12.5, color: "var(--dp-quiet)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
               <span>Answering on behalf of this department (also delegated to {delegatedTo.map(c => c.email).join(", ")})</span>
               <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 8px" }} onClick={() => setAnswerMyself(false)}>
                 Undo
               </button>
             </div>
           )}
-          <div style={{ height: 4, background: "var(--bg4)", borderRadius: 2, marginBottom: 24 }}>
-            <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent)", borderRadius: 2, transition: "width 0.3s" }} />
+          <div style={{ height: 6, background: "var(--dp-surface-2)", borderRadius: 999, boxShadow: "var(--neu-inset-sm)", marginBottom: 24, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${progress}%`, background: "linear-gradient(90deg, #4F46E5 0%, #6366F1 100%)", borderRadius: 999, transition: "width 0.3s" }} />
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
@@ -412,41 +425,44 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
             if (!isFollowUp) mainCount++;
             const showSection = !isFollowUp && q.section && (i === 0 || questions[i - 1]?.section !== q.section);
             return (
-              <div key={q.id} style={isFollowUp ? { marginLeft: 20, borderLeft: "2px solid var(--border2)", paddingLeft: 12 } : undefined}>
+              <div key={q.id} style={isFollowUp ? { marginLeft: 20, borderLeft: "2px solid var(--dp-line)", paddingLeft: 14 } : undefined}>
                 {showSection && (
                   <div style={{
-                    fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
-                    color: "var(--accent)", padding: "16px 0 6px", borderBottom: "1px solid var(--border2)",
-                    marginBottom: 8,
+                    fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
+                    color: "var(--dp-accent, #4F46E5)", padding: "16px 0 8px", borderBottom: "1px solid var(--dp-line)",
+                    marginBottom: 10, fontFamily: "var(--dp-font-mono, monospace)"
                   }}>
                     {q.section}
                   </div>
                 )}
-                <div style={{ background: "var(--bg2)", borderRadius: 10, padding: "14px 16px", border: "1px solid var(--border2)" }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", marginBottom: 10, lineHeight: 1.5 }}>
+                <div className="self-assess-q-card">
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-ink)", marginBottom: 12, lineHeight: 1.55 }}>
                     {isFollowUp ? (
-                      <span style={{ color: "var(--accent)", marginRight: 8, fontWeight: 700 }}>↳</span>
+                      <span style={{ color: "var(--dp-accent, #4F46E5)", marginRight: 8, fontWeight: 700 }}>↳</span>
                     ) : (
-                      <span style={{ color: "var(--text3)", marginRight: 8, fontWeight: 700 }}>{mainCount}.</span>
+                      <span style={{ color: "var(--dp-quiet)", marginRight: 8, fontWeight: 700, fontFamily: "var(--dp-font-mono)" }}>{mainCount}.</span>
                     )}
                     {q.text}
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {ANSWER_OPTIONS.map(opt => (
-                    <button
-                      key={opt.value}
-                      onClick={() => onAnswer(q.id, opt.value)}
-                      style={{
-                        padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer",
-                        border: `1px solid ${selected === opt.value ? opt.color : "var(--border2)"}`,
-                        background: selected === opt.value ? opt.bg : "var(--bg3)",
-                        color: selected === opt.value ? opt.color : "var(--text2)",
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
+                  {ANSWER_OPTIONS.map(opt => {
+                    let activeClass = "";
+                    if (selected === opt.value) {
+                      if (opt.value === "YES") activeClass = "selected-yes";
+                      else if (opt.value === "PARTIAL") activeClass = "selected-partial";
+                      else if (opt.value === "NO") activeClass = "selected-no";
+                      else activeClass = "selected-na";
+                    }
+                    return (
+                      <button
+                        key={opt.value}
+                        onClick={() => onAnswer(q.id, opt.value)}
+                        className={`self-assess-ans-btn ${activeClass}`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -460,7 +476,7 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
       <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
         {onBack && <button className="btn btn-ghost" onClick={onBack}>← Back</button>}
         <button className="btn btn-primary" onClick={onNext}>
-          {deptIndex < totalDepts - 1 ? "Next Department →" : "View Results →"}
+          <span>{deptIndex < totalDepts - 1 ? "Next Department →" : "View Results →"}</span>
         </button>
       </div>
     </div>
@@ -472,33 +488,35 @@ function ResultsStep({ selectedDepts, answers, onRetake, onLogout, onViewReport,
   const overallLabel = scoreLabel(overall);
 
   return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
-      <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Your Compliance Assessment</h2>
-      <p style={{ fontSize: 14, color: "var(--text2)", marginBottom: 24 }}>
+    <div className="self-assess-card" style={{ maxWidth: 760, margin: "32px auto" }}>
+      <h2 className="self-assess-title" style={{ fontSize: 24, marginBottom: 6 }}>Your Compliance Assessment</h2>
+      <p className="self-assess-desc" style={{ marginBottom: 28 }}>
         Based on your responses across {selectedDepts.length} department{selectedDepts.length !== 1 ? "s" : ""}.
       </p>
 
       {/* Overall score */}
-      <div style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 12, padding: "24px 28px", marginBottom: 20, display: "flex", alignItems: "center", gap: 24 }}>
+      <div style={{ background: "var(--dp-surface-gradient)", border: "1px solid var(--dp-line)", borderRadius: 16, padding: "28px 32px", marginBottom: 24, display: "flex", alignItems: "center", gap: 24, boxShadow: "var(--neu-raised-sm)" }}>
         <div style={{
-          width: 80, height: 80, borderRadius: "50%", flexShrink: 0,
+          width: 88, height: 88, borderRadius: "50%", flexShrink: 0,
           border: `4px solid ${overallLabel.color}`,
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          boxShadow: "var(--neu-raised-sm)",
+          background: "var(--dp-surface-2)",
         }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: overallLabel.color }}>{overall ?? "—"}%</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: overallLabel.color, fontFamily: "var(--dp-font-mono, monospace)" }}>{overall ?? "—"}%</div>
         </div>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>
+          <div style={{ fontSize: 19, fontWeight: 700, color: "var(--dp-ink)", marginBottom: 6 }}>
             Overall: <span style={{ color: overallLabel.color }}>{overallLabel.label}</span>
           </div>
-          <div style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.5 }}>
+          <div style={{ fontSize: 13.5, color: "var(--dp-quiet)", lineHeight: 1.6 }}>
             This score reflects your self-reported compliance posture. Once your account is verified, PRISM will help you remediate gaps with structured workflows and evidence management.
           </div>
         </div>
       </div>
 
       {/* Per-dept breakdown */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
         {selectedDepts.map(dept => {
           const meta = DEPT_META[dept] || { label: dept, icon: "🏢" };
           const pct = byDept[dept];
@@ -508,24 +526,24 @@ function ResultsStep({ selectedDepts, answers, onRetake, onLogout, onViewReport,
           const noCount = qs.filter(q => answers[q.id] === "NO").length;
           const partialCount = qs.filter(q => answers[q.id] === "PARTIAL").length;
           return (
-            <div key={dept} style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 10, padding: "14px 18px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                <span style={{ fontSize: 20 }}>{meta.icon}</span>
+            <div key={dept} className="self-assess-q-card" style={{ padding: "16px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                <span style={{ fontSize: 24 }}>{meta.icon}</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{meta.label}</div>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--dp-ink)" }}>{meta.label}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color }}>{pct !== null ? `${pct}%` : "—"}</div>
-                  <div style={{ fontSize: 11, color }}>{label}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color, fontFamily: "var(--dp-font-mono)" }}>{pct !== null ? `${pct}%` : "—"}</div>
+                  <div style={{ fontSize: 11.5, color, fontWeight: 600 }}>{label}</div>
                 </div>
               </div>
-              <div style={{ height: 6, background: "var(--bg4)", borderRadius: 3, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${pct ?? 0}%`, background: color, borderRadius: 3, transition: "width 0.5s" }} />
+              <div style={{ height: 6, background: "var(--dp-surface-2)", borderRadius: 999, boxShadow: "var(--neu-inset-sm)", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${pct ?? 0}%`, background: color, borderRadius: 999, transition: "width 0.5s" }} />
               </div>
               {(noCount > 0 || partialCount > 0) && (
-                <div style={{ marginTop: 8, fontSize: 11, color: "var(--text3)" }}>
-                  {noCount > 0 && <span style={{ color: "#ef4444", marginRight: 10 }}>✗ {noCount} gap{noCount !== 1 ? "s" : ""}</span>}
-                  {partialCount > 0 && <span style={{ color: "#f59e0b" }}>⚠ {partialCount} partial</span>}
+                <div style={{ marginTop: 10, fontSize: 12, color: "var(--dp-quiet)" }}>
+                  {noCount > 0 && <span style={{ color: "var(--red, #EF4444)", marginRight: 12, fontWeight: 600 }}>✗ {noCount} gap{noCount !== 1 ? "s" : ""}</span>}
+                  {partialCount > 0 && <span style={{ color: "var(--amber, #F59E0B)", fontWeight: 600 }}>⚠ {partialCount} partial</span>}
                 </div>
               )}
             </div>
@@ -534,18 +552,18 @@ function ResultsStep({ selectedDepts, answers, onRetake, onLogout, onViewReport,
       </div>
 
       {/* Pending verification callout */}
-      <div style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", borderRadius: 10, padding: "16px 20px", marginBottom: 24 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--accent)", marginBottom: 6 }}>What happens next?</div>
-        <div style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.6 }}>
+      <div style={{ background: "var(--dp-accent-light, rgba(79,70,229,0.08))", border: "1px solid rgba(79,70,229,0.25)", borderRadius: 14, padding: "18px 22px", marginBottom: 28, boxShadow: "var(--neu-raised-sm)" }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-accent, #4F46E5)", marginBottom: 6 }}>What happens next?</div>
+        <div style={{ fontSize: 13.5, color: "var(--dp-ink)", lineHeight: 1.65 }}>
           Once a PRISM administrator verifies your account, you'll receive access to the full platform — including the DPDPA compliance tracker, evidence vault, AI-assisted gap analysis, and remediation workflows tailored to your organisation.
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         {onRetake && <button className="btn btn-ghost" onClick={onRetake}>↺ Retake</button>}
         {onViewReport && (
           <button className="btn btn-primary" onClick={onViewReport} disabled={submitting}>
-            {submitting ? "Saving…" : "📊 Team Report"}
+            <span>{submitting ? "Saving…" : "📊 Team Report"}</span>
           </button>
         )}
         <button className="btn btn-ghost" onClick={onLogout}>Sign out</button>
@@ -560,7 +578,20 @@ function wrapReportDoc(inner) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<title>Team Self-Assessment Report</title>` +
-    `<style>html,body{margin:0;padding:0;background:#F4F4F6}a{color:#1E3A5F}</style>` +
+    `<link rel="preconnect" href="https://fonts.googleapis.com">` +
+    `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>` +
+    `<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">` +
+    `<style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #E8EEF6;
+        font-family: 'Sora', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        color: #1E293B;
+      }
+      a { color: #4F46E5; }
+    </style>` +
     `</head><body>${inner}</body></html>`;
 }
 
@@ -587,8 +618,8 @@ function ReportStep({ token, onBack }) {
     const f = iframeRef.current;
     try {
       const h = f?.contentWindow?.document?.documentElement?.scrollHeight;
-      if (h) f.style.height = h + "px";
-    } catch { /* cross-origin guard — srcDoc is same-origin so this won't hit */ }
+      if (h) f.style.height = (h + 40) + "px";
+    } catch { /* cross-origin guard */ }
   };
 
   function openInNewTab() {
@@ -599,16 +630,29 @@ function ReportStep({ token, onBack }) {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 12 }}>
-        <button className="btn btn-ghost" style={{ fontSize: 13 }} onClick={onBack}>← Back to Results</button>
+    <div style={{ maxWidth: 940, margin: "0 auto", padding: "28px 16px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, gap: 12 }}>
+        <button className="btn btn-ghost" onClick={onBack}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          <span>Back to Results</span>
+        </button>
         {state.status === "ready" && (
-          <button className="btn btn-secondary" style={{ fontSize: 13 }} onClick={openInNewTab}>⬇ Open / print full report</button>
+          <button className="btn btn-primary" onClick={openInNewTab}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 6 2 18 2 18 9"></polyline>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+              <rect x="6" y="14" width="12" height="8"></rect>
+            </svg>
+            <span>Open / Print Report</span>
+          </button>
         )}
       </div>
 
       {state.status === "loading" && (
-        <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--text3)" }}>
+        <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--dp-quiet)" }}>
           <div className="loading-spinner" style={{ margin: "0 auto 12px" }} />
           Generating team report…
         </div>
@@ -619,26 +663,26 @@ function ReportStep({ token, onBack }) {
       )}
 
       {state.status === "empty" && (
-        <p style={{ color: "var(--text3)", fontSize: 14 }}>
+        <p style={{ color: "var(--dp-quiet)", fontSize: 14 }}>
           No submissions yet. Invite colleagues and ask them to complete their department assessment.
         </p>
       )}
 
       {state.status === "stale" && (
-        <div style={{ background: "rgba(245,158,11,0.12)", border: "1px solid #f59e0b55", borderRadius: 8, padding: "12px 16px", fontSize: 13, color: "var(--text2)", lineHeight: 1.55 }}>
+        <div style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 12, padding: "14px 18px", fontSize: 13.5, color: "var(--dp-ink)", lineHeight: 1.6 }}>
           The API is serving an older build that doesn't generate this report. Restart it —{" "}
           <code>docker compose up -d &amp;&amp; docker compose restart api</code> — then reopen this page.
         </div>
       )}
 
       {state.status === "ready" && (
-        <div style={{ border: "1px solid var(--border2)", borderRadius: 10, overflow: "hidden", background: "#fff" }}>
+        <div style={{ border: "1px solid var(--dp-line)", borderRadius: 18, overflow: "hidden", background: "#FFFFFF", boxShadow: "var(--neu-raised)" }}>
           <iframe
             ref={iframeRef}
             title="Team Self-Assessment Report"
             srcDoc={wrapReportDoc(state.html)}
             onLoad={fitIframe}
-            style={{ width: "100%", border: "none", display: "block", minHeight: 480 }}
+            style={{ width: "100%", border: "none", display: "block", minHeight: 650 }}
           />
         </div>
       )}
@@ -790,57 +834,63 @@ export default function SelfAssessment({ user, token, onLogout }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)" }}>
+    <div className="self-assess-shell">
       {/* Pending banner */}
-      <div style={{
-        position: "fixed", top: 0, left: 0, right: 0, zIndex: 8000,
-        background: "#f59e0b", color: "#fff",
-        padding: "8px 20px",
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
-        fontSize: 13, fontWeight: 500,
-      }}>
-        <span>⏳</span>
+      <div className="self-assess-top-banner">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 22h14"></path>
+          <path d="M5 2h14"></path>
+          <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"></path>
+          <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path>
+        </svg>
         <span>Your account is pending admin verification. Complete this self-assessment while you wait.</span>
       </div>
 
       {/* Header */}
-      <div style={{
-        marginTop: 36, padding: "16px 28px",
-        borderBottom: "1px solid var(--border2)",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-      }}>
+      <div className="self-assess-header">
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <Logo style={{ height: 28 }} />
-          <span style={{ fontSize: 13, color: "var(--text3)", borderLeft: "1px solid var(--border2)", paddingLeft: 14 }}>
+          <Logo style={{ height: 32 }} />
+          <span className="self-assess-header-title">
             Compliance Self-Assessment
           </span>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span style={{ fontSize: 13, color: "var(--text3)" }}>{user?.email}</span>
+          <span className="pill" style={{ fontSize: 12.5, fontWeight: 600 }}>{user?.email}</span>
           {step !== "welcome" && step !== "results" && (
             <button
               className="btn btn-ghost"
-              style={{ fontSize: 12, color: savedFeedback ? "var(--green, #22c55e)" : undefined, borderColor: savedFeedback ? "var(--green, #22c55e)" : undefined }}
+              style={{ color: savedFeedback ? "var(--green, #10B981)" : undefined, borderColor: savedFeedback ? "var(--green, #10B981)" : undefined }}
               onClick={handleSaveProgress}
             >
               {savedFeedback ? "✓ Saved" : "Save Progress"}
             </button>
           )}
-          <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={onLogout}>Sign out</button>
+          <button className="btn btn-ghost" onClick={onLogout}>Sign out</button>
         </div>
       </div>
 
       {/* Step progress bar */}
       {step !== "welcome" && step !== "report" && (
         <div style={{ padding: "0 28px" }}>
-          <div style={{ display: "flex", gap: 4, padding: "12px 0", maxWidth: 680, margin: "0 auto" }}>
+          <div style={{ display: "flex", gap: 6, padding: "16px 0 0", maxWidth: 760, margin: "0 auto" }}>
             {["depts", "collabs", ...selectedDepts, "results"].map((s, i) => {
               const stepOrder = ["welcome", "depts", "collabs", ...selectedDepts, "results"];
               const current = stepOrder.indexOf(step);
               const done = i < current - 1;
               const active = s === step || (step === `q-${selectedDepts[deptIndex]}` && s === selectedDepts[deptIndex]);
               return (
-                <div key={s} style={{ flex: 1, height: 3, borderRadius: 2, background: done ? "var(--accent)" : active ? "var(--accent)" : "var(--bg4)", opacity: done || active ? 1 : 0.4, transition: "background 0.3s" }} />
+                <div
+                  key={s}
+                  style={{
+                    flex: 1,
+                    height: 5,
+                    borderRadius: 999,
+                    background: done || active ? "linear-gradient(90deg, #4F46E5 0%, #6366F1 100%)" : "var(--dp-surface-2)",
+                    boxShadow: done || active ? "0 1px 4px rgba(79, 70, 229, 0.4)" : "var(--neu-inset-sm)",
+                    opacity: done || active ? 1 : 0.6,
+                    transition: "all 0.3s ease"
+                  }}
+                />
               );
             })}
           </div>

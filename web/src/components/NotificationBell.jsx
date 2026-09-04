@@ -61,23 +61,34 @@ export default function NotificationBell({ token }) {
   return (
     <div ref={dropdownRef} style={{ position: "relative", display: "inline-block" }}>
       <button
+        className="btn btn-ghost dash-bell-btn"
         onClick={() => { setOpen(v => !v); if (!open) load(); }}
         style={{
-          background: "none", border: "none", cursor: "pointer",
-          fontSize: 18, position: "relative", padding: "4px 6px",
-          color: "var(--text2)", lineHeight: 1,
+          width: 40,
+          height: 40,
+          padding: 0,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: 12,
+          position: "relative",
+          cursor: "pointer",
         }}
         title="Notifications"
         aria-label="Notifications"
       >
-        🔔
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: unread > 0 ? "var(--dp-accent, #4F46E5)" : "var(--dp-ink, #1E293B)" }}>
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+        </svg>
         {unread > 0 && (
           <span style={{
-            position: "absolute", top: 0, right: 0,
+            position: "absolute", top: -2, right: -2,
             background: "var(--red, #ef4444)", color: "#fff",
             borderRadius: "50%", fontSize: 10, fontWeight: 700,
             minWidth: 16, height: 16, lineHeight: "16px",
             textAlign: "center", padding: "0 3px",
+            boxShadow: "0 0 0 2px var(--bg, #fff)",
           }}>
             {unread > 9 ? "9+" : unread}
           </span>

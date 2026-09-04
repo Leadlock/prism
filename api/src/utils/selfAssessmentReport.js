@@ -418,55 +418,58 @@ function buildRiskRewardRows(deptRows, regulatoryExposure) {
 // sections, narrative intros. Rendered as-is both in the email and (via an
 // iframe) in the in-app Team Report, so all three surfaces are identical.
 
-const NAVY = "#1E3A5F";
-const NAVY_SOFT = "#F0F3F8";
-const DOC_INK = "#22252E";
-const DOC_MUTED = "#5A6270";
-const DOC_BORDER = "#DADEE6";
-const DOC_BG = "#F4F4F6";
-const AMBER_BG = "#FEF6E7";
-const AMBER_BORDER = "#F3D48B";
-const DOC_FONT = "'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif";
+const NAVY = "#4F46E5";
+const NAVY_DARK = "#0F172A";
+const NAVY_SOFT = "#F8FAFD";
+const DOC_INK = "#1E293B";
+const DOC_MUTED = "#64748B";
+const DOC_BORDER = "rgba(163, 178, 204, 0.45)";
+const DOC_BG = "#E8EEF6";
+const AMBER_BG = "rgba(245, 158, 11, 0.08)";
+const AMBER_BORDER = "rgba(245, 158, 11, 0.3)";
+const AMBER_INK = "#B45309";
+const DOC_FONT = "'Sora', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+const MONO_FONT = "'JetBrains Mono', monospace";
 
 const bandColor = (pct) => scoreBand(pct).color;
 
 function docSection(n, label, body) {
   return `
-    <h2 style="font-family:${DOC_FONT};font-size:17px;font-weight:700;color:${NAVY};margin:36px 0 0;padding-bottom:7px;border-bottom:2px solid ${NAVY};">
+    <h2 style="font-family:${DOC_FONT};font-size:18px;font-weight:800;color:${NAVY_DARK};margin:38px 0 0;padding-bottom:8px;border-bottom:2px solid ${NAVY};letter-spacing:-0.01em;">
       ${n ? `${n}. ` : ""}${esc(label)}
     </h2>
     <div style="margin-top:14px;">${body}</div>`;
 }
 
 function para(text) {
-  return `<p style="font-family:${DOC_FONT};font-size:13.5px;line-height:1.62;color:${DOC_INK};margin:0 0 12px;">${text}</p>`;
+  return `<p style="font-family:${DOC_FONT};font-size:14px;line-height:1.68;color:${DOC_INK};margin:0 0 14px;">${text}</p>`;
 }
 function caveat(text) {
-  return `<p style="font-family:${DOC_FONT};font-size:12.5px;line-height:1.6;color:${DOC_MUTED};font-style:italic;margin:0 0 12px;">${esc(text)}</p>`;
+  return `<p style="font-family:${DOC_FONT};font-size:12.5px;line-height:1.6;color:${DOC_MUTED};font-style:italic;margin:0 0 14px;">${esc(text)}</p>`;
 }
 function bullets(items) {
-  return `<ul style="font-family:${DOC_FONT};margin:0 0 4px;padding-left:20px;">${items.map(b => `<li style="font-size:13px;line-height:1.6;color:${DOC_INK};margin-bottom:7px;">${esc(b)}</li>`).join("")}</ul>`;
+  return `<ul style="font-family:${DOC_FONT};margin:0 0 8px;padding-left:20px;">${items.map(b => `<li style="font-size:13.5px;line-height:1.65;color:${DOC_INK};margin-bottom:8px;">${esc(b)}</li>`).join("")}</ul>`;
 }
 
 function docTable(headers, rows, { widths = [] } = {}) {
   const th = headers.map((h, i) =>
-    `<th style="background:${NAVY};color:#fff;font-family:${DOC_FONT};font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;text-align:left;padding:9px 12px;${widths[i] ? `width:${widths[i]};` : ""}">${esc(h)}</th>`
+    `<th style="background:linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);color:#fff;font-family:${DOC_FONT};font-size:11.5px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;text-align:left;padding:11px 14px;${widths[i] ? `width:${widths[i]};` : ""}">${esc(h)}</th>`
   ).join("");
   const tr = rows.map((cells, r) => {
     const bg = r % 2 ? NAVY_SOFT : "#fff";
     const tds = cells.map(c => {
       const { html, colspan, ...st } = typeof c === "object" && c !== null ? c : { html: c };
       const style = Object.entries(st).map(([k, v]) => `${k.replace(/[A-Z]/g, m => "-" + m.toLowerCase())}:${v}`).join(";");
-      return `<td${colspan ? ` colspan="${colspan}"` : ""} style="font-family:${DOC_FONT};font-size:12.5px;line-height:1.5;color:${DOC_INK};padding:9px 12px;border-bottom:1px solid ${DOC_BORDER};vertical-align:top;${style}">${html}</td>`;
+      return `<td${colspan ? ` colspan="${colspan}"` : ""} style="font-family:${DOC_FONT};font-size:13.5px;line-height:1.55;color:${DOC_INK};padding:11px 14px;border-bottom:1px solid ${DOC_BORDER};vertical-align:top;${style}">${html}</td>`;
     }).join("");
     return `<tr style="background:${bg};">${tds}</tr>`;
   }).join("");
-  return `<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid ${DOC_BORDER};margin-bottom:6px;"><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>`;
+  return `<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid ${DOC_BORDER};border-radius:10px;overflow:hidden;margin-bottom:8px;"><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>`;
 }
 
 function statusCell(pct) {
   const b = scoreBand(pct);
-  return { html: `<strong style="color:${b.color};">${b.label}</strong>` };
+  return { html: `<strong style="color:${b.color};font-family:${DOC_FONT};">${b.label}</strong>` };
 }
 
 export function buildSelfAssessmentReportHtml({
@@ -484,10 +487,10 @@ export function buildSelfAssessmentReportHtml({
     ["Department", "Score", "Status", "Gaps", "Partials"],
     deptRows.map(d => [
       { html: `<strong>${esc(d.dept)}</strong>` },
-      { html: d.avgScore !== null ? `${d.avgScore}%` : "—", "font-weight": "700" },
+      { html: d.avgScore !== null ? `${d.avgScore}%` : "—", "font-weight": "700", "font-family": MONO_FONT },
       d.avgScore !== null ? statusCell(d.avgScore) : { html: `<span style="color:${DOC_MUTED};">Not Assessed</span>` },
-      { html: String(d.gapCount), color: d.gapCount ? "#B91C1C" : DOC_MUTED, "font-weight": d.gapCount ? "700" : "400" },
-      { html: String(d.partialCount), color: d.partialCount ? "#B45309" : DOC_MUTED, "font-weight": d.partialCount ? "700" : "400" },
+      { html: String(d.gapCount), color: d.gapCount ? "#EF4444" : DOC_MUTED, "font-weight": d.gapCount ? "700" : "400", "font-family": MONO_FONT },
+      { html: String(d.partialCount), color: d.partialCount ? "#F59E0B" : DOC_MUTED, "font-weight": d.partialCount ? "700" : "400", "font-family": MONO_FONT },
     ]),
     { widths: ["", "12%", "16%", "10%", "10%"] }
   );
@@ -497,7 +500,7 @@ export function buildSelfAssessmentReportHtml({
     ["Department", "Score", "Open Items (Gaps + Partials)", "Share of Org-Wide Total"],
     priorityFocus.map(d => [
       { html: `<strong>${esc(d.dept)}</strong>` },
-      d.avgScore !== null ? `${d.avgScore}%` : "—",
+      { html: d.avgScore !== null ? `${d.avgScore}%` : "—", "font-family": MONO_FONT },
       `${d.openItems} (${d.gapCount} gap${d.gapCount !== 1 ? "s" : ""}, ${d.partialCount} partial${d.partialCount !== 1 ? "s" : ""})`,
       `≈ ${d.shareOfOrgWideTotal}% of all open items org-wide`,
     ])
@@ -522,12 +525,12 @@ export function buildSelfAssessmentReportHtml({
           { html: `<strong>${esc(row.framework)}</strong>` },
           esc(row.provisionLabel),
           esc(row.summary),
-          { html: esc(row.penalty), "font-weight": "700", color: "#B91C1C" },
+          { html: esc(row.penalty), "font-weight": "700", color: "#EF4444" },
         ],
         [{
           html: `<span style="color:${NAVY};"><strong>Why this applies to you:</strong> ${esc(row.triggeredBy.map(t => t.dept).join(", "))} — self-assessed with open gaps in this exact area.</span>${row.url ? ` <a href="${esc(row.url)}" style="color:${NAVY};font-weight:600;">View official source ↗</a>` : ""}`,
           colspan: "4",
-          "font-size": "11.5px",
+          "font-size": "12px",
           background: "#fff",
         }],
       ])
@@ -539,9 +542,9 @@ export function buildSelfAssessmentReportHtml({
 
   // 7 — Roadmap
   const phaseTable = (phase) => !phase.actions.length ? "" : `
-    <h3 style="font-family:${DOC_FONT};font-size:13.5px;font-weight:700;color:${NAVY};margin:18px 0 8px;">${esc(phase.title || phase.label)}</h3>
+    <h3 style="font-family:${DOC_FONT};font-size:14px;font-weight:700;color:${NAVY};margin:20px 0 10px;">${esc(phase.title || phase.label)}</h3>
     ${docTable(["#", "Action"], phase.actions.map((a, i) => [
-      { html: String(i + 1), "font-weight": "700", "text-align": "center" },
+      { html: String(i + 1), "font-weight": "700", "text-align": "center", "font-family": MONO_FONT },
       esc(a),
     ]), { widths: ["6%", ""] })}`;
   const roadmapBody =
@@ -564,32 +567,32 @@ export function buildSelfAssessmentReportHtml({
     ["Department", "Score", "Status", "Open Items", "Regulatory Scope (this assessment)"],
     deptRows.map(d => [
       { html: `<strong>${esc(d.dept)}</strong>` },
-      d.avgScore !== null ? `${d.avgScore}%` : "—",
+      { html: d.avgScore !== null ? `${d.avgScore}%` : "—", "font-family": MONO_FONT },
       d.avgScore !== null ? statusCell(d.avgScore) : { html: `<span style="color:${DOC_MUTED};">Not Assessed</span>` },
       `${d.gapCount} gap${d.gapCount !== 1 ? "s" : ""}, ${d.partialCount} partial${d.partialCount !== 1 ? "s" : ""}`,
       { html: esc(d.regulatoryScope || "None mapped in this assessment"), color: d.regulatoryScope ? DOC_INK : DOC_MUTED },
     ]),
-    { widths: ["", "9%", "13%", "18%", "32%"] }
+    { widths: ["", "10%", "14%", "20%", "30%"] }
   );
 
   const body = `
-  <div style="background:${DOC_BG};padding:32px 16px;font-family:${DOC_FONT};">
-    <div style="max-width:820px;margin:0 auto;background:#fff;border:1px solid ${DOC_BORDER};padding:52px 60px 40px;">
+  <div style="background:${DOC_BG};padding:36px 16px;font-family:${DOC_FONT};">
+    <div style="max-width:840px;margin:0 auto;background:#FFFFFF;border:1px solid ${DOC_BORDER};border-radius:18px;box-shadow:0 12px 36px rgba(163, 178, 204, 0.35);padding:52px 60px 44px;">
 
       ${logoDataUri ? `<img src="${logoDataUri}" alt="PRISM" style="height:38px;width:auto;margin-bottom:22px;" />` : ""}
-      <div style="font-size:27px;font-weight:800;color:${NAVY};letter-spacing:-0.01em;">${co}</div>
-      <div style="font-size:15px;font-weight:600;color:${NAVY};margin-top:3px;">PRISM Team Self-Assessment — Key Insights &amp; Priority Actions</div>
-      <div style="font-size:12px;color:${DOC_MUTED};font-style:italic;margin-top:8px;line-height:1.6;">
+      <div style="font-size:28px;font-weight:800;color:${NAVY_DARK};letter-spacing:-0.02em;font-family:${DOC_FONT};">${co}</div>
+      <div style="font-size:16px;font-weight:700;color:${NAVY};margin-top:4px;font-family:${DOC_FONT};">PRISM Team Self-Assessment — Key Insights &amp; Priority Actions</div>
+      <div style="font-size:12.5px;color:${DOC_MUTED};margin-top:8px;line-height:1.6;font-family:${DOC_FONT};">
         ${submissions.length} self-assessment submission${submissions.length !== 1 ? "s" : ""} across ${deptRows.length} department${deptRows.length !== 1 ? "s" : ""}
         &nbsp;•&nbsp; Generated ${esc(generatedAt)}
-        &nbsp;•&nbsp; Overall Compliance Score: <strong style="color:${band.color};font-style:normal;">${overallScore !== null ? `${overallScore}%` : "—"} (${band.label})</strong>
+        &nbsp;•&nbsp; Overall Compliance Score: <strong style="color:${band.color};font-style:normal;font-family:${MONO_FONT};">${overallScore !== null ? `${overallScore}%` : "—"} (${band.label})</strong>
         ${requestedByEmail ? `<br/>Requested by ${esc(requestedByEmail)}` : ""}
         ${notAssessed.length ? `<br/>${esc(notAssessed.join(", "))} treated as Not Assessed and excluded from the overall score` : ""}
       </div>
 
-      <div style="background:${AMBER_BG};border:1px solid ${AMBER_BORDER};border-radius:6px;padding:12px 16px;margin-top:18px;">
-        <div style="font-size:12.5px;font-weight:700;color:#92590C;">Basis of Assessment: Trust-Based Self-Reporting</div>
-        <div style="font-size:12px;color:#6B4A0B;line-height:1.6;margin-top:4px;">
+      <div style="background:${AMBER_BG};border:1px solid ${AMBER_BORDER};border-radius:12px;padding:14px 18px;margin-top:20px;">
+        <div style="font-size:13px;font-weight:700;color:${AMBER_INK};font-family:${DOC_FONT};">Basis of Assessment: Trust-Based Self-Reporting</div>
+        <div style="font-size:12.5px;color:${DOC_INK};line-height:1.6;margin-top:4px;font-family:${DOC_FONT};">
           This report is generated from a trust-based, self-reported assessment. Each department submitted its own responses through PRISM, and the scores, gaps, and partials reflect what each department reported about itself. No independent verification, evidence review, or third-party validation was performed as part of this exercise.
         </div>
       </div>
@@ -615,10 +618,10 @@ export function buildSelfAssessmentReportHtml({
 
       ${docSection(null, "Annexure B — Full Department-Wise Detail",
         para("Every department's self-assessment result in full, including the specific regulatory provisions its open items were mapped to (where applicable). All figures are self-reported and have not been independently verified.") +
-        `<h3 style="font-family:${DOC_FONT};font-size:13.5px;font-weight:700;color:${NAVY};margin:18px 0 8px;">Legend</h3>` + legend +
+        `<h3 style="font-family:${DOC_FONT};font-size:14px;font-weight:700;color:${NAVY};margin:20px 0 10px;">Legend</h3>` + legend +
         `<div style="height:14px;"></div>` + annexure)}
 
-      <div style="border-top:1px solid ${DOC_BORDER};margin-top:32px;padding-top:14px;font-size:11px;color:${DOC_MUTED};line-height:1.6;">
+      <div style="border-top:1px solid ${DOC_BORDER};margin-top:36px;padding-top:16px;font-size:11.5px;color:${DOC_MUTED};line-height:1.6;font-family:${DOC_FONT};">
         Breach of any other provision of this Act or the rules made thereunder. The fine may extend upto 50 cr Under The Schedule to the DPDPA 2023.<br/>
         Source: PRISM Team Self-Assessment — ${co}, generated ${esc(generatedAt)}.<br/>
         Generated by PRISM. This document is confidential and intended for internal circulation only.

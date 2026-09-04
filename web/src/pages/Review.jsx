@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, apiDownload } from "../api/client.js";
 import RetryBanner from "../components/RetryBanner.jsx";
+import UserMenu from "../components/UserMenu.jsx";
 
-export default function Review({ token, user, onLogout, theme, onThemeToggle }) {
+export default function Review({ token, user, company, onLogout, theme, onThemeToggle, isVerified }) {
   const [assessments, setAssessments] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [evidence, setEvidence] = useState([]);
@@ -107,13 +108,17 @@ export default function Review({ token, user, onLogout, theme, onThemeToggle }) 
           <div className="logo">PRISM</div>
           <div className="review-title">Review workspace</div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn btn-ghost theme-toggle" onClick={onThemeToggle} title="Toggle theme">
-            {theme === "dark" ? "☀" : "☾"}
-          </button>
-          <button className="btn btn-ghost" onClick={() => (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate("/tracker")}>← Back</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button className="btn btn-ghost" onClick={() => (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate("/dashboard")}>← Back</button>
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
-          <button className="btn btn-ghost" onClick={onLogout}>Logout</button>
+          <UserMenu
+            user={user}
+            company={company}
+            theme={theme}
+            onThemeToggle={onThemeToggle}
+            onLogout={onLogout}
+            isVerified={isVerified}
+          />
         </div>
       </div>
 

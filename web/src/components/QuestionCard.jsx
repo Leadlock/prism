@@ -299,11 +299,23 @@ export default function QuestionCard({ question, assessment, response, onSetResp
         </div>
       )}
       <div className="card-meta">
-        <span className="pill pill-module">{question.moduleId} - {question.moduleName}</span>
-        <span className="pill pill-iso">{question.isoReference}</span>
-        <span className="pill pill-owner">{question.defaultOwner}</span>
+        <span className="pill pill-module">
+          {question.moduleId && question.moduleName
+            ? (question.moduleName.toLowerCase().startsWith(question.moduleId.toLowerCase())
+                ? question.moduleName
+                : `${question.moduleId} — ${question.moduleName}`)
+            : (question.moduleName || question.moduleId)}
+        </span>
+        {question.isoReference && (
+          <span className="pill pill-iso">{question.isoReference}</span>
+        )}
+        {question.defaultOwner && (
+          <span className="pill pill-owner">{question.defaultOwner}</span>
+        )}
         {question.priority && (
-          <span className={`priority-badge priority-${(question.priority || '').toLowerCase()}`}>{question.priority}</span>
+          <span className={`pill pill-priority pill-priority-${(question.priority || '').toLowerCase()}`}>
+            {question.priority}
+          </span>
         )}
         {question.recurrenceInterval && question.recurrenceInterval !== "none" && (
           <span className="pill pill-recurrence">⟳ {question.recurrenceInterval}</span>
@@ -571,19 +583,23 @@ export default function QuestionCard({ question, assessment, response, onSetResp
               </div>
               <div className="maturity-desc">{maturityDesc}</div>
 
-              <div className="section-label">Evidence</div>
+              <div className="section-label">Evidence &amp; Attachments</div>
               {isVerified === false ? (
-                <div style={{ padding: "14px 16px", borderRadius: 8, border: "1px dashed var(--border2)", background: "var(--bg2)", textAlign: "center", fontSize: 13, color: "var(--text3)" }}>
+                <div style={{ padding: "16px 20px", borderRadius: 12, border: "1px dashed var(--dp-line)", background: "var(--dp-surface-2)", textAlign: "center", fontSize: 13.5, color: "var(--dp-quiet)", marginBottom: 16 }}>
                   🔒 Evidence upload available after account verification
                 </div>
               ) : (
                 <>
                   <div className="evidence-drop" onClick={() => document.getElementById(inputId).click()}>
-                    <div className="upload-icon">Upload</div>
-                    <p>
-                      <strong>Click to upload evidence file</strong>
-                      PDF, DOCX, XLSX, PNG, ZIP and more — max 10 MB
-                    </p>
+                    <div className="evidence-drop-icon">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                      </svg>
+                    </div>
+                    <div className="evidence-drop-title">Click to upload or drag &amp; drop evidence files</div>
+                    <div className="evidence-drop-sub">PDF, DOCX, XLSX, PNG, ZIP, CSV, PPTX — max 10 MB</div>
                   </div>
                   <input
                     type="file"
@@ -609,22 +625,31 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                               target="_blank" 
                               rel="noopener noreferrer" 
                               className="file-name"
-                              style={{ color: "var(--accent2)", textDecoration: "underline" }}
+                              style={{ color: "var(--dp-accent, #4F46E5)", textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: 6 }}
                             >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                              </svg>
                               {displayName}
                             </a>
                           ) : (
-                            <span className="file-name">{displayName}</span>
+                            <span className="file-name" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--dp-accent)" }}>
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                              </svg>
+                              {displayName}
+                            </span>
                           )}
-                          <div style={{ display: 'flex', gap: 8 }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                             {evidenceId && isVerified !== false && (
                               <button
                                 className="btn-compact"
-                                style={{ fontSize: 12, padding: '4px 8px' }}
+                                style={{ fontSize: 12, padding: '4px 10px', borderRadius: 8, background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)', color: 'var(--dp-accent)' }}
                                 onClick={async () => {
                                   try {
                                     const analyzed = await apiFetch(`/api/evidence/${evidenceId}/analyze`, { token, method: 'POST' });
-                                    // Update the file object with AI data
                                     const updatedFiles = [...(response.files || [])];
                                     updatedFiles[i] = { ...file, ...analyzed };
                                     onSetResponse('files', updatedFiles);
@@ -635,7 +660,7 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                                   }
                                 }}
                               >
-                                🤖 AI Analyze
+                                ✨ AI Analyze
                               </button>
                             )}
                             <button className="file-remove" onClick={() => removeFile(i)}>
@@ -687,14 +712,22 @@ export default function QuestionCard({ question, assessment, response, onSetResp
               {isVerified !== false && (
                 <>
                   <div className="link-row">
-                    <input
-                      className="link-input"
-                      type="text"
-                      placeholder="Or paste a link (SharePoint, Drive, Confluence...)"
-                      value={response.link || ""}
-                      onChange={(e) => onSetResponse("link", e.target.value)}
-                    />
-                    <button className="add-link-btn" onClick={async () => {
+                    <div className="link-input-wrap">
+                      <span className="link-input-icon">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                        </svg>
+                      </span>
+                      <input
+                        className="link-input"
+                        type="text"
+                        placeholder="Paste link (SharePoint, Google Drive, Confluence, Jira...)"
+                        value={response.link || ""}
+                        onChange={(e) => onSetResponse("link", e.target.value)}
+                      />
+                    </div>
+                    <button className="btn btn-ghost" style={{ height: 38 }} onClick={async () => {
                       const link = response.link?.trim();
                       if (!link) return;
                       if (!/^https?:\/\/.+\..+/.test(link)) {
@@ -711,25 +744,47 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                         console.error("Add link failed", err);
                         alert(`Failed to add link: ${err.message || "Please try again"}`);
                       }
-                    }}>Add link</button>
+                    }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                      <span>Add link</span>
+                    </button>
                   </div>
 
-                  {/* ── Link from Vault ── */}
-                  <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
+                  {/* ── Link from Vault & Request Evidence actions ── */}
+                  <div style={{ marginBottom: 18, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                     <button
                       className="btn btn-ghost"
-                      style={{ fontSize: 12, padding: "6px 14px" }}
                       onClick={() => { setShowVaultPicker(true); loadPicker(pickerSearch); }}
                     >
-                      🗄 Link from Vault
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                      </svg>
+                      <span>Link from Vault</span>
                     </button>
+                    {!showReqEvidence && (
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => { setShowReqEvidence(true); setReqError(""); }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="9" cy="7" r="4"></circle>
+                          <line x1="19" y1="8" x2="19" y2="14"></line>
+                          <line x1="22" y1="11" x2="16" y2="11"></line>
+                        </svg>
+                        <span>Request Evidence from Someone</span>
+                      </button>
+                    )}
                   </div>
                 </>
               )}
 
               {/* Linked vault items */}
               {vaultItems.length > 0 && (
-                <div style={{ marginTop: 10 }}>
+                <div style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}>
                   {vaultItems.map(item => {
                     const due = item.uploadedAt ? addIntervalQC(item.uploadedAt, question.recurrenceInterval) : null;
                     const daysLeft = due ? Math.round((due - new Date()) / 86400000) : null;
@@ -737,14 +792,14 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                     const soon = daysLeft !== null && !overdue && daysLeft <= 14;
                     const validColor = overdue ? "var(--red)" : soon ? "var(--amber)" : "var(--green)";
                     return (
-                      <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "var(--bg3)", borderRadius: 6, marginBottom: 5, fontSize: 12 }}>
+                      <div key={item.id} className="file-item" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}>
                         <span style={{ fontSize: 16, flexShrink: 0 }}>
                           {item.fileType?.includes("pdf") ? "📋" : item.fileType?.startsWith("image/") ? "🖼" : "📄"}
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
+                          <div style={{ fontWeight: 600, fontSize: 13.5, color: "var(--dp-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
                           {due && (
-                            <div style={{ fontSize: 10, color: validColor, marginTop: 1 }}>
+                            <div style={{ fontSize: 11, color: validColor, marginTop: 2, fontFamily: "var(--dp-font-mono)" }}>
                               {overdue
                                 ? `⚠ Review overdue — ${due.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
                                 : soon
@@ -753,12 +808,12 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                             </div>
                           )}
                         </div>
-                        <span style={{ fontSize: 10, color: "var(--text3)", flexShrink: 0 }}>Vault</span>
+                        <span style={{ fontSize: 11, fontFamily: "var(--dp-font-mono)", fontWeight: 700, color: "var(--dp-accent)", background: "var(--dp-accent-light)", padding: "3px 8px", borderRadius: 6, flexShrink: 0 }}>Vault</span>
                         {isVerified !== false && !reviewerPassed && (
                           <button
                             title="Detach from this question"
                             onClick={() => handleVaultDetach(item.id)}
-                            style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
+                            style={{ background: "none", border: "none", color: "var(--dp-quiet)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "0 4px", flexShrink: 0 }}
                           >×</button>
                         )}
                       </div>
@@ -769,31 +824,31 @@ export default function QuestionCard({ question, assessment, response, onSetResp
 
               {/* Suggested Evidence */}
               {isVerified !== false && (suggestionsLoading || (suggestions !== null && suggestions.filter(s => !ignoredSuggestions.has(s.id) && !vaultItems.some(v => v.id === s.id)).length > 0)) && (
-                <div style={{ marginTop: 12, padding: "10px 12px", background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border2)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)" }}>Suggested Evidence</span>
-                    <span style={{ fontSize: 9, color: "var(--text3)", background: "var(--bg)", border: "1px solid var(--border2)", borderRadius: 8, padding: "1px 6px" }}>AI</span>
+                <div style={{ marginBottom: 16, padding: "12px 16px", background: "var(--dp-surface-2)", borderRadius: 12, border: "1px solid var(--dp-line)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--dp-ink)" }}>Suggested Evidence</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "var(--dp-accent)", background: "var(--dp-accent-light)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 6, padding: "1px 6px", fontFamily: "var(--dp-font-mono)" }}>AI</span>
                   </div>
                   {suggestionsLoading ? (
-                    <div style={{ fontSize: 11, color: "var(--text3)" }}>Scanning vault…</div>
+                    <div style={{ fontSize: 12, color: "var(--dp-quiet)" }}>Scanning vault…</div>
                   ) : (
                     suggestions
                       .filter(s => !ignoredSuggestions.has(s.id) && !vaultItems.some(v => v.id === s.id))
                       .map(s => {
-                        const scoreColor = s.relevanceScore >= 70 ? "var(--green)" : s.relevanceScore >= 50 ? "var(--amber)" : "var(--text3)";
+                        const scoreColor = s.relevanceScore >= 70 ? "var(--green)" : s.relevanceScore >= 50 ? "var(--amber)" : "var(--dp-quiet)";
                         return (
-                          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 11 }}>
-                            <div style={{ flexShrink: 0, width: 32, height: 32, borderRadius: "50%", border: `2px solid ${scoreColor}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: scoreColor }}>
+                          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, fontSize: 12.5 }}>
+                            <div style={{ flexShrink: 0, width: 32, height: 32, borderRadius: "50%", border: `2px solid ${scoreColor}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: scoreColor, fontFamily: "var(--dp-font-mono)" }}>
                               {s.relevanceScore}%
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
-                              {s.reason && <div style={{ fontSize: 10, color: "var(--text3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontStyle: "italic" }}>{s.reason}</div>}
+                              <div style={{ fontWeight: 600, color: "var(--dp-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
+                              {s.reason && <div style={{ fontSize: 11, color: "var(--dp-quiet)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontStyle: "italic" }}>{s.reason}</div>}
                             </div>
-                            <button className="btn btn-primary" style={{ fontSize: 10, padding: "3px 10px", flexShrink: 0 }} disabled={attachingSuggestion === s.id} onClick={() => handleSuggestionAttach(s.id)}>
+                            <button className="btn btn-primary" style={{ fontSize: 11, padding: "4px 12px", height: 28, flexShrink: 0 }} disabled={attachingSuggestion === s.id} onClick={() => handleSuggestionAttach(s.id)}>
                               {attachingSuggestion === s.id ? "…" : "Attach"}
                             </button>
-                            <button style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 14, flexShrink: 0 }} onClick={() => setIgnoredSuggestions(prev => new Set([...prev, s.id]))}>×</button>
+                            <button style={{ background: "none", border: "none", color: "var(--dp-quiet)", cursor: "pointer", fontSize: 16, flexShrink: 0 }} onClick={() => setIgnoredSuggestions(prev => new Set([...prev, s.id]))}>×</button>
                           </div>
                         );
                       })
@@ -801,55 +856,44 @@ export default function QuestionCard({ question, assessment, response, onSetResp
                 </div>
               )}
 
-              {/* ── Request Evidence from someone ── */}
-              <div style={{ marginTop: 14 }}>
-                {reqSuccess ? (
-                  <div style={{ fontSize: 13, color: "var(--green)", padding: "8px 12px", background: "rgba(34,197,94,0.1)", borderRadius: 6, display: "flex", alignItems: "center", gap: 10 }}>
-                    ✓ Evidence request sent.
-                    <button onClick={() => setReqSuccess(false)} style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 11 }}>Dismiss</button>
+              {/* ── Request Evidence form panel ── */}
+              {showReqEvidence && (
+                <div style={{ marginBottom: 18, padding: 18, background: "var(--dp-surface-2)", borderRadius: 14, border: "1px solid var(--dp-line)", boxShadow: "var(--neu-raised-sm)" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-ink)", marginBottom: 4 }}>Request Evidence from Someone</div>
+                  <div style={{ fontSize: 12.5, color: "var(--dp-quiet)", marginBottom: 12 }}>
+                    Enter the email of a person in your organisation who can provide this evidence.
                   </div>
-                ) : showReqEvidence ? (
-                  <div style={{ padding: 14, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border2)" }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Request Evidence from Someone</div>
-                    <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 10 }}>
-                      Enter the email of a person in your organisation who can provide this evidence.
-                    </div>
-                    <input
-                      type="email"
-                      value={reqEmail}
-                      onChange={e => { setReqEmail(e.target.value); setReqError(""); }}
-                      placeholder={orgDomain ? `name@${orgDomain}` : "email@company.com"}
-                      style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: `1px solid ${reqError ? "var(--red)" : "var(--border2)"}`, background: "var(--bg)", color: "var(--text)", fontSize: 13, boxSizing: "border-box", marginBottom: 6 }}
-                    />
-                    {reqError && <div style={{ fontSize: 12, color: "var(--red)", marginBottom: 8 }}>✗ {reqError}</div>}
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        className="btn btn-primary"
-                        style={{ fontSize: 12, padding: "6px 14px" }}
-                        onClick={handleRequestEvidence}
-                        disabled={reqLoading || !reqEmail.trim()}
-                      >
-                        {reqLoading ? "Sending…" : "Send Request"}
-                      </button>
-                      <button
-                        className="btn btn-ghost"
-                        style={{ fontSize: 12, padding: "6px 14px" }}
-                        onClick={() => { setShowReqEvidence(false); setReqEmail(""); setReqError(""); }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                  <input
+                    type="email"
+                    value={reqEmail}
+                    onChange={e => { setReqEmail(e.target.value); setReqError(""); }}
+                    placeholder={orgDomain ? `name@${orgDomain}` : "email@company.com"}
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1px solid ${reqError ? "var(--red)" : "var(--dp-line)"}`, background: "var(--dp-bg)", color: "var(--dp-ink)", fontSize: 13.5, boxSizing: "border-box", marginBottom: 8, outline: "none" }}
+                  />
+                  {reqError && <div style={{ fontSize: 12, color: "var(--red)", marginBottom: 8, fontWeight: 600 }}>✗ {reqError}</div>}
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleRequestEvidence}
+                      disabled={reqLoading || !reqEmail.trim()}
+                    >
+                      {reqLoading ? "Sending…" : "Send Request"}
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => { setShowReqEvidence(false); setReqEmail(""); setReqError(""); }}
+                    >
+                      Cancel
+                    </button>
                   </div>
-                ) : (
-                  <button
-                    className="btn btn-ghost"
-                    style={{ fontSize: 12, padding: "6px 14px" }}
-                    onClick={() => { setShowReqEvidence(true); setReqError(""); }}
-                  >
-                    📋 Request Evidence from Someone
-                  </button>
-                )}
-              </div>
+                </div>
+              )}
+              {reqSuccess && (
+                <div style={{ fontSize: 13.5, color: "var(--green)", padding: "10px 16px", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                  ✓ Evidence request sent successfully.
+                  <button onClick={() => setReqSuccess(false)} style={{ background: "none", border: "none", color: "var(--green)", cursor: "pointer", fontSize: 13, marginLeft: "auto", fontWeight: 700 }}>Dismiss</button>
+                </div>
+              )}
             </>
           )}
 

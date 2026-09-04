@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { apiFetch, apiUpload } from "../api/client.js";
+import GlassSelect from "../components/GlassSelect.jsx";
 
 const FACET_LABEL = {
   IMPLEMENTED: "implemented", EVIDENCE: "evidence", REVIEWED: "reviewed",
@@ -79,10 +80,15 @@ function BatchList({ token }) {
       <div className="fir-card fir-upload">
         <h3>New framework sheet</h3>
         <input type="file" accept=".xlsx" onChange={(e) => setFile(e.target.files[0] || null)} />
-        <select value={frameworkKey} onChange={(e) => setFrameworkKey(e.target.value)}>
-          <option value="">— Detect framework from filename —</option>
-          {frameworks.map((f) => <option key={f.key} value={f.key}>{f.name}</option>)}
-        </select>
+        <GlassSelect
+          value={frameworkKey}
+          onChange={val => setFrameworkKey(val)}
+          options={[
+            { value: "", label: "— Detect framework from filename —" },
+            ...frameworks.map(f => ({ value: f.key, label: f.name }))
+          ]}
+          style={{ minWidth: 260 }}
+        />
         <button className="btn btn-primary" disabled={!file || busy} onClick={upload}>
           {busy ? "Uploading…" : "Create review batch"}
         </button>
@@ -177,11 +183,16 @@ function ClusterCard({ batchId, token, cluster, onDecided }) {
 
       <div className="fir-cluster-pane fir-canonical">
         <label>Action
-          <select value={action} onChange={(e) => setAction(e.target.value)}>
-            <option value="NEW_CANONICAL">New canonical question</option>
-            <option value="MERGE_INTO_EXISTING">Merge into existing</option>
-            <option value="KEEP_SEPARATE">Keep separate</option>
-          </select>
+          <GlassSelect
+            value={action}
+            onChange={val => setAction(val)}
+            options={[
+              { value: "NEW_CANONICAL", label: "New canonical question" },
+              { value: "MERGE_INTO_EXISTING", label: "Merge into existing" },
+              { value: "KEEP_SEPARATE", label: "Keep separate" },
+            ]}
+            style={{ width: "100%", marginTop: 6 }}
+          />
         </label>
         {action === "MERGE_INTO_EXISTING" && (
           <label>Existing canonical quest_id

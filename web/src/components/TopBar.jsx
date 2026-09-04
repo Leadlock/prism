@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import NotificationBell from "./NotificationBell.jsx";
+import UserMenu from "./UserMenu.jsx";
 import { apiFetch } from "../api/client.js";
 
 export default function TopBar({
@@ -101,44 +102,38 @@ export default function TopBar({
         {/* Primary actions */}
         {!isViewer && (
           <>
-            <button className="btn btn-ghost" onClick={onSaveDraft}>Save draft</button>
+            <button className="btn btn-ghost" onClick={onSaveDraft}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
+              <span>Save draft</span>
+            </button>
             {isVerified === false ? (
-              <button className="btn btn-primary" onClick={onSaveAndContinue}>Save &amp; Continue</button>
+              <button className="btn btn-primary" onClick={onSaveAndContinue}>
+                <span>Save &amp; Continue</span>
+              </button>
             ) : (
               <button className="btn btn-primary" onClick={onSubmitReview}>
-                {currentAnswer && currentAnswer !== "IMPLEMENTED" ? "Save Changes" : "Submit for review"}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span>{currentAnswer && currentAnswer !== "IMPLEMENTED" ? "Save Changes" : "Submit for review"}</span>
               </button>
             )}
           </>
         )}
 
-        {/* ⋮ overflow nav */}
-        <div style={{ position: "relative" }}>
-          <button
-            className="btn btn-ghost"
-            style={{ padding: "6px 10px", fontSize: 18, lineHeight: 1 }}
-            onClick={() => setMenuOpen(v => !v)}
-            title="More"
-          >⋮</button>
-          {menuOpen && (
-            <>
-              <div style={{ position: "fixed", inset: 0, zIndex: 1999 }} onClick={() => setMenuOpen(false)} />
-              <div style={{
-                position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 2000,
-                background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 10,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.18)", minWidth: 160, padding: "6px 0",
-              }}>
-                <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setMenuOpen(false); navigate("/dashboard"); }}>Dashboard</button>
-                {!isViewer && <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setMenuOpen(false); navigate("/vault"); }}>Vault</button>}
-                {showReview && <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setMenuOpen(false); isVerified === false ? setReviewLockedOpen(true) : navigate("/review"); }}>Review</button>}
-                {showAdmin && <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setMenuOpen(false); navigate("/admin"); }}>Admin</button>}
-                <div style={{ height: 1, background: "var(--border2)", margin: "4px 0" }} />
-                {onThemeToggle && <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setMenuOpen(false); onThemeToggle(); }}>{theme === "dark" ? "☀ Light mode" : "☾ Dark mode"}</button>}
-                <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13, color: "var(--red, #ef4444)" }} onClick={() => { setMenuOpen(false); onLogout(); }}>Logout</button>
-              </div>
-            </>
-          )}
-        </div>
+        {/* Themed Navigation & Account Menu */}
+        <UserMenu
+          user={user}
+          company={company}
+          theme={theme}
+          onThemeToggle={onThemeToggle}
+          onLogout={onLogout}
+          isVerified={isVerified}
+        />
       </div>
 
       {/* Mobile actions toggle */}

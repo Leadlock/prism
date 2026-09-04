@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiFetch, apiUpload } from "../api/client.js";
 import DependencySelect from "../components/DependencySelect.jsx";
+import GlassSelect from "../components/GlassSelect.jsx";
+import UserMenu from "../components/UserMenu.jsx";
 
 const TAB_STORAGE_KEY = "superadmin_active_tab";
 
@@ -623,10 +625,9 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
 
       <div style={{ marginBottom: 20 }}>
         <label style={{ fontSize: 12, color: "var(--text3)", display: "block", marginBottom: 6 }}>Select Company</label>
-        <select
+        <GlassSelect
           value={brandCompanyId}
-          onChange={async (e) => {
-            const id = e.target.value;
+          onChange={async (id) => {
             setBrandCompanyId(id);
             setBrandColor("");
             setBrandLogoPreview(null);
@@ -641,11 +642,12 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
             } catch { /* ignore */ }
             finally { setBrandLoading(false); }
           }}
-          style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, width: "100%" }}
-        >
-          <option value="">— choose a company —</option>
-          {companies.map(c => <option key={c.id} value={c.id}>{c.name} ({c.domain})</option>)}
-        </select>
+          options={[
+            { value: "", label: "— Choose a company —" },
+            ...companies.map(c => ({ value: String(c.id), label: `${c.name} (${c.slug})` }))
+          ]}
+          style={{ width: "100%" }}
+        />
       </div>
 
       {brandCompanyId && (
@@ -1776,14 +1778,14 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
           <div style={{ fontFamily: "var(--mono)", fontSize: "11px", color: "var(--accent2)", letterSpacing: "0.1em", textTransform: "uppercase" }}>PLATFORM ADMIN</div>
           <h1 style={{ fontSize: "20px", fontWeight: 600, marginTop: "4px", color: "var(--text)" }}>Super Admin Dashboard</h1>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ fontSize: "12px", color: "var(--text3)" }}>{user?.email}</span>
-          <button onClick={onThemeToggle} className="btn btn-ghost" style={{ padding: "6px 10px" }}>
-            {theme === "dark" ? "☀️" : "🌙"}
-          </button>
-          <button onClick={onLogout} className="btn" style={{ padding: "6px 14px", fontSize: "12px", background: "rgba(239,68,68,0.12)", color: "var(--red)", border: "1px solid rgba(239,68,68,0.3)" }}>
-            Logout
-          </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <UserMenu
+            user={user}
+            company={{ name: "Platform Super Admin" }}
+            theme={theme}
+            onThemeToggle={onThemeToggle}
+            onLogout={onLogout}
+          />
         </div>
       </header>
 

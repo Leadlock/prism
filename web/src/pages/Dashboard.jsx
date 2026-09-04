@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, apiDownload } from "../api/client.js";
-import { BarChart, DonutChart, StackedBarChart } from "../components/Charts.jsx";
+import { BarChart, DonutChart, StackedBarChart, RingChart, BKColumnChart } from "../components/Charts.jsx";
 import {
   GRID_COLS, ROW_PX, GRID_MARGIN,
   buildLayout, moveItem, resizeItem,
@@ -10,11 +10,13 @@ import {
 import ExportMenu from "../components/ExportMenu.jsx";
 import Logo from "../components/Logo";
 import NotificationBell from "../components/NotificationBell.jsx";
+import GlassSelect from "../components/GlassSelect.jsx";
+import UserMenu from "../components/UserMenu.jsx";
 
 const WIDGET_DEFS = [
   { id: "maturity-dist",      cls: "dash-card dash-card-wide" },
   { id: "module-bar",         cls: "dash-card dash-card-wide" },
-  { id: "module-donuts",      cls: "",          style: { gridColumn: "1 / -1" } },
+  { id: "module-donuts",      cls: "dash-card dash-card-wide", style: { gridColumn: "1 / -1" } },
   { id: "answer-dist",        cls: "dash-card" },
   { id: "evidence-coverage",  cls: "dash-card dash-card-wide" },
   { id: "action-status",      cls: "dash-card" },
@@ -28,9 +30,9 @@ const WIDGET_DEFS = [
 ];
 const DEFAULT_WIDGET_ORDER = WIDGET_DEFS.map(w => w.id);
 
-// Health tone for a 0–100 ratio: teal/green healthy, amber mid, red low.
+// Health tone for a 0–100 ratio: green healthy, amber mid, indigo default/fresh.
 const toneFor = (pct) =>
-  pct >= 75 ? "var(--green)" : pct >= 45 ? "var(--dp-accent)" : pct >= 20 ? "var(--amber)" : "var(--red)";
+  pct >= 75 ? "var(--green)" : pct >= 45 ? "var(--dp-accent)" : pct >= 20 ? "var(--amber)" : "var(--dp-accent)";
 
 // The leading-edge data-rule value + colour for a widget. Panels that aren't a
 // single ratio return null and the rule stays a quiet hairline.
@@ -138,6 +140,13 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
     if ((def?.cls || "").includes("dash-card-wide")) return 8;
     return 4;
   };
+  const defaultH = (id) => {
+    if (id === "module-bar" || id === "evidence-coverage") return 13;
+    if (id === "maturity-dist") return 10;
+    if (id === "recently-reviewed" || id === "rejected-controls") return 10;
+    if (id === "action-status") return 9;
+    return 9;
+  };
   const [savedLayout, setSavedLayout] = useState(() => {
     try { return JSON.parse(localStorage.getItem("prism-widget-layout") || "{}") || {}; }
     catch { return {}; }
@@ -194,8 +203,18 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
     return () => ro.disconnect();
   }, [narrow, stats]);
 
-  // Measure each widget's natural content height → row units (only used until the
-  // user resizes that widget, after which the saved height wins).
+  // Reset dynamic data-driven widget heights on framework/data changes so layout immediately auto-sizes to the new module count
+  useEffect(() => {
+    setHeights((prev) => {
+      if (!prev["module-donuts"]) return prev;
+      const next = { ...prev };
+      delete next["module-donuts"];
+      return next;
+    });
+  }, [dashFramework, stats]);
+
+  // Measure each widget's natural content height → row units (adapts to data changes,
+  // e.g. switching frameworks with different module counts or large datasets).
   useEffect(() => {
     const ro = new ResizeObserver((entries) => {
       setHeights((prev) => {
@@ -204,11 +223,14 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
         for (const entry of entries) {
           const id = entry.target.dataset.wid;
           if (!id) continue;
-          // .dash-card-measure flows at natural height incl. its own 18px padding;
-          // + slack (card border + rounding) so a widget's row-span never clips
-          // its content — there are no scrollbars inside widgets.
-          const rows = Math.max(5, Math.ceil((entry.target.offsetHeight + 22) / (ROW_PX + GRID_MARGIN)));
-          if ((next[id] ?? 0) !== rows) { next[id] = rows; changed = true; }
+          const scrollH = entry.target.scrollHeight;
+          const offsetH = entry.target.offsetHeight;
+          const measuredPx = Math.max(scrollH, offsetH);
+          const rows = Math.max(4, Math.ceil((measuredPx + 16) / (ROW_PX + GRID_MARGIN)));
+          if ((next[id] ?? 0) !== rows) {
+            next[id] = rows;
+            changed = true;
+          }
         }
         return changed ? next : prev;
       });
@@ -216,7 +238,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
     roRef.current = ro;
     for (const el of contentRefs.current.values()) ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [savedLayout, stats]);
 
   // Stable ref callback per widget id (recreating it each render would make
   // React thrash observe/unobserve and drop height measurements).
@@ -267,7 +289,8 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
       } else {
         const w = mode === "s" ? start.w : start.w + dxCells;
         const h = mode === "e" ? start.h : start.h + dyCells;
-        working = resizeItem(base, id, w, h, heights[id] || 5);
+        const minH = heights[id] ? Math.max(MIN_H, heights[id]) : MIN_H;
+        working = resizeItem(base, id, w, h, minH);
         itemsRef.current = working;
         setGesture({ id, mode, items: working });
       }
@@ -437,7 +460,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
           { key: "l1", label: "L1 — Ad-hoc",     color: "var(--red)" },
           { key: "l2", label: "L2 — Repeatable",  color: "var(--amber)" },
           { key: "l3", label: "L3 — Defined",     color: "var(--teal)" },
-          { key: "l4", label: "L4 — Managed",     color: "var(--accent2)" },
+          { key: "l4", label: "L4 — Managed",     color: "var(--dp-accent)" },
           { key: "l5", label: "L5 — Optimised",   color: "var(--green)" },
         ];
         const total = levels.reduce((s, l) => s + (md[l.key] || 0), 0);
@@ -445,7 +468,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
           ? (levels.reduce((s, l, i) => s + (i + 1) * (md[l.key] || 0), 0) / total)
           : 0;
         return (
-          <>
+          <div className="dash-widget-inner-flex">
             <div className="dash-card-title">
               Maturity distribution
               {total > 0 && <span className="dash-card-tag">avg L{avg.toFixed(1)}</span>}
@@ -469,118 +492,176 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                 })}
               </div>
             )}
-          </>
+          </div>
         );
       }
 
       case "module-bar":
         return (
-          <>
+          <div className="dash-widget-inner-flex">
             <div className="dash-card-title">
               Per-module completion
-              <span className="dash-card-tag">{stats.moduleCompletion.length} modules</span>
+              <span className="dash-card-tag">{stats.moduleCompletion?.length || 0} modules</span>
             </div>
-            <div className="chart-legend-row">
+            <div className="chart-legend-row" style={{ marginBottom: 8 }}>
               <span className="chart-legend-dot" style={{ background: "var(--green)" }} />
-              <span style={{ fontSize: 11, color: "var(--dp-quiet)" }}>Signed off</span>
-              <span className="chart-legend-dot" style={{ background: "var(--amber)", marginLeft: 12 }} />
-              <span style={{ fontSize: 11, color: "var(--dp-quiet)" }}>Assessed</span>
+              <span style={{ fontSize: 13, color: "var(--dp-quiet)", fontWeight: 600 }}>Signed off</span>
+              <span className="chart-legend-dot" style={{ background: "var(--amber)", marginLeft: 16 }} />
+              <span style={{ fontSize: 13, color: "var(--dp-quiet)", fontWeight: 600 }}>In progress</span>
             </div>
-            <StackedBarChart
-              data={stats.moduleCompletion.map(m => ({
-                label: m.moduleId,
-                finished: m.finished,
-                assessed: m.assessed,
-                total: m.total
-              }))}
-            />
-          </>
+            <div className="dash-chart-flex-grow">
+              <BKColumnChart
+                height={220}
+                data={(stats.moduleCompletion || []).map(m => ({
+                  label: m.moduleId || m.name,
+                  name: m.name,
+                  finished: m.finished,
+                  assessed: m.assessed,
+                  total: m.total
+                }))}
+                onBarClick={(module) => openModule(module)}
+              />
+            </div>
+          </div>
         );
 
       case "module-donuts":
         return (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 16 }}>
-            {stats.moduleCompletion.map((module, idx) => {
-              const assessedNotFinished = Math.max(0, module.assessed - module.finished);
-              const notStarted = Math.max(0, module.total - Math.max(module.assessed, module.finished));
-              const pct = module.total > 0 ? Math.round((module.finished / module.total) * 100) : 0;
-              return (
-                <div
-                  key={idx}
-                  className="dash-card"
-                  style={{ cursor: "pointer", margin: 0, "--rule": `${pct}%`, "--rule-color": toneFor(pct) }}
-                  onClick={() => openModule(module)}
-                >
-                  <div className="dash-card-title">
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{module.name}</span>
-                    <span className="dash-card-tag">{module.moduleId}</span>
+          <div className="dash-widget-inner-flex">
+            <div className="dash-card-title">
+              Per-module donut breakdown
+              <span className="dash-card-tag">{stats.moduleCompletion?.length || 0} modules</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16, paddingTop: 4 }}>
+              {stats.moduleCompletion.map((module, idx) => {
+                const assessedNotFinished = Math.max(0, module.assessed - module.finished);
+                const notStarted = Math.max(0, module.total - Math.max(module.assessed, module.finished));
+                const pct = module.total > 0 ? Math.round((module.finished / module.total) * 100) : 0;
+                const moduleTitle = module.name && module.name !== module.moduleId
+                  ? `${module.moduleId} - ${module.name}`
+                  : (module.name || module.moduleId);
+
+                return (
+                  <div
+                    key={idx}
+                    className="dash-card dash-card-module"
+                    style={{
+                      cursor: "pointer",
+                      margin: 0,
+                      padding: "16px 16px 14px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "stretch",
+                      "--rule": `${pct}%`,
+                      "--rule-color": toneFor(pct)
+                    }}
+                    onClick={() => openModule(module)}
+                  >
+                    <div
+                      style={{
+                        fontFamily: "var(--dp-font-mono, monospace)",
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        color: "var(--dp-ink, #0F172A)",
+                        textAlign: "center",
+                        paddingBottom: 8,
+                        borderBottom: "1px solid var(--dp-line, #E2E8F0)",
+                        marginBottom: 14,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={moduleTitle}
+                    >
+                      {moduleTitle}
+                    </div>
+                    <DonutChart
+                      size={118}
+                      centerValue={`${pct}%`}
+                      centerCaption="SIGNED OFF"
+                      vertical={true}
+                      segments={[
+                        { label: "Signed off",  value: module.finished,     color: "var(--green, #10B981)" },
+                        { label: "In progress", value: assessedNotFinished, color: "var(--amber, #F59E0B)" },
+                        { label: "Not started", value: notStarted,          color: "var(--dp-surface-2, #F1F5F9)" }
+                      ]}
+                    />
+                    <div style={{ marginTop: 14, paddingTop: 8, fontSize: 12, color: "var(--dp-quiet, #64748B)", textAlign: "center", fontWeight: 500 }}>
+                      {module.finished} of {module.total} controls
+                    </div>
                   </div>
-                  <DonutChart
-                    size={112}
-                    centerValue={`${pct}%`}
-                    centerCaption="signed off"
-                    segments={[
-                      { label: "Signed off",  value: module.finished,     color: "var(--green)" },
-                      { label: "In progress", value: assessedNotFinished, color: "var(--amber)" },
-                      { label: "Not started", value: notStarted,          color: "var(--dp-surface-2)" }
-                    ]}
-                  />
-                  <div style={{ marginTop: 12, fontSize: 11, color: "var(--dp-quiet)", textAlign: "center" }}>
-                    {module.finished} of {module.total} controls
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         );
 
       case "answer-dist": {
-        const answered = (a) => stats.answerDistribution.find(x => x.answer === a)?.count || 0;
+        const answered = (a) => stats.answerDistribution?.find(x => x.answer === a)?.count || 0;
+        const assessed = stats.overall?.assessed || 0;
         return (
-          <>
+          <div className="dash-widget-inner-flex">
             <div className="dash-card-title">
               Answer mix
-              <span className="dash-card-tag">{stats.overall.assessed} assessed</span>
+              <span className="dash-card-tag">{assessed} assessed</span>
             </div>
-            <DonutChart
-              centerValue={answered("IMPLEMENTED")}
-              centerCaption="impl."
-              size={132}
-              segments={[
-                { label: "Implemented",        value: stats.answerDistribution.find(a => a.answer === "IMPLEMENTED")?.count || 0,           color: "var(--green)" },
-                { label: "Not Implemented",    value: stats.answerDistribution.find(a => a.answer === "NOT_IMPLEMENTED")?.count || 0,       color: "var(--red)" },
-                { label: "Partial",            value: stats.answerDistribution.find(a => a.answer === "PARTIALLY_IMPLEMENTED")?.count || 0, color: "var(--amber)" },
-                { label: "Planned",            value: stats.answerDistribution.find(a => a.answer === "PLANNED")?.count || 0,               color: "var(--dp-accent)" },
-                { label: "Not Applicable",     value: stats.answerDistribution.find(a => a.answer === "NOT_APPLICABLE")?.count || 0,        color: "var(--dp-quiet)" }
-              ]}
-            />
-          </>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <RingChart
+                size={150}
+                strokeWidth={7.5}
+                ringGap={4.5}
+                defaultCenterValue={answered("IMPLEMENTED")}
+                defaultCenterLabel="Impl."
+                data={[
+                  { label: "Implemented",     value: answered("IMPLEMENTED"),           maxValue: assessed, color: "var(--green)" },
+                  { label: "Not Implemented", value: answered("NOT_IMPLEMENTED"),       maxValue: assessed, color: "var(--red)" },
+                  { label: "Partial",         value: answered("PARTIALLY_IMPLEMENTED"), maxValue: assessed, color: "var(--amber)" },
+                  { label: "Planned",         value: answered("PLANNED"),               maxValue: assessed, color: "var(--dp-accent)" },
+                  { label: "Not Applicable",  value: answered("NOT_APPLICABLE"),        maxValue: assessed, color: "var(--dp-quiet)" }
+                ]}
+              />
+            </div>
+          </div>
         );
       }
 
       case "evidence-coverage": {
         const cov = stats.evidenceCoverage.reduce((t, e) => t + (e.covered || 0), 0);
         const tot = stats.evidenceCoverage.reduce((t, e) => t + (e.total || 0), 0);
+        const pct = tot > 0 ? Math.round((cov / tot) * 100) : 0;
         return (
-          <>
+          <div className="dash-widget-inner-flex">
             <div className="dash-card-title">
               Evidence coverage
-              <span className="dash-card-tag">{cov} of {tot} controls</span>
+              <span className="dash-card-tag">{cov} of {tot} controls ({pct}%)</span>
             </div>
-            <BarChart
-              data={stats.evidenceCoverage.map(e => ({ label: e.moduleId, value: e.covered, total: e.total }))}
-              valueKey="value"
-              labelKey="label"
-              color="var(--dp-accent)"
-              maxValue={Math.max(...stats.evidenceCoverage.map(e => e.total), 1)}
-            />
-          </>
+            <div className="chart-legend-row" style={{ marginBottom: 8 }}>
+              <span className="chart-legend-dot" style={{ background: "var(--dp-accent)" }} />
+              <span style={{ fontSize: 13, color: "var(--dp-quiet)", fontWeight: 600 }}>Covered</span>
+              <span className="chart-legend-dot" style={{ background: "var(--dp-surface-3, rgba(203, 213, 225, 0.7))", marginLeft: 16 }} />
+              <span style={{ fontSize: 13, color: "var(--dp-quiet)", fontWeight: 600 }}>Uncovered</span>
+            </div>
+            <div className="dash-chart-flex-grow">
+              <BKColumnChart
+                height={220}
+                data={stats.evidenceCoverage.map(e => ({
+                  label: e.moduleId,
+                  name: e.name || e.moduleId,
+                  covered: e.covered || 0,
+                  total: e.total || 1,
+                }))}
+                valueKey="covered"
+                primaryColor="var(--dp-accent)"
+                valueLabel="Evidence Covered"
+              />
+            </div>
+          </div>
         );
       }
 
       case "action-status":
         return (
-          <>
+          <div className="dash-widget-inner-flex">
             <div className="dash-card-title">Action status</div>
             {stats.actionStatus.length === 0 ? (
               <p className="dash-empty">No remediation actions yet.</p>
@@ -595,13 +676,13 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                 color="var(--dp-accent)"
               />
             )}
-          </>
+          </div>
         );
 
       case "evidence-requests":
         if (!stats.requestMetrics) return null;
         return (
-          <div onClick={() => navigate("/requests")} style={{ cursor: "pointer" }}>
+          <div className="dash-widget-inner-flex" onClick={() => navigate("/requests")} style={{ cursor: "pointer" }}>
             <div className="dash-card-title">
               Evidence requests
               <span className="dash-card-tag">tap to open</span>
@@ -637,7 +718,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
       case "evidence-vault":
         if (!stats.vaultMetrics) return null;
         return (
-          <div onClick={() => navigate("/vault")} style={{ cursor: "pointer" }}>
+          <div className="dash-widget-inner-flex" onClick={() => navigate("/vault")} style={{ cursor: "pointer" }}>
             <div className="dash-card-title">
               Evidence vault
               <span className="dash-card-tag">tap to open</span>
@@ -671,7 +752,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
         const pct = stats.scoreEligible.total > 0
           ? Math.round((stats.scoreEligible.count / stats.scoreEligible.total) * 100) : 0;
         return (
-          <>
+          <div className="dash-widget-inner-flex">
             <div className="dash-card-title">
               Score-eligible controls
               <span className="dash-card-tag">{pct}%</span>
@@ -682,7 +763,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                   { label: "Eligible", value: stats.scoreEligible.count, color: "var(--green)" },
                   { label: "Other",    value: Math.max(0, stats.scoreEligible.total - stats.scoreEligible.count), color: "var(--dp-surface-2)" }
                 ]}
-                size={92}
+                size={96}
                 centerValue={`${pct}%`}
                 centerCaption="eligible"
               />
@@ -691,7 +772,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                 <div className="dash-figure-label">of {stats.scoreEligible.total} controls scored</div>
               </div>
             </div>
-          </>
+          </div>
         );
       }
 
@@ -700,7 +781,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
         const pct = stats.automatedCoverage.total > 0
           ? Math.round((stats.automatedCoverage.count / stats.automatedCoverage.total) * 100) : 0;
         return (
-          <>
+          <div className="dash-widget-inner-flex">
             <div className="dash-card-title">
               Automated coverage
               <span className="dash-card-tag">{pct}%</span>
@@ -711,7 +792,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                   { label: "Automated", value: stats.automatedCoverage.count, color: "var(--dp-accent)" },
                   { label: "Other",     value: Math.max(0, stats.automatedCoverage.total - stats.automatedCoverage.count), color: "var(--dp-surface-2)" }
                 ]}
-                size={92}
+                size={96}
                 centerValue={`${pct}%`}
                 centerCaption="automated"
               />
@@ -720,14 +801,14 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                 <div className="dash-figure-label">of {stats.automatedCoverage.total} controls automated</div>
               </div>
             </div>
-          </>
+          </div>
         );
       }
 
       case "notes-coverage":
         if (!stats.notesMetrics) return null;
         return (
-          <>
+          <div className="dash-widget-inner-flex">
             <div className="dash-card-title">Notes coverage</div>
             <div className="dash-kpi-row">
               <div className="dash-kpi">
@@ -743,7 +824,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                 <div className="dash-kpi-label">No notes</div>
               </div>
             </div>
-          </>
+          </div>
         );
 
       case "recently-reviewed": {
@@ -759,7 +840,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
           return `${Math.floor(hrs / 24)}d ago`;
         };
         return (
-          <>
+          <div className="dash-widget-inner-flex">
             <div className="dash-card-title">
               Recent reviews
               <span className="dash-card-tag">{items.length} this month</span>
@@ -784,7 +865,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                 );
               })}
             </div>
-          </>
+          </div>
         );
       }
 
@@ -800,7 +881,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
           return `${Math.floor(hrs / 24)}d ago`;
         };
         return (
-          <>
+          <div className="dash-widget-inner-flex">
             <div className="dash-card-title">
               Rejected controls
               <span className="dash-card-tag" style={items.length > 0 ? { color: "var(--red)" } : undefined}>
@@ -845,7 +926,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                 })}
               </div>
             )}
-          </>
+          </div>
         );
       }
 
@@ -905,85 +986,134 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
         <div className="dash-header-actions">
           {/* Compliance scope — only when the company runs more than one framework */}
           {frameworks.length > 1 && (
-            <select
-              className="month-selector"
+            <GlassSelect
               value={dashFramework}
-              onChange={(e) => setDashFramework(e.target.value)}
-              title="Scope the dashboard to one compliance framework"
-            >
-              <option value="">All frameworks</option>
-              {frameworks.map((f) => (
-                <option key={f.key} value={f.key}>{f.name}</option>
-              ))}
-            </select>
+              onChange={setDashFramework}
+              placeholder="All frameworks"
+              options={[
+                { value: "", label: "All frameworks" },
+                ...frameworks.map(f => ({ value: f.key, label: f.name }))
+              ]}
+              icon={
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+              }
+            />
           )}
           {/* Month */}
-          <select className="month-selector" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
-            {generateMonthOptions().map(month => (
-              <option key={month} value={month}>
-                {new Date(month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
-              </option>
-            ))}
-          </select>
+          <GlassSelect
+            value={selectedMonth}
+            onChange={setSelectedMonth}
+            options={generateMonthOptions().map(month => ({
+              value: month,
+              label: new Date(month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })
+            }))}
+            icon={
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+            }
+          />
           {/* Filters — collapsed into a popover */}
           <div style={{ position: "relative" }}>
             <button
               className={`btn ${activeFilterCount ? "btn-primary" : "btn-ghost"}`}
               onClick={() => setDashFiltersOpen(v => !v)}
               title="Filter by status, priority, owner or tag"
+              style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
             >
-              ⚑ Filters{activeFilterCount ? ` · ${activeFilterCount}` : ""}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: activeFilterCount ? "#fff" : "var(--dp-accent, #4F46E5)" }}>
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+              </svg>
+              <span>Filters{activeFilterCount ? ` · ${activeFilterCount}` : ""}</span>
             </button>
             {dashFiltersOpen && (
               <>
                 <div style={{ position: "fixed", inset: 0, zIndex: 1999 }} onClick={() => setDashFiltersOpen(false)} />
                 <div style={{
-                  position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 2000,
-                  background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 10,
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.18)", width: 244, padding: 14,
-                  display: "flex", flexDirection: "column", gap: 10,
+                  position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 2000,
+                  background: "linear-gradient(135deg, rgba(255, 255, 255, 0.68) 0%, rgba(255, 255, 255, 0.42) 100%)",
+                  backdropFilter: "blur(36px) saturate(210%)",
+                  WebkitBackdropFilter: "blur(36px) saturate(210%)",
+                  border: "1px solid rgba(255, 255, 255, 0.75)",
+                  borderRadius: 16,
+                  boxShadow: "0 24px 50px -8px rgba(15, 23, 42, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.4), inset 0 1.5px 1px 0 rgba(255, 255, 255, 0.95)",
+                  width: 270, padding: 16,
+                  display: "flex", flexDirection: "column", gap: 12,
                 }}>
-                  <label className="dash-filter-field">
-                    <span>Status</span>
-                    <select className="month-selector" value={dashStatusFilter} onChange={(e) => setDashStatusFilter(e.target.value)}>
-                      <option value="">All statuses</option>
-                      <option value="IMPLEMENTED">Implemented</option>
-                      <option value="PARTIALLY_IMPLEMENTED">Partially Implemented</option>
-                      <option value="PLANNED">Planned</option>
-                      <option value="NOT_IMPLEMENTED">Not Implemented</option>
-                      <option value="NOT_APPLICABLE">Not Applicable</option>
-                    </select>
-                  </label>
-                  <label className="dash-filter-field">
-                    <span>Priority</span>
-                    <select className="month-selector" value={dashPriorityFilter} onChange={(e) => setDashPriorityFilter(e.target.value)}>
-                      <option value="">All priorities</option>
-                      <option value="Critical">Critical</option>
-                      <option value="High">High</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Low">Low</option>
-                    </select>
-                  </label>
+                  <div className="dash-filter-field">
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--dp-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, display: "block" }}>Status</span>
+                    <GlassSelect
+                      value={dashStatusFilter}
+                      onChange={setDashStatusFilter}
+                      style={{ width: "100%" }}
+                      align="left"
+                      options={[
+                        { value: "", label: "All statuses" },
+                        { value: "IMPLEMENTED", label: "Implemented" },
+                        { value: "PARTIALLY_IMPLEMENTED", label: "Partially Implemented" },
+                        { value: "PLANNED", label: "Planned" },
+                        { value: "NOT_IMPLEMENTED", label: "Not Implemented" },
+                        { value: "NOT_APPLICABLE", label: "Not Applicable" },
+                      ]}
+                    />
+                  </div>
+                  <div className="dash-filter-field">
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--dp-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, display: "block" }}>Priority</span>
+                    <GlassSelect
+                      value={dashPriorityFilter}
+                      onChange={setDashPriorityFilter}
+                      style={{ width: "100%" }}
+                      align="left"
+                      options={[
+                        { value: "", label: "All priorities" },
+                        { value: "Critical", label: "Critical" },
+                        { value: "High", label: "High" },
+                        { value: "Medium", label: "Medium" },
+                        { value: "Low", label: "Low" },
+                      ]}
+                    />
+                  </div>
                   {availableOwners.length > 0 && (
-                    <label className="dash-filter-field">
-                      <span>Owner</span>
-                      <select className="month-selector" value={dashOwnerFilter} onChange={(e) => setDashOwnerFilter(e.target.value)}>
-                        <option value="">All owners</option>
-                        {availableOwners.map(o => <option key={o} value={o}>{o}</option>)}
-                      </select>
-                    </label>
+                    <div className="dash-filter-field">
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--dp-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, display: "block" }}>Owner</span>
+                      <GlassSelect
+                        value={dashOwnerFilter}
+                        onChange={setDashOwnerFilter}
+                        style={{ width: "100%" }}
+                        align="left"
+                        options={[
+                          { value: "", label: "All owners" },
+                          ...availableOwners.map(o => ({ value: o, label: o }))
+                        ]}
+                      />
+                    </div>
                   )}
                   {availableTags.length > 0 && (
-                    <label className="dash-filter-field">
-                      <span>Tag</span>
-                      <select className="month-selector" value={dashTagFilter} onChange={(e) => setDashTagFilter(e.target.value)}>
-                        <option value="">All tags</option>
-                        {availableTags.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </label>
+                    <div className="dash-filter-field">
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--dp-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, display: "block" }}>Tag</span>
+                      <GlassSelect
+                        value={dashTagFilter}
+                        onChange={setDashTagFilter}
+                        style={{ width: "100%" }}
+                        align="left"
+                        options={[
+                          { value: "", label: "All tags" },
+                          ...availableTags.map(t => ({ value: t, label: t }))
+                        ]}
+                      />
+                    </div>
                   )}
                   {activeFilterCount > 0 && (
-                    <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={clearDashFilters}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 13, fontWeight: 600, color: "var(--red, #EF4444)", marginTop: 4 }}
+                      onClick={clearDashFilters}
+                    >
                       Clear all filters
                     </button>
                   )}
@@ -1001,43 +1131,50 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
               className={`btn ${editLayout ? "btn-primary" : "btn-ghost"}`}
               onClick={() => setEditLayout(v => !v)}
               title="Rearrange and resize dashboard widgets"
+              style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
             >
-              {editLayout ? "✓ Done" : "✎ Customize"}
+              {editLayout ? (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <span>Done</span>
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--dp-accent, #4F46E5)" }}>
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                  <span>Customize</span>
+                </>
+              )}
             </button>
           )}
           <NotificationBell token={token} />
-          {!isAuditor && <button className="btn btn-ghost" onClick={() => navigate("/tracker")}>Tracker</button>}
-          {stats && <ExportMenu stats={stats} company={company} />}
-          {/* ⋮ overflow menu */}
-          <div style={{ position: "relative" }}>
+          {!isAuditor && (
             <button
               className="btn btn-ghost"
-              style={{ padding: "6px 10px", fontSize: 18, lineHeight: 1 }}
-              onClick={() => setDashMenuOpen(v => !v)}
-              title="More"
-            >⋮</button>
-            {dashMenuOpen && (
-              <>
-                <div style={{ position: "fixed", inset: 0, zIndex: 1999 }} onClick={() => setDashMenuOpen(false)} />
-                <div style={{
-                  position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 2000,
-                  background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 10,
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.18)", minWidth: 160, padding: "6px 0",
-                }}>
-                  {isAdmin && <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); navigate("/admin"); }}>Admin</button>}
-                  {isAdmin && isVerified !== false && <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); navigate("/auditors"); }}>Auditors</button>}
-                  {isLeadOrAdmin && <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); isVerified === false ? setReviewLockedOpen(true) : navigate("/review"); }}>Review</button>}
-                  {(isLeadOrAdmin || isAuditor) && <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); navigate("/settings/integrations"); }}>Integrations</button>}
-                  <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); navigate("/executive"); }}>Executive overview</button>
-                  <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); navigate("/findings"); }}>Findings</button>
-                  <div style={{ height: 1, background: "var(--border2)", margin: "4px 0" }} />
-                  <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); resetLayout(); }}>⊞ Reset Layout</button>
-                  <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13 }} onClick={() => { setDashMenuOpen(false); onThemeToggle(); }}>{theme === "dark" ? "☀ Light mode" : "☾ Dark mode"}</button>
-                  <button className="btn btn-ghost" style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0, padding: "8px 16px", fontSize: 13, color: "var(--red, #ef4444)" }} onClick={() => { setDashMenuOpen(false); onLogout(); }}>Logout</button>
-                </div>
-              </>
-            )}
-          </div>
+              onClick={() => navigate("/tracker")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--dp-accent, #4F46E5)" }}>
+                <path d="M9 11l3 3L22 4" />
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+              </svg>
+              <span>Tracker</span>
+            </button>
+          )}
+          {stats && <ExportMenu stats={stats} company={company} />}
+          <UserMenu
+            user={user}
+            company={company}
+            theme={theme}
+            onThemeToggle={onThemeToggle}
+            onLogout={onLogout}
+            isVerified={isVerified}
+            onResetLayout={resetLayout}
+          />
         </div>
       </div>
 
@@ -1045,9 +1182,13 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
         <div className="dash-standing">
           <div className="dash-standing-hero">
             <div className="dash-eyebrow">
-              Audit standing
+              <span>Audit standing</span>
               <span className="dash-tag">{monthLabel}</span>
-              {activeFramework && <span className="dash-tag">{activeFramework.name}</span>}
+              {activeFramework && (
+                <span className="dash-tag dash-tag-framework" title={activeFramework.name}>
+                  {activeFramework.name}
+                </span>
+              )}
             </div>
             <div className="dash-standing-num">
               <CountUp value={signedOffPct} /><span className="dash-standing-pct">%</span>
@@ -1073,19 +1214,37 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
           </div>
 
           <div className="dash-standing-read">
-            <p className="dash-standing-sentence">
+            {/* Executive Highlighted Assessment Banner */}
+            <div className="dash-standing-sentence">
               {o.total > 0 ? (
-                <>
-                  <b>{o.assessed} of {o.total}</b> controls assessed, <b>{o.finished}</b> signed off.
-                  {" "}Average maturity sits at <b>{avgMatLabel}</b>.
-                  {" "}{overdue > 0
-                    ? <><b>{overdue}</b> {overdue === 1 ? "assessment is" : "assessments are"} overdue.</>
-                    : "Nothing is overdue."}
-                </>
+                <div className="dash-sentence-inner">
+                  <span className="dash-sentence-chunk">
+                    <strong className="dash-highlight-num">{o.assessed}</strong>
+                    <span className="dash-highlight-denom">of {o.total}</span> controls assessed
+                  </span>
+                  <span className="dash-sentence-dot">·</span>
+                  <span className="dash-sentence-chunk">
+                    <strong className="dash-highlight-num green">{o.finished}</strong> signed off
+                  </span>
+                  <span className="dash-sentence-dot">·</span>
+                  <span className="dash-sentence-chunk">
+                    Average maturity sits at <strong className="dash-highlight-badge purple">{avgMatLabel}</strong>
+                  </span>
+                  <span className="dash-sentence-dot">·</span>
+                  <span className="dash-sentence-chunk">
+                    {overdue > 0 ? (
+                      <span className="dash-highlight-badge red"><b>{overdue}</b> overdue</span>
+                    ) : (
+                      <span className="dash-highlight-badge green">✓ Nothing is overdue</span>
+                    )}
+                  </span>
+                </div>
               ) : (
                 "Import your control set to start tracking audit readiness."
               )}
-            </p>
+            </div>
+
+            {/* Operational Metrics Readout (2x2 Grid) */}
             <div className="dash-readouts">
               <div className="dash-readout">
                 <span className="dash-readout-val">{pctOf(evCov, evTot)}%</span>
@@ -1169,7 +1328,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
           }
 
           const order = rendered.map((x) => x.id);
-          const base = buildLayout(order, savedLayout, heights, defaultW);
+          const base = buildLayout(order, savedLayout, heights, defaultW, defaultH);
           const items = gesture ? gesture.items : base;
           itemsRef.current = items;
           const byId = Object.fromEntries(items.map((i) => [i.id, i]));
