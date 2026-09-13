@@ -102,11 +102,11 @@ function CaptureStep({ onSent }) {
     if (emailError) { setError(emailError); return; }
     setLoading(true);
     try {
-      await apiFetch("/api/auth/signup/start", {
+      const res = await apiFetch("/api/auth/signup/start", {
         method: "POST",
         body: JSON.stringify({ fullName, email }),
       });
-      onSent(email, fullName);
+      onSent(email, fullName, res?.devLink);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -163,14 +163,18 @@ function CaptureStep({ onSent }) {
 }
 
 // ── Step 2: "check your inbox" ───────────────────────────────────────────────
-function SentStep({ email, onResend }) {
+function SentStep({ email, devLink, onResend }) {
   const [resent, setResent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [currentDevLink, setCurrentDevLink] = useState(devLink);
 
   const resend = async () => {
     setBusy(true);
     try {
-      await onResend();
+      const res = await onResend();
+      if (res?.devLink) {
+        setCurrentDevLink(res.devLink);
+      }
       setResent(true);
     } finally {
       setBusy(false);
@@ -184,7 +188,49 @@ function SentStep({ email, onResend }) {
         We've sent a link to <strong>{email}</strong>. Click it to confirm your email and
         finish setting up your workspace. The link expires in 1 hour.
       </p>
-      <p className="login-terms" style={{ marginTop: 24 }}>
+
+      {currentDevLink && (
+        <div style={{
+          marginTop: "20px",
+          marginBottom: "20px",
+          padding: "16px 20px",
+          background: "rgba(59, 130, 246, 0.08)",
+          border: "1px solid rgba(59, 130, 246, 0.3)",
+          borderRadius: "10px",
+          textAlign: "left"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", color: "#60a5fa", fontWeight: 600, fontSize: "14px" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            Local Development Mode
+          </div>
+          <p style={{ margin: "0 0 14px", fontSize: "13px", color: "var(--text-secondary, #94a3b8)", lineHeight: 1.5 }}>
+            Outbound email is not active locally. Click below to continue directly to workspace setup:
+          </p>
+          <a
+            href={currentDevLink}
+            className="login-btn"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              textDecoration: "none",
+              textAlign: "center",
+              padding: "12px 18px",
+              width: "100%",
+              boxSizing: "border-box"
+            }}
+          >
+            Continue to Workspace Setup <span className="btn-arrow">→</span>
+          </a>
+        </div>
+      )}
+
+      <p className="login-terms" style={{ marginTop: currentDevLink ? 16 : 24 }}>
         Didn't get it? Check your spam folder, or{" "}
         <button
           type="button"
@@ -390,6 +436,7 @@ export default function Register({ onLogin }) {
   const [phase, setPhase] = useState("capture"); // capture | sent
   const [sentEmail, setSentEmail] = useState("");
   const [sentName, setSentName] = useState("");
+  const [devLink, setDevLink] = useState(null);
 
   // Token present → verify it and pre-fill the workspace form.
   const [verifyState, setVerifyState] = useState(token ? { status: "loading" } : null);
@@ -412,6 +459,9 @@ export default function Register({ onLogin }) {
     apiFetch("/api/auth/signup/start", {
       method: "POST",
       body: JSON.stringify({ fullName: sentName || sentEmail.split("@")[0], email: sentEmail }),
+    }).then((res) => {
+      if (res?.devLink) setDevLink(res.devLink);
+      return res;
     }).catch(() => {});
 
   if (token) {
@@ -443,9 +493,16 @@ export default function Register({ onLogin }) {
   return (
     <Shell>
       {phase === "capture" ? (
-        <CaptureStep onSent={(email, name) => { setSentEmail(email); setSentName(name); setPhase("sent"); }} />
+        <CaptureStep
+          onSent={(email, name, link) => {
+            setSentEmail(email);
+            setSentName(name);
+            if (link) setDevLink(link);
+            setPhase("sent");
+          }}
+        />
       ) : (
-        <SentStep email={sentEmail} onResend={resend} />
+        <SentStep email={sentEmail} devLink={devLink} onResend={resend} />
       )}
     </Shell>
   );

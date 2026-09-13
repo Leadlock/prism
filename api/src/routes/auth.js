@@ -62,6 +62,7 @@ router.post("/signup/start", asyncHandler(async (req, res) => {
 
   // Never reveal whether an account already exists — respond the same either way.
   const existingUser = await query("SELECT id FROM users WHERE email = $1", [normalizedEmail]);
+  let devLink = null;
   if (existingUser.rows.length === 0) {
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
@@ -75,6 +76,9 @@ router.post("/signup/start", asyncHandler(async (req, res) => {
 
     const webUrl = (process.env.WEB_URL || "http://localhost:5173").replace(/\/$/, "");
     const link = `${webUrl}/register?token=${token}`;
+    devLink = link;
+
+    console.log(`\n========================================\n[LOCAL SIGNUP LINK]: ${link}\n========================================\n`);
 
     sendEmail({
       to: normalizedEmail,
@@ -93,7 +97,10 @@ router.post("/signup/start", asyncHandler(async (req, res) => {
     }).catch(err => console.error("Failed to send signup verification email:", err.message));
   }
 
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    devLink: (process.env.NODE_ENV !== "production" || !process.env.SMTP_PASSWORD) ? devLink : undefined,
+  });
 }));
 
 // Step 2: the link target verifies the token and pre-fills the workspace form.
