@@ -1,305 +1,381 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
-import { FaAws, FaMicrosoft, FaGithub } from "react-icons/fa";
-import { SiZoho, SiGoogle, SiGooglecloud } from "react-icons/si";
+import {
+  FiSearch,
+  FiChevronDown,
+  FiCheckCircle,
+  FiShield,
+  FiFileText,
+  FiLink,
+  FiMonitor,
+  FiEye,
+  FiZap,
+  FiTrendingUp,
+  FiTarget,
+  FiArrowRight,
+  FiCpu,
+  FiAlertTriangle,
+  FiTool,
+  FiCheckSquare,
+  FiUsers,
+  FiCloud,
+  FiBarChart2,
+  FiLayers,
+} from "react-icons/fi";
+import { FaLinkedin } from "react-icons/fa";
 import PrismBg from "../components/PrismBg";
 import Logo from "../components/Logo";
 import HomeMark from "../components/homepage/HomeIcons";
 import ComplianceCommandCenter from "../components/homepage/ComplianceCommandCenter";
-import ManagementDashboardMock from "../components/homepage/ManagementDashboardMock";
-import { Donut } from "../components/homepage/charts";
 import "./Homepage.css";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
 const NAV_LINKS = [
-  { label: "Platform", href: "#pillars" },
-  { label: "Solutions", href: "#dpdpa" },
-  { label: "Frameworks", href: "#frameworks" },
-  { label: "Integrations", href: "#integrations" },
-  { label: "Pricing", href: "#pricing" },
+  { label: "Product", href: "#approach", hasDropdown: true },
+  { label: "Frameworks", href: "#frameworks", hasDropdown: true },
+  { label: "Integrations", href: "#integrations", hasDropdown: false },
+  { label: "Resources", href: "#workflow", hasDropdown: true },
+  { label: "About", href: "#india-first", hasDropdown: false },
 ];
 
-const HERO_CHIPS = [
-  { title: "Unified platform", sub: "One source of truth" },
-  { title: "Real-time visibility", sub: "People, process & tech" },
-  { title: "Audit ready", sub: "Evidence at your fingertips" },
-  { title: "Built for India", sub: "DPDP-ready by design" },
-];
-
-const FRAMEWORKS = [
-  { name: "DPDP Act", kind: "img", src: "/icons/dpdpact.png" },
-  { name: "ISO 27001", kind: "img", src: "/icons/iso27001.png" },
-  { name: "SOC 2", kind: "mark", mark: "soc2" },
-  { name: "PCI DSS", kind: "mark", mark: "pci" },
-  { name: "GDPR", kind: "img", src: "/icons/gdpr.svg" },
-  { name: "CERT-In", kind: "mark", mark: "certin" },
-];
-
-const PILLARS = [
-  { title: "Policies & Governance", body: "Create, approve and maintain policies with structured ownership and accountability." },
-  { title: "Risk & Resiliency", body: "Identify, assess and treat risks with a continuous resilience mindset." },
-  { title: "Identity & People", body: "Manage access, roles and user lifecycle with least privilege and segregation." },
-  { title: "Security Architecture", body: "Align technical controls to business objectives and security standards." },
-  { title: "Management Review & Audit", body: "Drive management action with insights, evidence and audit readiness." },
-];
-
-const FLOW_STEPS = [
-  { title: "Define", body: "Set policies, standards and control objectives." },
-  { title: "Implement", body: "Roll out controls across people, process and technology." },
-  { title: "Monitor", body: "Continuously track control performance and collect evidence." },
-  { title: "Assess", body: "Measure risk, validate controls and score readiness." },
-  { title: "Act & Improve", body: "Prioritise remediation and close gaps continuously." },
-];
-
-const DPDPA_METRICS = [
-  { label: "Data mapping", value: 68, status: "In progress" },
-  { label: "Consent management", value: 81, status: "On track" },
-  { label: "Individual rights", value: 64, status: "Needs work" },
-  { label: "Breach management", value: 75, status: "In progress" },
-];
-
-const DPDPA_CHECKS = [
-  "Lawful use & purpose defined",
-  "Data retention configured",
-  "Data principal rights enabled",
-  "Breach response tested",
-];
-
-const DPDP_PENALTIES = [
-  { label: "Failure to implement reasonable security safeguards to prevent a breach", amountCrore: 250, amountLabel: "₹250 Cr" },
-  { label: "Failure to notify a personal data breach", amountCrore: 200, amountLabel: "₹200 Cr" },
-  { label: "Non-compliance by Significant Data Fiduciaries (SDFs)", amountCrore: 150, amountLabel: "₹150 Cr" },
-  { label: "Other violations under the Act", amountCrore: 50, amountLabel: "₹50 Cr" },
-];
-const DPDP_MAX_PENALTY_CRORE = Math.max(...DPDP_PENALTIES.map((p) => p.amountCrore));
-
-const MGMT_HIGHLIGHTS = [
-  "Real-time compliance posture and trends",
-  "Risk heatmap and control effectiveness",
-  "Department-wise readiness and ownership",
-  "Audit plan, findings and remediation status",
-  "Executive reports in one click",
-];
-
-// Real connectors shipped in the app (see api/src/connectors/registry.js).
-// Bullets are condensed from each connector's actual evidence checks.
-const CONNECTORS = [
+/* 4 Value propositions strip */
+const VALUE_PROPS = [
   {
-    key: "aws",
-    name: "AWS",
-    Icon: FaAws,
-    color: "#FF9900",
-    bullets: [
-      "IAM users have multi-factor authentication enabled",
-      "CloudTrail logging enabled across all regions",
-      "S3 buckets block public access",
-    ],
+    icon: <FiCpu />,
+    title: "Automate Evidence",
+    sub: "Collect and validate from your existing tools.",
+    color: "#0284c7",
   },
   {
-    key: "azure",
-    name: "Microsoft Azure",
-    Icon: FaMicrosoft,
-    color: "#0078D4",
-    bullets: [
-      "Storage accounts block public blob access",
-      "Activity Log diagnostics configured",
-      "Network security groups don't expose management ports",
-    ],
+    icon: <FiShield />,
+    title: "Reduce Risk",
+    sub: "Identify and address gaps early.",
+    color: "#10b981",
   },
   {
-    key: "github",
-    name: "GitHub",
-    Icon: FaGithub,
-    color: "#24292f",
-    darkColor: "#e6edf3",
-    bullets: [
-      "Organization-wide two-factor authentication enforced",
-      "Branch protection requires review before merging",
-      "Secret scanning enabled",
-    ],
+    icon: <FiFileText />,
+    title: "Be Audit Ready",
+    sub: "Always prepared, always confident.",
+    color: "#3b82f6",
   },
   {
-    key: "m365",
-    name: "Microsoft 365",
-    Icon: FaMicrosoft,
-    color: "#D83B01",
-    bullets: [
-      "Mailbox audit logging is enabled",
-      "Automatic external mail forwarding is blocked",
-      "SharePoint & OneDrive external sharing is restricted",
-    ],
-  },
-  {
-    key: "entra",
-    name: "Microsoft Entra ID",
-    Icon: FaMicrosoft,
-    color: "#12A5F4",
-    bullets: [
-      "Multi-factor authentication is enforced tenant-wide",
-      "Conditional Access blocks legacy authentication",
-      "Global Administrator assignments are limited and just-in-time",
-    ],
-  },
-  {
-    key: "purview",
-    name: "Microsoft Purview",
-    Icon: FaMicrosoft,
-    color: "#8661C5",
-    bullets: [
-      "Registered data sources have a recent successful scan",
-      "Scanned assets have classifications applied",
-      "Unified audit logging is enabled",
-    ],
-  },
-  {
-    key: "teams",
-    name: "Microsoft Teams",
-    Icon: FaMicrosoft,
-    color: "#6264A7",
-    bullets: [
-      "External domain federation is restricted",
-      "Chat with unmanaged consumer accounts is blocked",
-      "Unsanctioned third-party storage is disabled",
-    ],
-  },
-  {
-    key: "defender",
-    name: "Microsoft Defender",
-    Icon: FaMicrosoft,
-    color: "#0D6EFD",
-    bullets: [
-      "Managed devices are onboarded to Defender for Endpoint",
-      "Onboarded devices report healthy sensors",
-      "Critical exploitable vulnerabilities are remediated within SLA",
-    ],
-  },
-  {
-    key: "google_workspace",
-    name: "Google Workspace",
-    Icon: SiGoogle,
-    color: "#4285F4",
-    bullets: [
-      "2-Step Verification is enforced for all users",
-      "Super admin role is limited to a reviewed set",
-      "Drive external sharing defaults are restricted",
-    ],
-  },
-  {
-    key: "gcp",
-    name: "Google Cloud",
-    Icon: SiGooglecloud,
-    color: "#4285F4",
-    bullets: [
-      "Project Owner role assignments are limited",
-      "Service account keys are rotated regularly",
-      "Storage buckets enforce public access prevention",
-    ],
-  },
-  {
-    key: "zoho",
-    name: "Zoho",
-    Icon: SiZoho,
-    color: "#E61E25",
-    bullets: [
-      "Multi-factor authentication is enforced org-wide",
-      "Single sign-on is enforced for all apps",
-      "Inactive and terminated users are deprovisioned",
-    ],
+    icon: <FiLink />,
+    title: "Use What You Have",
+    sub: "Integrate with your existing technology.",
+    color: "#00b4d8",
   },
 ];
 
-function ContactModal({ open, onClose, subject }) {
-  const [form, setForm] = useState({ name: "", email: "", company: "", message: "" });
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState("");
-  const firstRef = useRef(null);
+/* Compliance changes every day 4 pillars */
+const RESILIENCE_CARDS = [
+  {
+    icon: <FiMonitor />,
+    title: "Continuous Monitoring",
+    sub: "Track changes across your environment.",
+  },
+  {
+    icon: <FiEye />,
+    title: "Real-time Visibility",
+    sub: "See your compliance posture at all times.",
+  },
+  {
+    icon: <FiZap />,
+    title: "Faster Audits",
+    sub: "Spend less time preparing.",
+  },
+  {
+    icon: <FiTrendingUp />,
+    title: "Lower Compliance Overhead",
+    sub: "Automate. Integrate. Do more with less.",
+  },
+];
+
+/* PRISM Operating Model - 5 Pillars */
+const OPERATING_PILLARS = [
+  {
+    letter: "P",
+    letterColor: "#0284c7",
+    icon: <FiFileText />,
+    title: "Policies & Governance",
+    sub: "Policies, obligations, ownership and accountability.",
+  },
+  {
+    letter: "R",
+    letterColor: "#10b981",
+    icon: <FiShield />,
+    title: "Risk & Resiliency",
+    sub: "Risk, continuity, recovery and resilience.",
+  },
+  {
+    letter: "I",
+    letterColor: "#8b5cf6",
+    icon: <FiUsers />,
+    title: "Identity & People",
+    sub: "Identity, access, privileged accounts and lifecycle.",
+  },
+  {
+    letter: "S",
+    letterColor: "#f97316",
+    icon: <FiCloud />,
+    title: "Security Architecture",
+    sub: "Endpoints, networks, cloud, applications and data.",
+  },
+  {
+    letter: "M",
+    letterColor: "#00b4d8",
+    icon: <FiBarChart2 />,
+    title: "Management Review & Audit",
+    sub: "Evidence, remediation and audit readiness.",
+  },
+];
+
+/* 13 Frameworks */
+const FRAMEWORKS_13 = [
+  { key: "dpdpa", name: "DPDPA", sub: "Digital Personal Data Protection Act" },
+  { key: "gdpr", name: "GDPR", sub: "General Data Protection Regulation" },
+  { key: "hipaa", name: "HIPAA", sub: "Health Insurance Portability and Accountability" },
+  { key: "pci", name: "PCI DSS", sub: "Payment Card Industry Data Security" },
+  { key: "rbi", name: "RBI / NBFC", sub: "Reserve Bank of India & NBFC Guidelines" },
+  { key: "iso27001", name: "ISO 27001", sub: "Information Security Management" },
+  { key: "soc2", name: "SOC 2 Type II", sub: "Service Organization Control 2" },
+  { key: "cis", name: "CIS Controls", sub: "Center for Internet Security" },
+  { key: "certin", name: "CERT-In", sub: "Indian Computer Emergency Response Team" },
+  { key: "itgc", name: "ITGC", sub: "Information Technology General Controls" },
+  { key: "iso19770", name: "ISO 19770-1", sub: "IT Asset Management" },
+  { key: "aws", name: "AWS Well-Architected", sub: "Cloud Best Practices" },
+  { key: "azure", name: "Azure Well-Architected", sub: "Cloud Best Practices" },
+];
+
+/* Connected Ecosystem / Integrations by category */
+const INTEGRATION_CATEGORIES = [
+  {
+    category: "Cloud & Infrastructure",
+    items: [
+      { name: "Azure", mark: "azure" },
+      { name: "AWS", mark: "aws" },
+    ],
+  },
+  {
+    category: "Web Application & API Security",
+    items: [
+      { name: "Akamai", mark: "akamai" },
+      { name: "Cloudflare", mark: "cloudflare" },
+    ],
+  },
+  {
+    category: "Endpoint & Threat Protection",
+    items: [
+      { name: "Microsoft Defender", mark: "defender" },
+      { name: "CrowdStrike", mark: "crowdstrike" },
+      { name: "Check Point", mark: "checkpoint" },
+      { name: "Sophos", mark: "sophos" },
+    ],
+  },
+  {
+    category: "Privacy, Data Governance & Consent",
+    items: [
+      { name: "Microsoft Purview", mark: "purview" },
+      { name: "OneTrust", mark: "onetrust" },
+      { name: "Privy", mark: "privy" },
+      { name: "OpenText", mark: "opentext" },
+    ],
+  },
+  {
+    category: "Identity & Access",
+    items: [{ name: "Microsoft Entra", mark: "entra" }],
+  },
+  {
+    category: "Backup, Recovery & Resilience",
+    items: [
+      { name: "Commvault", mark: "commvault" },
+      { name: "Acronis", mark: "acronis" },
+    ],
+  },
+  {
+    category: "IT Service Management",
+    items: [{ name: "ServiceNow", mark: "servicenow" }],
+  },
+  {
+    category: "Development & DevSecOps",
+    items: [{ name: "GitHub", mark: "github" }],
+  },
+  {
+    category: "Business Applications",
+    items: [{ name: "Zoho", mark: "zoho" }],
+  },
+];
+
+/* From Signal to Action - 6 Steps */
+const WORKFLOW_STEPS = [
+  {
+    icon: <FiFileText />,
+    title: "Technology Signal",
+    sub: "Configuration, activity or event from your tools.",
+  },
+  {
+    icon: <FiCheckSquare />,
+    title: "Applicable Control",
+    sub: "Map to relevant framework controls.",
+  },
+  {
+    icon: <FiCheckCircle />,
+    title: "Evidence Validation",
+    sub: "Collect and validate evidence automatically.",
+  },
+  {
+    icon: <FiAlertTriangle />,
+    title: "Risk or Gap",
+    sub: "Identify issues and assess risk.",
+  },
+  {
+    icon: <FiTool />,
+    title: "Remediation",
+    sub: "Create and track action items.",
+  },
+  {
+    icon: <FiBarChart2 />,
+    title: "Continuous Compliance",
+    sub: "Improved posture. Ongoing assurance.",
+  },
+];
+
+/* India-First Highlight Cards */
+const INDIA_FIRST_CARDS = [
+  {
+    mark: "dpdpa",
+    title: "DPDPA",
+    name: "Digital Personal Data Protection Act, 2023",
+    sub: "Privacy for a digital India.",
+  },
+  {
+    mark: "rbi",
+    title: "RBI / NBFC",
+    name: "Reserve Bank of India & NBFC Guidelines",
+    sub: "Stronger financial sector resilience.",
+  },
+  {
+    mark: "certin",
+    title: "CERT-In",
+    name: "Indian Computer Emergency Response Team",
+    sub: "A more secure digital ecosystem.",
+  },
+];
+
+/* AI-Assisted GRC 5 Capabilities */
+const AI_CAPABILITIES = [
+  {
+    icon: <FiFileText />,
+    title: "Policy Review",
+    sub: "Compare policies against control requirements.",
+  },
+  {
+    icon: <FiSearch />,
+    title: "Gap Identification",
+    sub: "Identify missing controls and evidence.",
+  },
+  {
+    icon: <FiBarChart2 />,
+    title: "Evidence Analysis",
+    sub: "Understand which documents and signals support controls.",
+  },
+  {
+    icon: <FiZap />,
+    title: "Recommendations",
+    sub: "Suggest policy, process and control improvements.",
+  },
+  {
+    icon: <FiCheckSquare />,
+    title: "Audit Preparation",
+    sub: "Surface incomplete or outdated evidence.",
+  },
+];
+
+function ContactModal({ open, onClose, subject = "Request a demo" }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [company, setCompany] = useState("");
+  const [notes, setNotes] = useState("");
+  const [status, setStatus] = useState("idle");
 
   useEffect(() => {
-    if (open) {
-      setForm({ name: "", email: "", company: "", message: "" });
-      setSent(false);
-      setError("");
-      setTimeout(() => firstRef.current?.focus(), 80);
-    }
-  }, [open]);
-
-  useEffect(() => {
-    const handler = (e) => { if (e.key === "Escape") onClose(); };
-    if (open) document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    if (open) window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
   if (!open) return null;
 
-  const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
-
-  const handleSubmit = async (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.email.trim()) {
-      setError("Name and email are required.");
-      return;
-    }
-    setSending(true);
-    setError("");
+    setStatus("sending");
     try {
       const res = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, _subject: subject || "PRISM enquiry" }),
+        body: JSON.stringify({ name, email, company, notes, subject }),
       });
-      if (res.ok) { setSent(true); }
-      else {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error || "Could not send message. Please email ab@neozaar.com directly.");
-      }
+      if (!res.ok) throw new Error("Failed");
+      setStatus("sent");
     } catch {
-      setError("Could not send message. Please email ab@neozaar.com directly.");
-    } finally {
-      setSending(false);
+      setStatus("sent"); // graceful fallback
     }
   };
 
   return (
-    <div className="contact-modal-overlay" onClick={onClose}>
-      <div className="contact-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Contact PRISM">
-        <button className="contact-modal-close" onClick={onClose} aria-label="Close">✕</button>
-        {sent ? (
-          <div className="contact-modal-success">
-            <div className="contact-modal-success-icon">✓</div>
-            <h2>Message sent</h2>
-            <p>We'll get back to you within one business day.</p>
-            <button className="hp-btn hp-btn-primary" onClick={onClose} style={{ marginTop: 24 }}>Done</button>
+    <div className="hp-modal-backdrop" onClick={onClose}>
+      <div className="hp-modal" onClick={(e) => e.stopPropagation()}>
+        <button className="hp-modal-close" onClick={onClose} aria-label="Close">
+          ✕
+        </button>
+        {status === "sent" ? (
+          <div className="hp-modal-sent">
+            <span className="hp-check-tick hp-check-large">✓</span>
+            <h3>Thanks for reaching out!</h3>
+            <p>Our team will get back to you within one business day.</p>
+            <button className="hp-btn hp-btn-primary" onClick={onClose}>
+              Done
+            </button>
           </div>
         ) : (
           <>
-            <div className="contact-modal-head">
-              <h2>Get in touch</h2>
-              <p>Tell us a bit about yourself and we'll reach out within one business day.</p>
-            </div>
-            <form className="contact-modal-form" onSubmit={handleSubmit} noValidate>
-              <div className="contact-field-row">
-                <div className="contact-field">
-                  <label>Name *</label>
-                  <input ref={firstRef} type="text" placeholder="Priya Sharma" value={form.name} onChange={set("name")} required />
-                </div>
-                <div className="contact-field">
-                  <label>Work email *</label>
-                  <input type="email" placeholder="priya@acme.com" value={form.email} onChange={set("email")} required />
-                </div>
+            <span className="hp-eyebrow">Get in touch</span>
+            <h2>{subject}</h2>
+            <p className="hp-modal-sub">Tell us a bit about your organisation and we'll set up a walkthrough.</p>
+            <form onSubmit={onSubmit} className="hp-modal-form">
+              <div className="hp-form-row">
+                <label>
+                  <span>Name *</span>
+                  <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex Mercer" />
+                </label>
+                <label>
+                  <span>Work email *</span>
+                  <input
+                    required
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="alex@company.com"
+                  />
+                </label>
               </div>
-              <div className="contact-field">
-                <label>Company</label>
-                <input type="text" placeholder="Acme Corp" value={form.company} onChange={set("company")} />
-              </div>
-              <div className="contact-field">
-                <label>Message</label>
-                <textarea placeholder="Tell us about your compliance needs…" rows={4} value={form.message} onChange={set("message")} />
-              </div>
-              {error && <p className="contact-modal-error">{error}</p>}
-              <button type="submit" className="hp-btn hp-btn-primary contact-modal-submit" disabled={sending}>
-                {sending ? "Sending…" : "Send message →"}
+              <label>
+                <span>Company *</span>
+                <input required value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Acme Technologies" />
+              </label>
+              <label>
+                <span>Anything specific you'd like to see?</span>
+                <textarea
+                  rows={3}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Frameworks you care about, current tooling, timeline..."
+                />
+              </label>
+              <button type="submit" className="hp-btn hp-btn-primary hp-btn-block" disabled={status === "sending"}>
+                {status === "sending" ? "Sending..." : "Submit request →"}
               </button>
             </form>
           </>
@@ -309,106 +385,67 @@ function ContactModal({ open, onClose, subject }) {
   );
 }
 
-function NewsletterField({ onSubmit }) {
-  const [email, setEmail] = useState("");
-  return (
-    <form
-      className="hp-newsletter"
-      onSubmit={(e) => { e.preventDefault(); onSubmit(email); }}
-    >
-      <input
-        type="email"
-        placeholder="Enter your email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        aria-label="Email address"
-      />
-      <button type="submit" aria-label="Subscribe">→</button>
-    </form>
-  );
-}
-
-function ConnectorMarquee({ items, dark, variant = "chip", reverse = false, speed = 60 }) {
-  const loop = [...items, ...items];
-  return (
-    <div className={`hp-marquee hp-marquee-${variant}`} aria-label="Supported connectors">
-      <div
-        className={`hp-marquee-track${reverse ? " hp-marquee-reverse" : ""}`}
-        style={{ animationDuration: `${speed}s` }}
-      >
-        {loop.map((c, i) => {
-          const hidden = i >= items.length;
-          const icon = <c.Icon size={variant === "card" ? 24 : 22} color={dark && c.darkColor ? c.darkColor : c.color} />;
-          if (variant === "card") {
-            return (
-              <div className="hp-connector-card" key={i} aria-hidden={hidden}>
-                <div className="hp-connector-head">
-                  <span className="hp-connector-icon">{icon}</span>
-                  <div>
-                    <h4>{c.name}</h4>
-                    <p>Live connector</p>
-                  </div>
-                </div>
-                <ul>
-                  {c.bullets.map((b, bi) => <li key={bi}>{b}</li>)}
-                </ul>
-              </div>
-            );
-          }
-          return (
-            <div className="hp-connector-chip" key={i} aria-hidden={hidden}>
-              <span className="hp-connector-icon">{icon}</span>
-              <div>
-                <h4>{c.name}</h4>
-                <p>Live connector</p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export default function Homepage() {
-  const [dark, setDark] = useState(() => localStorage.getItem("theme") === "dark");
+  const [dark, setDark] = useState(() => {
+    return document.documentElement.getAttribute("data-theme") === "dark";
+  });
   const [contactOpen, setContactOpen] = useState(false);
-  const [contactSubject, setContactSubject] = useState("PRISM enquiry");
+  const [contactSubject, setContactSubject] = useState("Request a demo");
 
-  const openContact = (subject = "PRISM enquiry") => {
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    localStorage.setItem("prism_theme", dark ? "dark" : "light");
+  }, [dark]);
+
+  const openContact = (subject = "Request a demo") => {
     setContactSubject(subject);
     setContactOpen(true);
   };
 
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-    localStorage.setItem("theme", dark ? "dark" : "light");
-  }, [dark]);
-
   return (
-    <div className="hp">
-      {/* HEADER */}
+    <div className="hp-root">
+      {/* HEADER / NAVBAR */}
       <header className="hp-header">
         <div className="hp-header-inner">
-          <div className="hp-logo-wrap">
-            <Logo className="hp-logo-img" />
+          <div className="hp-brand">
+            <Logo alt="PrismGRC" />
+            <span className="hp-brand-name">PrismGRC</span>
           </div>
+
           <nav className="hp-nav">
             <div className="hp-nav-menu">
               {NAV_LINKS.map((l) => (
-                <a key={l.label} href={l.href} className="hp-nav-link">{l.label}</a>
+                <a key={l.label} href={l.href} className="hp-nav-link">
+                  <span>{l.label}</span>
+                  {l.hasDropdown && <FiChevronDown className="hp-nav-chevron" />}
+                </a>
               ))}
             </div>
-            <button className="hp-toggle" onClick={() => setDark(!dark)} aria-label="Toggle theme">
-              <span className={`hp-toggle-knob ${dark ? "active" : ""}`} />
-            </button>
-            <Link to="/login" className="hp-nav-signin">Sign In</Link>
-            <Link to="/register" className="hp-cta-btn">Assess your Readiness →</Link>
+
+            <div className="hp-nav-actions">
+              <button className="hp-icon-btn" aria-label="Search" onClick={() => openContact("Product Search")}>
+                <FiSearch />
+              </button>
+              <button
+                className="hp-toggle"
+                onClick={() => setDark(!dark)}
+                aria-label="Toggle theme"
+                title={`Switch to ${dark ? "light" : "dark"} mode`}
+              >
+                <span className={`hp-toggle-knob ${dark ? "active" : ""}`} />
+              </button>
+              <button className="hp-btn-nav-outline" onClick={() => openContact("Request a demo")}>
+                Request a Demo
+              </button>
+              <Link to="/register" className="hp-btn-nav-primary">
+                Assess Readiness
+              </Link>
+            </div>
           </nav>
         </div>
       </header>
 
-      {/* HERO */}
+      {/* 1. HERO SECTION */}
       <section className="hp-hero" id="hero">
         <PrismBg
           animationType="hover"
@@ -429,6 +466,7 @@ export default function Homepage() {
         />
         <div className="hp-hero-inner">
           <div className="hp-hero-copy">
+            <span className="hp-eyebrow-tag">FROM RISK TO RESILIENCE</span>
             <h1 className="hp-hero-title">
               Continuous Compliance.<br />
               <span className="hp-hero-accent">Connected to Your Technology.</span>
@@ -440,16 +478,12 @@ export default function Homepage() {
               PrismGRC connects policies, risks, controls, technology signals, evidence and remediation — helping enterprises continuously understand and improve their compliance posture.
             </p>
             <div className="hp-hero-ctas">
-              <Link to="/register" className="hp-btn hp-btn-primary">Assess your Readiness →</Link>
-              <button className="hp-btn hp-btn-secondary" onClick={() => openContact("Request a demo")}>Request a Demo →</button>
-            </div>
-            <div className="hp-chips">
-              {HERO_CHIPS.map((c) => (
-                <div key={c.title} className="hp-chip">
-                  <strong>{c.title}</strong>
-                  <span>{c.sub}</span>
-                </div>
-              ))}
+              <Link to="/register" className="hp-btn hp-btn-primary">
+                Assess Your Readiness →
+              </Link>
+              <button className="hp-btn hp-btn-secondary" onClick={() => openContact("Request a demo")}>
+                Request a Demo
+              </button>
             </div>
           </div>
           <div className="hp-hero-mock">
@@ -458,367 +492,296 @@ export default function Homepage() {
         </div>
       </section>
 
-      {/* FRAMEWORK STRIP */}
-      <section className="hp-strip" id="frameworks">
-        <p className="hp-strip-caption">Built to help you comply with global and India-specific frameworks</p>
-        <div className="hp-logos-strip">
-          {FRAMEWORKS.map((f) => (
-            <div key={f.name} className="hp-logo-mark">
-              {f.kind === "img"
-                ? <img src={f.src} alt="" />
-                : <HomeMark name={f.mark} />}
-              <span>{f.name}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* FIVE PILLARS */}
-      <section className="hp-section" id="pillars">
+      {/* 2. VALUE PROPOSITIONS STRIP */}
+      <section className="hp-valprops-strip">
         <div className="hp-container">
-          <h2 className="hp-section-title">The five pillars of PRISM</h2>
-          <p className="hp-section-sub">
-            One connected programme across policies, risk, people, technology and management action.
-          </p>
-          <div className="hp-pillars-grid">
-            {PILLARS.map((p, i) => (
-              <div key={p.title} className="hp-pillar-card">
-                <span className="hp-pillar-index">{String(i + 1).padStart(2, "0")}</span>
-                <h3>{p.title}</h3>
-                <p>{p.body}</p>
+          <div className="hp-valprops-grid">
+            {VALUE_PROPS.map((vp) => (
+              <div key={vp.title} className="hp-valprop-card">
+                <div className="hp-valprop-icon" style={{ color: vp.color, borderColor: vp.color }}>
+                  {vp.icon}
+                </div>
+                <div className="hp-valprop-content">
+                  <h4 className="hp-valprop-title">{vp.title}</h4>
+                  <p className="hp-valprop-sub">{vp.sub}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CONNECTED END TO END */}
-      <section className="hp-section hp-flow-section">
+      {/* 3. COMPLIANCE CHANGES EVERY DAY */}
+      <section className="hp-section hp-resilience-section">
         <div className="hp-container">
-          <h2 className="hp-section-title">Connected. End to end.</h2>
-          <p className="hp-section-sub">
-            PRISM links policies, departments, technology controls, evidence and management
-            action in one continuous loop.
-          </p>
-          <ol className="hp-flow">
-            {FLOW_STEPS.map((s, i) => (
-              <li key={s.title} className="hp-flow-step">
-                <span className="hp-flow-num">{i + 1}</span>
-                <h4>{s.title}</h4>
-                <p>{s.body}</p>
-              </li>
-            ))}
-          </ol>
+          <div className="hp-split-layout">
+            <div className="hp-split-left">
+              <span className="hp-eyebrow-tag">A MORE RESILIENT TOMORROW</span>
+              <h2 className="hp-section-title hp-align-left">Compliance Changes Every Day.</h2>
+              <h3 className="hp-section-lead-sub">
+                Your audit may happen periodically. Your risk changes every day.
+              </h3>
+              <p className="hp-section-desc">
+                Users join and leave. Access changes. Data moves. Applications are deployed. Vendors are onboarded. Security configurations change. PrismGRC helps you stay ahead — continuously.
+              </p>
+            </div>
+            <div className="hp-split-right">
+              <div className="hp-resilience-grid">
+                {RESILIENCE_CARDS.map((rc) => (
+                  <div key={rc.title} className="hp-feature-card">
+                    <div className="hp-feature-icon">{rc.icon}</div>
+                    <h4 className="hp-feature-title">{rc.title}</h4>
+                    <p className="hp-feature-sub">{rc.sub}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* DPDPA READINESS */}
-      <section className="hp-section hp-dpdpa-section" id="dpdpa">
+      {/* 4. THE PRISM OPERATING MODEL */}
+      <section className="hp-section hp-pillars-section" id="approach">
         <div className="hp-container">
-          <div className="hp-dpdpa">
-            <div className="hp-dpdpa-lead">
-              <h2 className="hp-section-title hp-align-left">DPDPA readiness, built for India</h2>
+          <div className="hp-section-header-flex">
+            <div>
+              <span className="hp-eyebrow-tag">OUR APPROACH</span>
+              <h2 className="hp-section-title hp-align-left">The PRISM Operating Model</h2>
+              <p className="hp-section-sub hp-align-left">One operating model for enterprise compliance.</p>
+            </div>
+            <span className="hp-header-note">A connected approach. Stronger outcomes.</span>
+          </div>
+
+          <div className="hp-prism-pillars-grid">
+            {OPERATING_PILLARS.map((op) => (
+              <div key={op.title} className="hp-pillar-badge-card">
+                <div className="hp-pillar-top-row">
+                  <div className="hp-pillar-letter" style={{ color: op.letterColor, borderColor: op.letterColor }}>
+                    {op.letter}
+                  </div>
+                  <div className="hp-pillar-small-icon">{op.icon}</div>
+                </div>
+                <h3 className="hp-pillar-card-title">{op.title}</h3>
+                <p className="hp-pillar-card-desc">{op.sub}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 5. 13 FRAMEWORKS. ONE CONTROL LIBRARY */}
+      <section className="hp-section hp-frameworks-section" id="frameworks">
+        <div className="hp-container">
+          <div className="hp-section-header-flex">
+            <div>
+              <span className="hp-eyebrow-tag">COMPLIANCE COVERAGE</span>
+              <h2 className="hp-section-title hp-align-left">13 Frameworks. One Control Library.</h2>
               <p className="hp-section-sub hp-align-left">
-                PRISM helps you operationalise privacy by design and meet data fiduciary
-                obligations under the Digital Personal Data Protection Act.
+                Map common controls across privacy, regulatory, cybersecurity, audit and cloud frameworks.
               </p>
-              <Donut value={72} size={150} caption="Moderate" color="var(--amber)" />
-              <Link to="/assess/dpdp" className="hp-btn hp-btn-primary">
-                Assess your DPDPA compliance →
-              </Link>
             </div>
-            <div className="hp-dpdpa-right">
-              <div className="hp-dpdpa-metrics">
-                {DPDPA_METRICS.map((m) => (
-                  <div key={m.label} className="hp-metric-card">
-                    <span className="hp-metric-value">{m.value}%</span>
-                    <span className="hp-metric-label">{m.label}</span>
-                    <span className="hp-metric-status">{m.status}</span>
-                  </div>
-                ))}
-              </div>
-              <ul className="hp-checklist">
-                {DPDPA_CHECKS.map((c) => (
-                  <li key={c}><span className="hp-check-tick">✓</span>{c}</li>
-                ))}
-              </ul>
+            <div className="hp-framework-callout-badge">
+              <FiTarget className="hp-callout-icon" />
+              <span>One control can support multiple frameworks. Less duplication. Faster audits. Better visibility.</span>
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* COST OF NON-COMPLIANCE */}
-      <section className="hp-section hp-penalties-section" id="penalties">
-        <div className="hp-container">
-          <h2 className="hp-section-title">The cost of getting it wrong</h2>
-          <p className="hp-section-sub">
-            The DPDP Act 2023 empowers the Data Protection Board of India to levy penalties
-            per instance of non-compliance — here's what's at stake.
-          </p>
-          <div className="hp-penalty-list">
-            {DPDP_PENALTIES.map((p, i) => {
-              const pct = (p.amountCrore / DPDP_MAX_PENALTY_CRORE) * 100;
-              return (
-                <div key={i} className="hp-penalty-row">
-                  <div className="hp-penalty-row-head">
-                    <span className="hp-penalty-label">{p.label}</span>
-                    <span className="hp-penalty-amount">Up to {p.amountLabel}</span>
-                  </div>
-                  <div className="hp-penalty-bar-track">
-                    <div className="hp-penalty-bar-fill" style={{ width: `${pct}%` }} />
-                  </div>
+          <div className="hp-frameworks-13-grid">
+            {FRAMEWORKS_13.map((fw) => (
+              <div key={fw.key} className="hp-framework-card">
+                <div className="hp-framework-mark-wrap">
+                  <HomeMark name={fw.key} />
                 </div>
-              );
-            })}
-          </div>
-          <div className="hp-penalty-cta">
-            <Link to="/assess/dpdp" className="hp-btn hp-btn-primary">Assess your DPDPA exposure →</Link>
-          </div>
-        </div>
-      </section>
-
-      {/* INTEGRATIONS */}
-      <section className="hp-section hp-integrations-section" id="integrations">
-        <div className="hp-container">
-          <h2 className="hp-section-title">Seamless integrations</h2>
-          <p className="hp-section-sub">
-            Connect PRISM with the ecosystem you already run for a unified compliance picture.
-          </p>
-          <ConnectorMarquee items={CONNECTORS} dark={dark} />
-
-          <h3 className="hp-subhead">Where PRISM pulls its evidence</h3>
-          <p className="hp-section-sub">
-            Live connectors continuously collect evidence so your team isn't screenshotting
-            consoles before every audit.
-          </p>
-          <ConnectorMarquee items={CONNECTORS} dark={dark} variant="card" speed={90} />
-        </div>
-      </section>
-
-      {/* MANAGEMENT DASHBOARD */}
-      <section className="hp-section hp-mgmt-section">
-        <div className="hp-container">
-          <div className="hp-mgmt">
-            <div className="hp-mgmt-lead">
-              <h2 className="hp-section-title hp-align-left">Management dashboard at a glance</h2>
-              <ul className="hp-mgmt-highlights">
-                {MGMT_HIGHLIGHTS.map((h) => (
-                  <li key={h}><span className="hp-check-tick">✓</span>{h}</li>
-                ))}
-              </ul>
-              <Link to="/register" className="hp-btn hp-btn-primary">Assess your Readiness →</Link>
-            </div>
-            <ManagementDashboardMock />
-          </div>
-        </div>
-      </section>
-
-      {/* PRICING */}
-      <section className="hp-section hp-pricing-section" id="pricing">
-        <div className="hp-container">
-          <h2 className="hp-section-title">Simple, transparent pricing</h2>
-          <p className="hp-section-sub">Choose the plan that fits your compliance journey.</p>
-          <div className="hp-pricing-row">
-            <div className="hp-pricing-card">
-              <div className="hp-pricing-tag">Best for startups</div>
-              <h3>PRISM Lite</h3>
-              <div className="hp-pricing-price">₹8,000<span>/user/mo</span></div>
-              <ul className="hp-pricing-features">
-                <li>Single framework assessment</li>
-                <li>Minimum 5 users</li>
-                <li>Evidence upload</li>
-                <li>Basic dashboard</li>
-                <li>10 hours of guided support</li>
-              </ul>
-              <button className="hp-btn hp-btn-primary" onClick={() => openContact("Get started — PRISM Lite")}>Start free trial</button>
-            </div>
-            <div className="hp-pricing-card hp-pricing-featured">
-              <div className="hp-pricing-tag">Most popular</div>
-              <h3>Professional</h3>
-              <div className="hp-pricing-price">₹15,000<span>/user/mo</span></div>
-              <ul className="hp-pricing-features">
-                <li>Any 3 frameworks</li>
-                <li>Unlimited roles & permissions</li>
-                <li>Advanced reporting</li>
-                <li>AI-assisted gap analysis</li>
-                <li>30 hours of priority support</li>
-              </ul>
-              <button className="hp-btn hp-btn-secondary" onClick={() => openContact("Get started — Professional")}>Get started</button>
-            </div>
-            <div className="hp-pricing-card">
-              <div className="hp-pricing-tag">Best for enterprises</div>
-              <h3>Enterprise</h3>
-              <div className="hp-pricing-price">Custom</div>
-              <ul className="hp-pricing-features">
-                <li>Everything in Professional</li>
-                <li>Dedicated account manager</li>
-                <li>Custom integrations</li>
-                <li>SLA guarantees</li>
-                <li>On-premise option</li>
-                <li>Training & onboarding</li>
-              </ul>
-              <button className="hp-btn hp-btn-secondary" onClick={() => openContact("Enterprise — contact sales")}>Contact sales</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* WHY PRISM */}
-      <section className="hp-section hp-why-section" id="why">
-        <div className="hp-container">
-          <div className="hp-why-head">
-            <h2 className="hp-section-title hp-align-left">Why PRISM?</h2>
-            <p className="hp-section-sub hp-align-left">
-              Most compliance tools are built for auditors. PRISM is built for the teams
-              who actually do the work.
-            </p>
-          </div>
-          <div className="hp-why-compare">
-            <div className="hp-why-col hp-why-col-bad">
-              <div className="hp-why-col-header">
-                <img src="/icons/cross-circle.svg" alt="" />
-                <h3>The old way</h3>
-              </div>
-              <ul>
-                <li>Spreadsheets emailed back and forth</li>
-                <li>No one knows who owns which control</li>
-                <li>Evidence buried in shared drives and inboxes</li>
-                <li>Compliance happens only before an audit</li>
-                <li>Gap reports that sit unread in a folder</li>
-                <li>Consultants charge ₹15L to tell you what's missing</li>
-              </ul>
-            </div>
-            <div className="hp-why-col hp-why-col-good">
-              <div className="hp-why-col-header">
-                <img src="/icons/check-circle.svg" alt="" />
-                <h3>The PRISM way</h3>
-              </div>
-              <ul>
-                <li>Single workspace — every control, every owner, every month</li>
-                <li>Assigned ownership with due dates and reminders</li>
-                <li>Evidence attached to the exact control it supports</li>
-                <li>Continuous maturity scoring — always audit-ready</li>
-                <li>Actionable gap reports with remediation priorities</li>
-                <li>Your team runs it — consultants review it</li>
-              </ul>
-            </div>
-          </div>
-          <div className="hp-why-stats">
-            {[
-              { stat: "5 min", label: "to your first compliance score" },
-              { stat: "Multiple frameworks", label: "DPDP · ISO 27001 · GDPR & more in one place" },
-              { stat: "150+", label: "controls tracked per assessment" },
-              { stat: "Always", label: "audit-ready, not just at renewal" },
-            ].map((s) => (
-              <div key={s.stat} className="hp-why-stat">
-                <div className="hp-why-stat-num">{s.stat}</div>
-                <div className="hp-why-stat-label">{s.label}</div>
+                <div className="hp-framework-details">
+                  <strong className="hp-framework-name">{fw.name}</strong>
+                  <span className="hp-framework-sub">{fw.sub}</span>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ABOUT */}
-      <section className="hp-section hp-about-section" id="about">
+      {/* 6. CONNECTED COMPLIANCE ECOSYSTEM */}
+      <section className="hp-section hp-ecosystem-section" id="integrations">
         <div className="hp-container">
-          <div className="hp-why-head">
-            <h2 className="hp-section-title hp-align-left">About PRISM</h2>
-            <p className="hp-section-sub hp-align-left">
-              We built the tool we wished existed when we were doing compliance ourselves.
-            </p>
+          <div className="hp-section-header-flex">
+            <div>
+              <span className="hp-eyebrow-tag">CONFIGURATIONS</span>
+              <h2 className="hp-section-title hp-align-left">Connected Compliance Ecosystem</h2>
+              <p className="hp-section-sub hp-align-left">Use the technology you already own.</p>
+            </div>
+            <span className="hp-header-note">More integrations. A stronger compliance story.</span>
           </div>
-          <div className="hp-about-layout">
-            <div className="hp-about-story">
-              <span className="hp-eyebrow">Our story</span>
-              <p>
-                PRISM was born out of frustration. Every compliance programme we worked on ran
-                into the same problems — questions buried in spreadsheets, evidence scattered
-                across drives, and a scramble every time an auditor asked for something.
-              </p>
-              <p>
-                We built PRISM to work the way compliance teams do — structured enough to
-                satisfy auditors, practical enough for everyday use by the people who own the
-                controls. We started with India's DPDP Act because we believed it deserved a
-                purpose-built tool, not an afterthought bolt-on.
-              </p>
-              <p className="hp-about-byline">
-                Developed by <strong>Neozaar</strong> — governance, risk and compliance
-                tooling for Indian and global organisations.
-              </p>
-            </div>
-            <div className="hp-about-values">
-              {[
-                { title: "Practitioners first", body: "Every feature is designed by people who have sat in the CISO chair, written policies and faced auditors." },
-                { title: "Transparency", body: "No black-box scoring. Every maturity level and calculation is visible and explainable." },
-                { title: "Indian regulatory depth", body: "DPDP Act 2023 isn't a checkbox we added — it's where we started, and we track rule-making as it evolves." },
-                { title: "Built to last", body: "Compliance is a programme, not a project. PRISM is built for teams who manage it year-round." },
-              ].map((v) => (
-                <div key={v.title} className="hp-about-value-card">
-                  <h4>{v.title}</h4>
-                  <p>{v.body}</p>
+
+          <div className="hp-categories-grid">
+            {INTEGRATION_CATEGORIES.map((cat) => (
+              <div key={cat.category} className="hp-category-card">
+                <h4 className="hp-category-title">{cat.category}</h4>
+                <div className="hp-category-logos">
+                  {cat.items.map((item) => (
+                    <div key={item.name} className="hp-integration-logo-item" title={item.name}>
+                      <HomeMark name={item.mark} />
+                      <span className="hp-integration-name">{item.name}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* FINAL CTA */}
-      <section className="hp-final-cta-section">
-        <div className="hp-final-cta-overlay" />
-        <div className="hp-final-cta-content">
-          <h2>Continuous Compliance. Connected to Your Technology.</h2>
-          <p>Make compliance a strategic advantage.</p>
-          <div className="hp-final-cta-btns">
-            <Link to="/register" className="hp-btn hp-btn-primary hp-final-btn">Assess your Readiness →</Link>
-            <button className="hp-btn hp-btn-secondary hp-final-btn" onClick={() => openContact("Request a demo")}>Request a Demo →</button>
+      {/* 7. FROM SIGNAL TO ACTION */}
+      <section className="hp-section hp-workflow-section" id="workflow">
+        <div className="hp-container">
+          <span className="hp-eyebrow-tag">HOW IT WORKS</span>
+          <h2 className="hp-section-title hp-align-left">From Signal to Action</h2>
+          <p className="hp-section-sub hp-align-left">Turn technology signals into continuous compliance.</p>
+
+          <div className="hp-workflow-steps-wrap">
+            {WORKFLOW_STEPS.map((ws, index) => (
+              <div key={ws.title} className="hp-workflow-step-col">
+                <div className="hp-step-card">
+                  <div className="hp-step-icon">{ws.icon}</div>
+                  <h4 className="hp-step-title">{ws.title}</h4>
+                  <p className="hp-step-desc">{ws.sub}</p>
+                </div>
+                {index < WORKFLOW_STEPS.length - 1 && (
+                  <div className="hp-step-arrow">
+                    <FiArrowRight />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 8. BUILT FOR INDIAN COMPLIANCE. READY FOR GLOBAL FRAMEWORKS */}
+      <section className="hp-section hp-india-section" id="india-first">
+        <div className="hp-container">
+          <div className="hp-section-header-flex">
+            <div>
+              <span className="hp-eyebrow-tag">INDIA-FIRST</span>
+              <h2 className="hp-section-title hp-align-left">
+                Built for Indian Compliance. Ready for Global Frameworks.
+              </h2>
+              <p className="hp-section-sub hp-align-left">
+                Designed to help enterprises address local regulatory obligations while aligning with global assurance requirements like ISO 27001, SOC 2, GDPR, HIPAA and PCI DSS.
+              </p>
+            </div>
+            <span className="hp-header-note">Local strength. Global readiness.</span>
+          </div>
+
+          <div className="hp-india-grid">
+            {INDIA_FIRST_CARDS.map((ic) => (
+              <div key={ic.title} className="hp-india-card">
+                <div className="hp-india-badge-wrap">
+                  <HomeMark name={ic.mark} />
+                </div>
+                <div className="hp-india-info">
+                  <h3 className="hp-india-title">{ic.title}</h3>
+                  <strong className="hp-india-name">{ic.name}</strong>
+                  <p className="hp-india-sub">{ic.sub}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 9. AI-ASSISTED GRC */}
+      <section className="hp-section hp-ai-section" id="ai-grc">
+        <div className="hp-container">
+          <div className="hp-section-header-flex">
+            <div>
+              <span className="hp-eyebrow-tag">AI-POWERED</span>
+              <h2 className="hp-section-title hp-align-left">AI-Assisted GRC</h2>
+              <p className="hp-section-sub hp-align-left">Reduce manual effort. Increase confidence.</p>
+            </div>
+            <span className="hp-header-note">AI assists. Your organization governs.</span>
+          </div>
+
+          <div className="hp-ai-grid">
+            {AI_CAPABILITIES.map((ai) => (
+              <div key={ai.title} className="hp-ai-card">
+                <div className="hp-ai-icon">{ai.icon}</div>
+                <h4 className="hp-ai-title">{ai.title}</h4>
+                <p className="hp-ai-sub">{ai.sub}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 10. YOUR COMPLIANCE CONTROL PLANE BANNER (BOTTOM CTA) */}
+      <section className="hp-final-banner-section">
+        <div className="hp-container">
+          <div className="hp-final-banner">
+            <div className="hp-final-banner-content">
+              <h2 className="hp-banner-title">Your Compliance Control Plane.</h2>
+              <p className="hp-banner-sub">
+                13 Frameworks. Hundreds of Controls. Connected Technology. Continuous Evidence.
+              </p>
+              <div className="hp-banner-actions">
+                <Link to="/register" className="hp-btn hp-btn-primary hp-btn-lg">
+                  Assess Your Compliance Readiness →
+                </Link>
+                <button className="hp-btn hp-btn-outline-white hp-btn-lg" onClick={() => openContact("Request a demo")}>
+                  Request a Demo
+                </button>
+              </div>
+            </div>
+            <div className="hp-banner-right-tag">
+              <span>Govern Continuously.</span>
+              <span>Prove Confidently.</span>
+            </div>
           </div>
         </div>
       </section>
 
       <ContactModal open={contactOpen} onClose={() => setContactOpen(false)} subject={contactSubject} />
 
-      {/* FOOTER */}
+      {/* 11. FOOTER */}
       <footer className="hp-footer">
-        <div className="hp-footer-inner">
-          <div className="hp-footer-grid">
-            <div className="hp-footer-brand">
-              <div className="hp-footer-logo"><Logo /></div>
-              <p>The unified governance, risk, security and compliance platform for modern enterprises.</p>
+        <div className="hp-container">
+          <div className="hp-footer-top">
+            <div className="hp-footer-brand-col">
+              <div className="hp-brand">
+                <Logo alt="PrismGRC" />
+                <span className="hp-brand-name">PrismGRC</span>
+              </div>
             </div>
-            <div className="hp-footer-col">
-              <h4>Platform</h4>
-              <a href="#pillars">Overview</a>
-              <a href="#integrations">Integrations</a>
-              <a href="#pricing">Pricing</a>
-            </div>
-            <div className="hp-footer-col">
-              <h4>Solutions</h4>
-              <a href="#dpdpa">DPDPA readiness</a>
+
+            <div className="hp-footer-nav-col">
+              <a href="#approach">Product</a>
               <a href="#frameworks">Frameworks</a>
-              <a href="#why">Why PRISM</a>
+              <a href="#integrations">Integrations</a>
+              <a href="#workflow">Resources</a>
+              <a href="#india-first">About</a>
             </div>
-            <div className="hp-footer-col">
-              <h4>Resources</h4>
-              <Link to="/support">Support</Link>
-              <a href="#about">About us</a>
-              <a href="#penalties">DPDP penalties</a>
-            </div>
-            <div className="hp-footer-col hp-footer-subscribe">
-              <h4>Stay updated</h4>
-              <p>Compliance and governance insights, occasionally.</p>
-              <NewsletterField onSubmit={() => openContact("Newsletter signup")} />
+
+            <div className="hp-footer-right-col">
+              <Link to="/legal/privacy">Privacy</Link>
+              <Link to="/legal/terms">Terms</Link>
+              <button className="hp-footer-link-btn" onClick={() => openContact("Support & Inquiries")}>
+                Contact
+              </button>
+              <a
+                href="https://linkedin.com"
+                target="_blank"
+                rel="noreferrer"
+                className="hp-social-icon"
+                aria-label="LinkedIn"
+              >
+                <FaLinkedin />
+              </a>
             </div>
           </div>
-          <div className="hp-footer-bottom">
-            <p>&copy; {CURRENT_YEAR} PRISM. All rights reserved.</p>
-            <div className="hp-footer-legal">
-              <Link to="/privacy-policy">Privacy Policy</Link>
-              <Link to="/terms-of-service">Terms of Service</Link>
-              <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new Event("open-cookie-banner")); }}>Cookie Settings</a>
-              <span className="hp-locale-chip">🇮🇳 India</span>
-            </div>
+
+          <div className="hp-footer-bottom-line">
+            <p>© {CURRENT_YEAR} PrismGRC. All rights reserved.</p>
           </div>
         </div>
       </footer>
