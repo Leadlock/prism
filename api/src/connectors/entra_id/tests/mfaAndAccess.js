@@ -752,6 +752,7 @@ export const mfaAndAccessTests = [
     failTitle: "Multi-factor authentication is not enforced tenant-wide",
     severityDefault: "critical",
     isoReferences: ["A.9.4.2"],
+    dpdpaControlAreas: ["MFA for Sensitive Systems"],
     run: (clients) => checkConditionalAccessMfaEnforced(clients.getToken, clients.tenantId),
   },
   {
@@ -760,6 +761,7 @@ export const mfaAndAccessTests = [
     failTitle: "Conditional Access does not block legacy authentication",
     severityDefault: "critical",
     isoReferences: ["A.9.4.2"],
+    dpdpaControlAreas: ["MFA for Sensitive Systems"],
     run: (clients) => checkLegacyAuthBlocked(clients.getToken, clients.tenantId),
   },
   {
@@ -768,6 +770,7 @@ export const mfaAndAccessTests = [
     failTitle: "Weak authentication methods (SMS/voice) are still enabled",
     severityDefault: "medium",
     isoReferences: ["A.9.4.2"],
+    dpdpaControlAreas: ["MFA for Sensitive Systems"],
     run: (clients) => checkWeakMethodsDisabled(clients.getToken, clients.tenantId),
   },
 ];
@@ -779,6 +782,7 @@ export const rolesTests = [
     failTitle: "Global Administrator assignments exceed the allowed threshold",
     severityDefault: "high",
     isoReferences: ["A.9.2.3"],
+    dpdpaControlAreas: ["Privileged Access Management"],
     run: (clients) => checkPrivilegedRoleAssignmentsLimited(clients.getToken, clients.tenantId),
   },
   {
@@ -787,6 +791,7 @@ export const rolesTests = [
     failTitle: "A built-in privileged role has more assignments than the allowed threshold",
     severityDefault: "medium",
     isoReferences: ["A.9.2.3"],
+    dpdpaControlAreas: ["Privileged Access Management"],
     run: (clients) => checkOtherPrivilegedRolesLimited(clients.getToken, clients.tenantId),
   },
   {
@@ -795,6 +800,7 @@ export const rolesTests = [
     failTitle: "User with an active admin role does not have MFA registered",
     severityDefault: "critical",
     isoReferences: ["A.9.4.2"],
+    dpdpaControlAreas: ["MFA for Sensitive Systems"],
     run: (clients) => checkPrivilegedUserMfaRegistered(clients.getToken),
   },
 ];
@@ -806,6 +812,7 @@ export const usersTests = [
     failTitle: "Guest account has had no sign-in activity for 90+ days and is still enabled",
     severityDefault: "high",
     isoReferences: ["A.9.2.6"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkStaleGuestAccountsReviewed(clients.getToken),
   },
   {
@@ -814,6 +821,7 @@ export const usersTests = [
     failTitle: "Member user has no MFA method registered",
     severityDefault: "high",
     isoReferences: ["A.9.4.2"],
+    dpdpaControlAreas: ["MFA for Sensitive Systems"],
     run: (clients) => checkMemberUserMfaRegistered(clients.getToken),
   },
 ];
@@ -825,6 +833,7 @@ export const signInsTests = [
     failTitle: "Successful legacy authentication sign-ins were observed in the last 7 days",
     severityDefault: "high",
     isoReferences: ["A.9.4.2"],
+    dpdpaControlAreas: ["MFA for Sensitive Systems"],
     run: (clients) => checkLegacyAuthSignInsAbsent(clients.getToken, clients.tenantId),
   },
   {
@@ -833,6 +842,7 @@ export const signInsTests = [
     failTitle: "A user is flagged at-risk by Identity Protection and has not been remediated",
     severityDefault: "high",
     isoReferences: ["A.16.1.2"],
+    dpdpaControlAreas: ["Breach Identification & Classification"],
     run: (clients) => checkRiskySignInsResolved(clients.getToken, clients.tenantId),
   },
 ];
@@ -844,6 +854,7 @@ export const groupsTests = [
     failTitle: "Role-assignable group has no owner",
     severityDefault: "high",
     isoReferences: ["A.9.2.3"],
+    dpdpaControlAreas: ["Privileged Access Management"],
     run: (clients) => checkPrivilegedGroupsHaveOwners(clients.getToken),
   },
 ];
@@ -855,6 +866,7 @@ export const enterpriseAppsTests = [
     failTitle: "Service principal has been granted high-privilege Microsoft Graph permissions",
     severityDefault: "high",
     isoReferences: ["A.9.4.1"],
+    dpdpaControlAreas: ["Privileged Access Management"],
     run: (clients) => checkHighPrivilegeGrantsReviewed(clients.getToken),
   },
   {
@@ -863,6 +875,7 @@ export const enterpriseAppsTests = [
     failTitle: "App registration credential is expired, expiring soon, or long-lived",
     severityDefault: "medium",
     isoReferences: ["A.9.2.4"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkAppRegistrationCredentials(clients.getToken),
   },
 ];
@@ -874,6 +887,7 @@ export const auditTests = [
     failTitle: "Sign-in or directory audit logs are not actively retained",
     severityDefault: "critical",
     isoReferences: ["A.12.4.1"],
+    dpdpaControlAreas: ["Logging & Monitoring"],
     run: (clients) => checkAuditLogsAvailable(clients.getToken, clients.tenantId),
   },
   {
@@ -882,6 +896,7 @@ export const auditTests = [
     failTitle: "A privileged role management audit entry has no identifiable actor recorded",
     severityDefault: "high",
     isoReferences: ["A.12.4.1"],
+    dpdpaControlAreas: ["Logging & Monitoring"],
     run: (clients) => checkPrivilegedChangeAuditActorCaptured(clients.getToken, clients.tenantId),
   },
 ];

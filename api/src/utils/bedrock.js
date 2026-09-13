@@ -7,6 +7,8 @@ import path from "path";
 import { extractFileContent } from "./fileExtract.js";
 import { extractFirstJson } from "./jsonExtract.js";
 import { buildExposurePrompt, normaliseMappings } from "./regulatoryExposurePrompt.js";
+import { buildNarrativePrompt, normaliseNarrative } from "./readinessNarrativePrompt.js";
+import { buildGapContextPrompt, normaliseGapContext } from "./readinessGapContextPrompt.js";
 
 const client = new BedrockRuntimeClient({
   region: process.env.AWS_REGION || "eu-north-1",
@@ -260,6 +262,80 @@ export async function mapRegulatoryExposure({ departments = [], provisionIndex =
     throw new Error("mapRegulatoryExposure: no valid JSON object in model response");
   }
   return { mappings };
+}
+
+export async function mapSelfAssessmentToQuestions({ questions = [], catalog = [] }) {
+  if (!questions.length || !catalog.length) return { map: {} };
+
+  const qList = questions.map(q => `- ${q.id}: ${String(q.text || "").slice(0, 200)}`).join("\n");
+  const catList = catalog.map(c =>
+    `- ${c.questId}: [${c.controlArea || ""}] ${String(c.baselineQuestion || "").slice(0, 160)}`
+  ).join("\n");
+
+  const prompt = `You map a company's plain-language self-assessment questions to the formal compliance questions in their audit tracker.
+
+SELF-ASSESSMENT QUESTIONS (plain language, asked of a department):
+${qList}
+
+TRACKER QUESTIONS (formal catalog — use the exact questId):
+${catList}
+
+For each self-assessment question, list the tracker questId(s) covering the SAME control or obligation.
+Rules:
+- Only use questId values that appear verbatim in the list above.
+- 0 to 3 matches per self-assessment question; omit a question entirely if nothing genuinely matches.
+- Match on the underlying requirement, not just shared words.
+
+Respond with ONLY valid JSON, no markdown:
+{"map":{"<selfAssessId>":["<questId>", ...]}}`;
+
+  const command = new ConverseCommand({
+    modelId: MODEL_ID,
+    messages: [{ role: "user", content: [{ text: prompt }] }],
+    inferenceConfig: { maxTokens: 4096, temperature: 0 }
+  });
+  const response = await client.send(command);
+  const raw = response.output?.message?.content?.[0]?.text || "";
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("mapSelfAssessmentToQuestions: no JSON in model response");
+  const parsed = JSON.parse(jsonMatch[0]);
+  if (!parsed || typeof parsed.map !== "object" || parsed.map === null) {
+    throw new Error("mapSelfAssessmentToQuestions: bad shape");
+  }
+  return { map: parsed.map };
+}
+
+export async function generateReadinessNarrative(args) {
+  const command = new ConverseCommand({
+    modelId: MODEL_ID,
+    messages: [{ role: "user", content: [{ text: buildNarrativePrompt(args) }] }],
+    inferenceConfig: { maxTokens: 4096, temperature: 0.3 }
+  });
+  const response = await client.send(command);
+  const raw = response.output?.message?.content?.[0]?.text || "";
+  const narrative = normaliseNarrative(extractFirstJson(raw));
+  if (!narrative) {
+    console.error(`[AI] generateReadinessNarrative — unparseable response (stop=${response.stopReason}): ${raw.slice(0, 400)}`);
+    throw new Error("generateReadinessNarrative: no valid JSON object in model response");
+  }
+  return narrative;
+}
+
+export async function analyzeGapContext(args) {
+  const { ctx, ...promptArgs } = args;
+  const command = new ConverseCommand({
+    modelId: MODEL_ID,
+    messages: [{ role: "user", content: [{ text: buildGapContextPrompt(promptArgs) }] }],
+    inferenceConfig: { maxTokens: 8192, temperature: 0 }
+  });
+  const response = await client.send(command);
+  const raw = response.output?.message?.content?.[0]?.text || "";
+  const out = normaliseGapContext(extractFirstJson(raw), ctx);
+  if (!out) {
+    console.error(`[AI] analyzeGapContext — unparseable response (stop=${response.stopReason}): ${raw.slice(0, 400)}`);
+    throw new Error("analyzeGapContext: no valid JSON object in model response");
+  }
+  return out;
 }
 
 export async function chatWithDocuments({ systemPrompt, history, message }) {

@@ -17,6 +17,7 @@ export async function truncateAll() {
       questions, modules, invitations,
       audit_logs, auditor_profiles, reminders,
       list_items, consent_logs, company_settings,
+      self_assessment_reports, self_assessment_submissions, signup_verifications,
       users, companies, super_admins
     RESTART IDENTITY CASCADE
   `);
@@ -30,6 +31,22 @@ export async function createCompany(overrides = {}) {
       overrides.name || "Test Corp",
       overrides.domain || `testcorp-${Date.now()}`,
       overrides.adminEmail || "admin@testcorp.com",
+    ]
+  );
+  return result.rows[0];
+}
+
+// Insert a consumed-able sign-up verification row directly and return its token,
+// so register tests can skip the email round-trip.
+export async function createSignupToken(overrides = {}) {
+  const token = overrides.token || `signup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const result = await query(
+    `INSERT INTO signup_verifications (email, full_name, token, expires_at)
+     VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour') RETURNING *`,
+    [
+      (overrides.email || "admin@acmecorp.io").toLowerCase(),
+      overrides.fullName || "John Admin",
+      token,
     ]
   );
   return result.rows[0];

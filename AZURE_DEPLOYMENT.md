@@ -89,9 +89,13 @@ ONE-TIME SERVER SETUP  (Skip this after first deployment)
     AWS_SECRET_ACCESS_KEY=<your_secret>
     AWS_REGION=us-east-1
 
-    SMTP_HOST=<smtp_host>
-    SMTP_USER=<smtp_user>
-    SMTP_PASSWORD=<smtp_password>
+    SMTP_HOST=smtp.gmail.com
+    SMTP_PORT=587
+    SMTP_SECURE=false
+    SMTP_USER=team@prismgrc.co
+    SMTP_PASSWORD=<gmail_app_password>   # 16-char App Password, account needs 2FA
+    EMAIL_FROM=team@prismgrc.co
+    TEAM_NOTIFY_EMAIL=team@prismgrc.co
 
     SUPERADMIN_EMAIL=admin@askthechamp.com
     SUPERADMIN_PASSWORD=<strong_password>

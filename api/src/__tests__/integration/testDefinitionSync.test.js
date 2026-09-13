@@ -2,6 +2,32 @@ import { describe, test, expect } from "vitest";
 import { query } from "../../db/index.js";
 import { tests as githubTests } from "../../connectors/github/index.js";
 import { syncTestDefinitions } from "../../utils/testDefinitionSync.js";
+import { expandControlRefs } from "../../utils/controlCrosswalk.js";
+
+// The full set of test_control_mappings rows syncTestDefinitions writes for a
+// connector check: a direct ISO27001 row per isoReferences entry, a DPDPA row
+// per dpdpaControlAreas entry (control_area-keyed), plus one row per other
+// framework the crosswalk derives from the ISO references, plus any explicit
+// frameworkRefs override. Deduped on (framework, iso_reference).
+function expectedMappingRows(t) {
+  const rows = [
+    ...(t.isoReferences || []).map((iso) => ({ framework: "ISO27001", iso_reference: iso })),
+    ...(t.dpdpaControlAreas || []).map((area) => ({ framework: "DPDPA", iso_reference: area })),
+    ...expandControlRefs(t.isoReferences).map((r) => ({ framework: r.framework, iso_reference: r.controlReference })),
+  ];
+  for (const [framework, refs] of Object.entries(t.frameworkRefs || {})) {
+    for (const iso_reference of refs || []) rows.push({ framework, iso_reference });
+  }
+  const seen = new Set();
+  return rows
+    .filter((r) => {
+      const k = `${r.framework}::${r.iso_reference}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .map((r) => ({ test_key: t.key, framework: r.framework, iso_reference: r.iso_reference }));
+}
 
 describe("syncTestDefinitions (real DB)", () => {
   test("populates automated_tests and test_control_mappings for a real connector's checks without relying on init.sql's seed INSERTs", async () => {
@@ -24,11 +50,16 @@ describe("syncTestDefinitions (real DB)", () => {
     expect(testsResult.rows).toEqual(expectedTests);
 
     const mappingsResult = await query(
-      `SELECT test_key, framework, iso_reference FROM test_control_mappings WHERE test_key LIKE 'github.%' ORDER BY test_key, iso_reference`
+      `SELECT test_key, framework, iso_reference FROM test_control_mappings WHERE test_key LIKE 'github.%' ORDER BY test_key, framework, iso_reference`
     );
     const expectedMappings = githubTests
-      .flatMap((t) => (t.isoReferences || []).map((iso) => ({ test_key: t.key, framework: "ISO27001", iso_reference: iso })))
-      .sort((a, b) => a.test_key.localeCompare(b.test_key) || a.iso_reference.localeCompare(b.iso_reference));
+      .flatMap(expectedMappingRows)
+      .sort(
+        (a, b) =>
+          a.test_key.localeCompare(b.test_key) ||
+          a.framework.localeCompare(b.framework) ||
+          a.iso_reference.localeCompare(b.iso_reference)
+      );
     expect(mappingsResult.rows).toEqual(expectedMappings);
   });
 
@@ -40,7 +71,7 @@ describe("syncTestDefinitions (real DB)", () => {
     expect(Number(testsResult.rows[0].count)).toBe(githubTests.length);
 
     const mappingsResult = await query(`SELECT COUNT(*) FROM test_control_mappings WHERE test_key LIKE 'github.%'`);
-    const expectedMappingCount = githubTests.reduce((sum, t) => sum + (t.isoReferences || []).length, 0);
+    const expectedMappingCount = githubTests.reduce((sum, t) => sum + expectedMappingRows(t).length, 0);
     expect(Number(mappingsResult.rows[0].count)).toBe(expectedMappingCount);
   });
 });

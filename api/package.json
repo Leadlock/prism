@@ -45,6 +45,8 @@
     "@azure/storage-blob": "^12.33.0",
     "@octokit/auth-app": "^8.3.0",
     "@octokit/rest": "^22.0.1",
+    "@resvg/resvg-js": "^2.6.2",
+    "akamai-edgegrid": "^4.0.0",
     "bcryptjs": "^2.4.3",
     "cheerio": "^1.0.0",
     "clamscan": "^2.2.1",
@@ -55,6 +57,7 @@
     "express-rate-limit": "^7.0.0",
     "googleapis": "^144.0.0",
     "helmet": "^8.0.0",
+    "html-to-docx": "^1.8.0",
     "jsonwebtoken": "^9.0.2",
     "jszip": "^3.10.1",
     "mammoth": "^1.8.0",
@@ -63,7 +66,8 @@
     "openai": "^4.20.0",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.15.0",
-    "pg": "^8.12.0"
+    "pg": "^8.12.0",
+    "undici": "^7.19.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.4",

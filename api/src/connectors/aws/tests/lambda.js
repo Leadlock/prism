@@ -128,7 +128,7 @@ export async function checkLambdaEnvVarsNotSecrets(lambda) {
 }
 
 export const lambdaTests = [
-  { key: "aws.lambda.function_url_not_public", title: "Lambda function URLs require authentication", failTitle: "Lambda function URL allows unauthenticated public access", severityDefault: "critical", isoReferences: ["A.13.1.1"], run: (clients) => checkLambdaFunctionUrlNotPublic(clients.lambda) },
+  { key: "aws.lambda.function_url_not_public", title: "Lambda function URLs require authentication", failTitle: "Lambda function URL allows unauthenticated public access", severityDefault: "critical", isoReferences: ["A.13.1.1"], dpdpaControlAreas: ["Access Control & Least Privilege"], run: (clients) => checkLambdaFunctionUrlNotPublic(clients.lambda) },
   { key: "aws.lambda.no_wildcard_resource_policy", title: "Lambda resource policies do not grant a wildcard principal", failTitle: "Lambda resource policy grants access to a wildcard principal", severityDefault: "critical", isoReferences: ["A.9.1.2"], run: (clients) => checkLambdaNoWildcardResourcePolicy(clients.lambda) },
   { key: "aws.lambda.in_vpc", title: "Lambda functions are deployed inside a VPC", failTitle: "Lambda function is not deployed inside a VPC", severityDefault: "medium", isoReferences: ["A.13.1.1"], run: (clients) => checkLambdaInVpc(clients.lambda) },
   { key: "aws.lambda.env_vars_not_plaintext_secrets", title: "Lambda environment variables do not contain plaintext secrets", failTitle: "Lambda function has environment variables with secret-like names", severityDefault: "high", isoReferences: ["A.9.2.4"], run: (clients) => checkLambdaEnvVarsNotSecrets(clients.lambda) },

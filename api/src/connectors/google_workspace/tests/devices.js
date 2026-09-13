@@ -52,6 +52,7 @@ export const devicesTests = [
     failTitle: "Baseline ChromeOS session/idle policy is left unconfigured",
     severityDefault: "medium",
     isoReferences: ["A.6.2.1"],
+    dpdpaControlAreas: ["Security Safeguards Program"],
     run: (clients) => checkChromePolicyCompliant(clients.chromepolicy, clients.directory, clients.customerId),
   },
 ];

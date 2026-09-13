@@ -7,6 +7,7 @@ const UNVERIFIED_ALLOWLIST = [
   { method: "GET",  path: "/api/auth/me" },
   { method: "GET",  path: "/api/self-assessment" },
   { method: "POST", path: "/api/self-assessment" },
+  { method: "POST", path: "/api/self-assessment/complete" },
   { method: "POST", path: "/api/users/invite" },
   { method: "PUT",  path: "/api/users/me" },
   { method: "GET",  path: "/api/settings" },

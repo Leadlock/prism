@@ -114,6 +114,7 @@ export const creatorTests = [
     failTitle: "Creator app has Developer/Admin users exceeding the expected threshold",
     severityDefault: "medium",
     isoReferences: ["A.9.2.3"],
+    dpdpaControlAreas: ["Privileged Access Management"],
     run: (clients) => checkAppPermissionReview(clients),
   },
   {
@@ -122,6 +123,7 @@ export const creatorTests = [
     failTitle: "Creator app has public-facing forms that may expose other users' data",
     severityDefault: "critical",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkPublicFormDataExposure(clients),
   },
   {
@@ -130,6 +132,7 @@ export const creatorTests = [
     failTitle: "Creator app has an excessive number of users with Deluge script edit access",
     severityDefault: "medium",
     isoReferences: ["A.14.2.5"],
+    dpdpaControlAreas: ["Secure Development & API Security"],
     run: (clients) => checkDelugeScriptAccessReview(clients),
   },
 ];

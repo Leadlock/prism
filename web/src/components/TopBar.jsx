@@ -1,4 +1,3 @@
-import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import NotificationBell from "./NotificationBell.jsx";
 import UserMenu from "./UserMenu.jsx";
@@ -24,9 +23,7 @@ export default function TopBar({
   currentAnswer,
   onProfileUpdate,
 }) {
-  const navigate = useNavigate();
   const [actionsOpen, setActionsOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [reviewLockedOpen, setReviewLockedOpen] = useState(false);
   const [profileName, setProfileName] = useState(user?.fullName || "");
@@ -133,6 +130,7 @@ export default function TopBar({
           onThemeToggle={onThemeToggle}
           onLogout={onLogout}
           isVerified={isVerified}
+          onReviewLocked={() => setReviewLockedOpen(true)}
         />
       </div>
 

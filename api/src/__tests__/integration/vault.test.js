@@ -175,6 +175,72 @@ describe("POST /api/vault", () => {
   });
 });
 
+// Waits for the fire-and-forget queueEvidenceAnalysis to settle on a vault row,
+// optionally for a specific analysed-version number.
+async function waitForAnalysis(vaultId, { version = null, tries = 100 } = {}) {
+  for (let i = 0; i < tries; i++) {
+    const r = await query(
+      "SELECT ai_analyzed_at, ai_analyzed_version, ai_analysis_status FROM evidence_vault WHERE id = $1",
+      [vaultId]
+    );
+    const row = r.rows[0];
+    const settled = row && row.ai_analysis_status === null && row.ai_analyzed_at;
+    if (settled && (version === null || row.ai_analyzed_version === version)) return row;
+    await new Promise((res) => setTimeout(res, 50));
+  }
+  throw new Error(`analysis did not settle for vault ${vaultId}`);
+}
+
+// AI is opt-in per company — enable it so auto-analysis actually runs.
+async function enableAi(companyId) {
+  await query(
+    `INSERT INTO company_settings (company_id, ai_enabled) VALUES ($1, TRUE)
+     ON CONFLICT (company_id) DO UPDATE SET ai_enabled = TRUE`,
+    [companyId]
+  );
+}
+
+describe("auto AI analysis on upload (PRISM_AI_PROVIDER=none)", () => {
+  test("a fresh upload gets analysed and stamped with version 1", async () => {
+    const company = await createCompany({ domain: "autoai1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    await enableAi(company.id);
+
+    const up = await uploadFile(admin.token, "Auto Analysed Doc");
+    expect(up.status).toBe(201);
+
+    const row = await waitForAnalysis(up.body.id, { version: 1 });
+    expect(row.ai_analyzed_version).toBe(1);
+    expect(row.ai_analysis_status).toBeNull();
+
+    // exposed through the API for reviewers/auditors
+    const detail = await request(app)
+      .get(`/api/vault/${up.body.id}`)
+      .set("Authorization", `Bearer ${admin.token}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.aiContributorComments).toBeTruthy();
+    expect(detail.body.currentVersion).toBe(1);
+  });
+
+  test("uploading a new version re-runs analysis against version 2", async () => {
+    const company = await createCompany({ domain: "autoai2.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    await enableAi(company.id);
+
+    const up = await uploadFile(admin.token, "Versioned Doc");
+    await waitForAnalysis(up.body.id, { version: 1 });
+
+    const v2 = await request(app)
+      .post(`/api/vault/${up.body.id}/versions`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .attach("file", Buffer.from("v2 content"), { filename: "test-v2.txt", contentType: "text/plain" });
+    expect(v2.status).toBe(201);
+
+    const row = await waitForAnalysis(up.body.id, { version: 2 });
+    expect(row.ai_analyzed_version).toBe(2);
+  });
+});
+
 describe("GET /api/vault/:id", () => {
   test("returns vault item by id", async () => {
     const company = await createCompany();

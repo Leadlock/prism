@@ -51,6 +51,7 @@ export const driveTests = [
     failTitle: "Drive/Docs external sharing default is unrestricted",
     severityDefault: "critical",
     isoReferences: ["A.8.2.3"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkDriveExternalSharingRestricted(clients.cloudidentity, clients.customerId),
   },
 ];

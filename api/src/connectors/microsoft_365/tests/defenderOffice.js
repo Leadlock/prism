@@ -77,6 +77,7 @@ export const defenderOfficeTests = [
     failTitle: "No active Safe Links policy found — time-of-click URL protection is not enforced",
     severityDefault: "high",
     isoReferences: ["A.12.2.1"],
+    dpdpaControlAreas: ["Security Safeguards Program"],
     run: (clients) => checkSafeLinksEnabled(clients.getExchangeToken, clients.tenantId),
   },
   {
@@ -85,6 +86,7 @@ export const defenderOfficeTests = [
     failTitle: "No active Safe Attachments policy found — detonation scanning is not enforced",
     severityDefault: "high",
     isoReferences: ["A.12.2.1"],
+    dpdpaControlAreas: ["Security Safeguards Program"],
     run: (clients) => checkSafeAttachmentsEnabled(clients.getExchangeToken, clients.tenantId),
   },
 ];

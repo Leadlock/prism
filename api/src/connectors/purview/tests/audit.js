@@ -178,6 +178,7 @@ export const auditTests = [
     failTitle: "Unified audit logging is disabled",
     severityDefault: "critical",
     isoReferences: ["A.12.4.1"],
+    dpdpaControlAreas: ["Logging & Monitoring"],
     run: (clients) => checkUnifiedLoggingEnabled(clients.audit),
   },
   {
@@ -186,6 +187,7 @@ export const auditTests = [
     failTitle: "Required audit log content-type subscription is not active",
     severityDefault: "high",
     isoReferences: ["A.12.4.1"],
+    dpdpaControlAreas: ["Logging & Monitoring"],
     run: (clients) => checkSubscriptionsActive(clients.audit),
   },
   {
@@ -194,6 +196,7 @@ export const auditTests = [
     failTitle: "DLP audit content is not available",
     severityDefault: "high",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkDlpAlertsAvailable(clients.audit),
   },
   {
@@ -202,6 +205,7 @@ export const auditTests = [
     failTitle: "Audit content is not actively flowing",
     severityDefault: "medium",
     isoReferences: ["A.12.4.1"],
+    dpdpaControlAreas: ["Logging & Monitoring"],
     run: (clients) => checkContentRecentlyAvailable(clients.audit),
   },
 ];

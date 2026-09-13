@@ -58,6 +58,7 @@ export const groupsTests = [
     failTitle: "Privileged group has no owner-role member",
     severityDefault: "medium",
     isoReferences: ["A.9.2.2"],
+    dpdpaControlAreas: ["Privileged Access Management"],
     run: (clients) => checkPrivilegedGroupMembershipReviewed(clients.directory, clients.customerId),
   },
 ];

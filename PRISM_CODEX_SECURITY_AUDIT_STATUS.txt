@@ -1,0 +1,277 @@
+PRISM SECURITY AUDIT — CODEX PERSISTENT INSTRUCTIONS / STATUS
+
+Purpose:
+Maintain a persistent, authoritative security-audit status for the PRISM repository. This status must survive context changes and prevent completed findings from being re-audited unnecessarily or pending findings from being accidentally skipped.
+
+GENERAL RULES
+1. Treat this file/instructions as the source of truth for audit progress unless a newer explicit audit report supersedes it.
+2. Never claim a finding is fixed or closed without evidence from:
+   - regression tests,
+   - relevant broader test suites,
+   - diff/worktree inspection,
+   - and an independent closure review where required.
+3. Preserve the distinction between:
+   - VALIDATED / CONFIRMED
+   - REMEDIATION IN PROGRESS
+   - FIXED / READY FOR CLOSURE
+   - CLOSED / INDEPENDENTLY VERIFIED
+   - NOT CONFIRMED
+   - PENDING VALIDATION
+4. Do not modify unrelated pre-existing working-tree changes.
+5. For each finding, work one finding at a time:
+   VALIDATE -> RED TESTS -> FIX -> GREEN TESTS -> ALTERNATE-PATH REVIEW -> INDEPENDENT CLOSURE REVIEW.
+6. Do not silently reopen a CLOSED finding because of an unrelated observation. Create/track a separate finding unless the new issue directly defeats the closed security property.
+7. Keep exact test baselines from the relevant audit report. Do not assume one universal integration-test count.
+
+COMPLETED FINDINGS
+
+F-01 — Cross-tenant evidence takeover/file disclosure
+Severity: P1 High
+Status: CLOSED
+Key remediation:
+- Removed cross-company evidence reassignment.
+- Reject client-controlled filePath/file_path.
+- Evidence responses no longer expose raw storage paths.
+- Storage enforces company-specific namespaces for local/S3/Azure.
+Validation/closure:
+- Dedicated regression tests passed.
+- Storage/analysis tests passed.
+- Relevant integration tests passed.
+- Frontend production build passed.
+- Diff/whitespace checks clean.
+
+F-02 — Evidence filePath injection
+Severity: P2
+Status: CLOSED
+Important: Closed as a consequence of F-01 remediation, with dedicated regression coverage.
+Key result:
+- Client-supplied filePath cannot be persisted/used to read arbitrary files.
+- Storage layer enforces tenant-aware isolation.
+- Alternate mutation paths were checked.
+Residual smell in assessments.js raw unlink is delete-only and not currently exploitable; treat as separate defense-in-depth work unless future evidence changes that conclusion.
+
+F-03 — Marketplace activation cross-tenant modification
+Severity: P1 High
+Status: CLOSED
+Key remediation:
+- ADMIN-only.
+- companyId derived from req.user.companyId.
+- Client companyId ignored.
+- Existing subscription ownership checked.
+- IDs/quantity validated.
+- Local state persisted only after external activation success.
+Validation:
+- Dedicated tests and auth/RBAC tests passed.
+- Independent closure review passed.
+
+F-04 — Marketplace subscription cross-tenant disclosure
+Severity: P2
+Status: CLOSED
+Key remediation:
+- ADMIN-only.
+- Query binds subscription_id to authenticated company_id.
+- Explicit response projection.
+- Foreign/unknown subscription returns 404.
+Validation:
+- Attack matrix passed.
+- Alternate paths checked.
+- Independent closure review passed.
+
+F-05 — DPDPA scanner SSRF
+Severity: P1 High
+Status: CLOSED
+Key remediation:
+- Central safeFetch boundary.
+- Blocks private/loopback/link-local/metadata/internal destinations.
+- Manual redirects are revalidated.
+- Validated IPs are pinned.
+- Mobile scanner was also found during independent review and migrated to safeFetch.
+- Scanner-wide search found no remaining raw fetch path outside safeFetch.
+Validation:
+- Original SSRF suite passed.
+- Mobile SSRF suite passed.
+- Scanner tests passed.
+- Full unit suite passed.
+Residual low-severity IPv6 special-purpose classification gap was noted separately and did not reopen F-05.
+
+F-06 — Tenant ADMIN/LEAD mutation of global canonical questions
+Severity: P2 High
+Status: CLOSED
+Key remediation:
+- Tenant override is created when no tenant-specific copy exists.
+- All subsequent writes target authenticated tenant company_id.
+- Global canonical rows cannot be modified by tenant ADMIN/LEAD routes.
+- Concurrency protected by unique (company_id, quest_id) index + ON CONFLICT.
+- SUPERADMIN global catalog mutation path remains intact.
+Validation:
+- 14/14 F-06 regression tests passed.
+- Unit 971/971.
+- Integration baseline preserved with 8 pre-existing unrelated failures.
+- Independent closure review passed.
+Additional separate correctness fix:
+- GET /api/questions/:questId now uses ORDER BY company_id ASC NULLS LAST LIMIT 1.
+- Added 2 regression tests for tenant override preference and global fallback.
+- Final unit 971/971.
+- Final integration 264/272 with same 8 pre-existing unrelated failures.
+- This does not reopen F-06.
+
+F-07 — Assessment authorization / field-level privilege escalation
+Severity: P1 High
+Status: CLOSED
+Key remediation:
+- PUT /api/assessments/:id uses a hard allowlist and role-specific field/state permissions.
+- Contributor cannot self-approve.
+- Auditor cannot rewrite assessment content.
+- reviewedBy/auditedBy are derived from authenticated identity.
+- scoreEligible is server-derived.
+- POST /api/assessments was separately discovered as a sibling bypass and was fixed as part of the F-07 remediation.
+- POST rejects/controls forged approval/audit states and derives score eligibility server-side.
+Validation:
+- Combined POST/PUT regression suite 31/31 passed.
+- Unit 971/971.
+- Integration baseline remained unchanged.
+- Independent closure review passed.
+Important: F-08 is considered the POST/create attack path of F-07, not a separate duplicate vulnerability.
+
+F-08 — Assessment creation permits forged reviewer/auditor attribution
+Severity: P2 in original report
+Status: MERGED INTO F-07 / CLOSED
+Reason:
+- Independent review established that F-08 is the POST/create sibling attack path for the same assessment authorization weakness.
+- It was fixed and independently verified through F-07's combined remediation.
+Do not reopen or count F-08 separately unless genuinely new behavior outside the F-07 security property is discovered.
+
+PENDING FINDINGS
+
+F-09 — Evidence requests can reference users and records from other tenants
+Severity: P1 High (ORIGINAL; must be independently reassessed)
+Status: NEXT / PENDING VALIDATION
+Suspected routes:
+- POST /api/requests
+- PUT /api/requests/:id
+Areas:
+- assessmentId
+- artifactGroupId
+- assigneeId
+- company_id consistency
+- request listing/detail
+- email/notification behavior
+- downstream evidence upload/attachment behavior
+Important:
+- Do NOT assume the finding is exploitable.
+- Validate the complete chain with two tenants.
+- Determine actual disclosure, notification, integrity, and downstream impact.
+- Reassess severity after empirical proof.
+- Do not modify files during validation.
+
+F-10 — Vault PIN bypass for linked evidence metadata and AI results
+Original severity: P2
+Status: PENDING VALIDATION
+Suspected route:
+- GET /api/vault/quest-links
+Concern:
+- Route may omit requireVaultPin while returning linked evidence metadata and AI analysis information.
+Must validate actual authorization model, PIN semantics, tenant isolation, and whether returned information is intended to be visible without the PIN.
+
+F-11 — Reviewed evidence can potentially be replaced through mutable vault pointers
+Original severity: P2
+Status: PENDING VALIDATION
+Concern:
+- Approved/reviewed assessment evidence may reference a mutable current vault version rather than an immutable approved_evidence_version_id.
+Must prove whether a reviewed evidence state can actually be changed after approval and whether downstream reports/audits consume the mutable pointer.
+
+F-12 — Malware scanning fails open on scanner errors
+Original severity: P2
+Status: PENDING VALIDATION
+Concern:
+- ClamAV unconfigured/unavailable/error may cause uploads to be accepted after only magic-byte validation.
+Must verify actual production upload behavior, scanner failure handling, configuration assumptions, and whether this is a deliberate accepted policy or a security defect.
+
+F-13 — Password-reset token replay / existing sessions survive password reset
+Original severity: P2
+Status: PENDING VALIDATION
+Suspected:
+- OTP creates short-lived reset JWT.
+- Reset token may remain reusable until expiry.
+- Existing seven-day access JWTs may remain valid after password reset.
+Must empirically test token replay and post-reset session validity without weakening production auth.
+
+F-14 — Global/tenant question selection nondeterministic
+Original severity: P2
+Status: PARTIALLY ADDRESSED / RECHECK NEEDED
+Important:
+- The originally flagged single-question GET ambiguity was separately fixed with ORDER BY company_id ASC NULLS LAST LIMIT 1 and regression tests.
+- Before treating F-14 as closed, inspect the full original F-14 scope, including modules.js and any other read paths, because the original finding covered both questions and modules.
+- Do not assume the question fix closes the entire F-14 finding.
+
+REMAINING ORIGINAL FINDINGS AFTER F-14
+The original audit may contain additional findings beyond F-14. Before skipping them, consult the authoritative audit report/status and enumerate every remaining finding number and title. Never invent missing findings.
+
+AUDIT PROCESS FOR EVERY PENDING FINDING
+
+Phase 1 — Validation
+- Read the relevant route/helper/schema/database code.
+- Trace authentication, authorization, tenant scoping, input validation, DB writes/reads, downstream effects.
+- Search repo-wide for alternate paths.
+- Build a minimal isolated proof.
+- Add regression tests only after understanding the vulnerable behavior.
+- Run them against the vulnerable implementation and record RED results.
+- Run relevant existing tests and record the baseline.
+- Do NOT fix production code during validation.
+
+Phase 2 — Remediation
+Only after confirmation:
+- Propose the smallest safe fix.
+- Preserve legitimate frontend/API behavior.
+- Implement regression tests for every confirmed attack path.
+- Avoid touching unrelated files or pre-existing dirty worktree changes.
+
+Phase 3 — Verification
+- Run dedicated regression suite.
+- Run relevant existing targeted suites.
+- Run full unit suite.
+- Run integration suite and compare exact failures to baseline.
+- Search for alternate mutation/read paths.
+- Inspect git diff.
+- Confirm no unrelated files were changed.
+
+Phase 4 — Independent Closure Review
+A separate review must challenge the fix:
+- Reproduce original exploit attempts.
+- Search for sibling/alternate routes.
+- Test tenant boundaries and role boundaries.
+- Verify downstream side effects.
+- Confirm frontend compatibility.
+- Confirm no test was weakened.
+- Only then mark CLOSED.
+
+CURRENT QUEUE
+
+1. F-09 — NEXT
+2. F-10
+3. F-11
+4. F-12
+5. F-13
+6. F-14 full-scope recheck
+7. Enumerate any F-15+ findings from the original audit and continue in order.
+
+STATUS UPDATE RULE
+
+At the end of every audit/remediation/closure task, update this status with:
+- Finding ID
+- Previous status
+- New status
+- Severity
+- What was proven
+- Files changed
+- Regression test count/result
+- Unit test baseline/result
+- Integration baseline/result
+- Remaining known issues
+- Whether independent closure review is complete
+
+Never delete historical completed findings. Append/update status rather than replacing history.
+
+If a finding is merged into another finding, explicitly record the merge and why.
+
+The goal is to maintain an accurate, auditable security-review ledger, not merely a list of TODOs.

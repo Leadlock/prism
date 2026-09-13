@@ -25,6 +25,24 @@ export const FRAMEWORK_LABELS = {
 
 const FRAMEWORK_ORDER = ["ISO2013", "ISO2022", "GDPR", "DPDPA"];
 
+// Display labels for the other frameworks that reach the finding report as raw
+// test_control_mappings rows (derived at startup from
+// data/crosswalk/iso27001-annexa-crosswalk.json). These are appended to the
+// control table after the curated ISO/GDPR/DPDPA rows, in this order. A framework
+// key with no entry here still renders, under its own uppercased key.
+const EXTRA_FRAMEWORK_LABELS = {
+  SOC2: "SOC 2",
+  HIPAA: "HIPAA",
+  CIS: "CIS Controls v8.1",
+  PCIDSS: "PCI DSS v4.0.1",
+  CERTIN: "CERT-In Directions 2022",
+};
+const EXTRA_FRAMEWORK_ORDER = ["SOC2", "HIPAA", "CIS", "PCIDSS", "CERTIN"];
+// Frameworks the curated CONTROL_CROSSWALK already owns in the table — raw
+// mapping rows for these are ignored here so the report keeps its reviewed
+// wording (e.g. "Art. 32" rather than a connector's "Art. 32(1)(b)").
+const CURATED_FRAMEWORKS = new Set(["ISO27001", "ISO2013", "ISO2022", "GDPR", "DPDPA"]);
+
 // Keyed by ISO/IEC 27001:2013 Annex A reference (the identifiers the automated
 // tests are tagged with in `test_control_mappings`).
 export const CONTROL_CROSSWALK = {
@@ -73,11 +91,16 @@ export const CONTROL_CROSSWALK = {
  */
 export function buildControlMappings(mappings) {
   const isoRefs = [];
+  const extraByFramework = new Map(); // framework key → ordered unique control refs
   for (const m of mappings || []) {
     if (typeof m === "string") {
       if (m) isoRefs.push(m);
     } else if (m && (m.framework == null || m.framework === "ISO27001") && m.isoReference) {
       isoRefs.push(m.isoReference);
+    } else if (m && m.framework && m.isoReference && !CURATED_FRAMEWORKS.has(m.framework)) {
+      if (!extraByFramework.has(m.framework)) extraByFramework.set(m.framework, []);
+      const list = extraByFramework.get(m.framework);
+      if (!list.includes(m.isoReference)) list.push(m.isoReference);
     }
   }
   const uniqueIso = [...new Set(isoRefs)];
@@ -99,6 +122,20 @@ export function buildControlMappings(mappings) {
   for (const key of FRAMEWORK_ORDER) {
     const controls = [...buckets[key]];
     if (controls.length) rows.push({ framework: FRAMEWORK_LABELS[key], controls });
+  }
+
+  // Append the other frameworks carried on the raw mapping rows, known ones
+  // first (in EXTRA_FRAMEWORK_ORDER), then any unrecognised key alphabetically.
+  const seenExtra = new Set();
+  for (const key of EXTRA_FRAMEWORK_ORDER) {
+    if (extraByFramework.has(key)) {
+      rows.push({ framework: EXTRA_FRAMEWORK_LABELS[key], controls: extraByFramework.get(key) });
+      seenExtra.add(key);
+    }
+  }
+  for (const key of [...extraByFramework.keys()].sort()) {
+    if (seenExtra.has(key)) continue;
+    rows.push({ framework: EXTRA_FRAMEWORK_LABELS[key] || key, controls: extraByFramework.get(key) });
   }
   return rows;
 }

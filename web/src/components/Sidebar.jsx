@@ -1,4 +1,6 @@
 import Logo from "./Logo";
+import { carriesForwardTo, assessmentCompletedAt } from "../utils/carryForward.js";
+import { isApprovedStatus } from "../utils/reviewStatus.js";
 
 export default function Sidebar({
   modules,
@@ -36,12 +38,10 @@ export default function Sidebar({
     if (!quest || !quest.recurrenceInterval || quest.recurrenceInterval === "none") return null;
     if (!allAssessments || !allAssessments.length) return null;
 
-    const nextDue = quest.nextDueDate ? quest.nextDueDate.slice(0, 7) : null;
-
     const prior = allAssessments
       .filter(a =>
         (a.questId === questId || a.quest_id === questId) &&
-        (a.reviewStatus === "FINISHED" || a.review_status === "FINISHED") &&
+        isApprovedStatus(a.reviewStatus || a.review_status) &&
         (a.answer === "IMPLEMENTED" || a.answer === "YES") &&
         (a.month || "") <= month
       )
@@ -50,16 +50,12 @@ export default function Sidebar({
     if (prior.length === 0) return null;
     const latest = prior[0];
 
-    // If next_due_date is set and is after the selected month, carry forward
-    if (nextDue && nextDue >= month) return latest;
-
-    // Otherwise check interval window
-    const intervalMonths = { weekly: 0, fortnightly: 0, monthly: 1, quarterly: 3, "semi-annual": 6, annual: 12 };
-    const maxMonths = intervalMonths[quest.recurrenceInterval] || 1;
-    const assessMonth = latest.month || "";
-    const monthDiff = (parseInt(month.slice(0, 4)) - parseInt(assessMonth.slice(0, 4))) * 12 +
-                      (parseInt(month.slice(5, 7)) - parseInt(assessMonth.slice(5, 7)));
-    if (monthDiff >= 0 && monthDiff < maxMonths) return latest;
+    // Day-precise carry-forward window: the assessment stays valid until its
+    // recurrence interval elapses from the completion date (matching the "Due in
+    // Nd" label on the linked evidence), not just until the calendar month flips.
+    if (carriesForwardTo(assessmentCompletedAt(latest), quest.recurrenceInterval, month, quest.nextDueDate)) {
+      return latest;
+    }
 
     return null;
   };
@@ -72,7 +68,7 @@ export default function Sidebar({
         (a.month === month || String(a.month) === String(month))
       );
       if (!assessment) assessment = getCarriedAssessment(q.questId);
-      return assessment && (assessment.reviewStatus === "FINISHED" || assessment.review_status === "FINISHED");
+      return assessment && isApprovedStatus(assessment.reviewStatus || assessment.review_status);
     }).length;
     return { assessed, total: moduleQuests.length };
   };
@@ -81,7 +77,7 @@ export default function Sidebar({
     // Check this month's assessment
     if (assessments && assessments.length) {
       const a = assessments.find(x => (x.questId === questId || x.quest_id === questId));
-      if (a && (a.reviewStatus || a.review_status) === 'FINISHED') {
+      if (a && isApprovedStatus(a.reviewStatus || a.review_status)) {
         const ans = a.answer;
         if (ans === "NOT_IMPLEMENTED") return 'dot-notimpl';
         if (ans === "PARTIALLY_IMPLEMENTED") return 'dot-partial';

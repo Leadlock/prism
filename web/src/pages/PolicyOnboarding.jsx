@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../api/client.js";
 import EvidenceStorageForm from "../components/EvidenceStorageForm.jsx";
 
@@ -246,6 +246,21 @@ function PolicyDocsStep({ token, uploads, onUploadsChange, onNext, onBack }) {
   const fileRefs = useRef({});
 
   const uploadedCount = Object.values(uploads).filter(Boolean).length;
+
+  // Re-hydrate analyses for documents uploaded on an earlier visit (analyses is
+  // local state and is lost on unmount). The server caches the result on the
+  // vault row, so this is a DB read, not another Bedrock call.
+  useEffect(() => {
+    for (const doc of POLICY_DOCS) {
+      const up = uploads[doc.id];
+      if (!up?.vaultId) continue;
+      setAnalyses(a => (a[doc.id] !== undefined ? a : { ...a, [doc.id]: "loading" }));
+      fetchPolicyAnalysis(token, up.vaultId, doc.title)
+        .then(analysis => setAnalyses(a => ({ ...a, [doc.id]: analysis })))
+        .catch(() => setAnalyses(a => ({ ...a, [doc.id]: "error" })));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleFile = async (doc, file) => {
     if (!file) return;

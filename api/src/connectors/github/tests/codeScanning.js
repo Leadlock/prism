@@ -35,5 +35,5 @@ export async function checkCodeScanningDefaultSetupEnabled(octokit, org, repos) 
 }
 
 export const codeScanningTests = [
-  { key: "github.repo.code_scanning_default_setup_enabled", title: "Code scanning (CodeQL) default setup is enabled", failTitle: "Code scanning (CodeQL) default setup is not enabled", severityDefault: "high", isoReferences: ["A.12.6.1"], run: (clients) => checkCodeScanningDefaultSetupEnabled(clients.octokit, clients.org, clients.repos) },
+  { key: "github.repo.code_scanning_default_setup_enabled", title: "Code scanning (CodeQL) default setup is enabled", failTitle: "Code scanning (CodeQL) default setup is not enabled", severityDefault: "high", isoReferences: ["A.12.6.1"], dpdpaControlAreas: ["Vulnerability & Patch Management"], run: (clients) => checkCodeScanningDefaultSetupEnabled(clients.octokit, clients.org, clients.repos) },
 ];

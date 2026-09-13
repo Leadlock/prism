@@ -14,32 +14,9 @@
 import { resolveDeptQuestionText } from "./deptSelfAssessQuestions.js";
 import { PRISM_LOGO_DATA_URI } from "../data/prismLogo.js";
 import { lookupProvision } from "./provisionIndex.js";
-
-const SCORE_VALUE = { YES: 1, PARTIAL: 0.5, NO: 0 };
-
-// Score bands — the label + colour used wherever a score is shown.
-const SCORE_BANDS = [
-  { min: 80, label: "Strong", color: "#15803D", bg: "#DCFCE7" },
-  { min: 60, label: "Moderate", color: "#B45309", bg: "#FEF3C7" },
-  { min: 40, label: "Developing", color: "#C2410C", bg: "#FFEDD5" },
-  { min: 0, label: "Needs work", color: "#B91C1C", bg: "#FEE2E2" },
-];
-const NOT_ASSESSED_BAND = { label: "Not assessed", color: "#8B85A0", bg: "#F7F6FC" };
-
-function scoreBand(pct) {
-  if (pct === null) return NOT_ASSESSED_BAND;
-  return SCORE_BANDS.find(b => pct >= b.min);
-}
-
-function scoreSubmission(answers) {
-  let total = 0, scored = 0;
-  for (const value of Object.values(answers || {})) {
-    if (!(value in SCORE_VALUE)) continue; // skips NA and unrecognised values
-    total++;
-    scored += SCORE_VALUE[value];
-  }
-  return total > 0 ? Math.round((scored / total) * 100) : null;
-}
+import { SCORE_VALUE, SCORE_BANDS, scoreBand, scoreSubmission } from "./selfAssessmentScoring.js";
+import { buildReadinessAssessment } from "./readinessAssessment.js";
+import { buildReadinessDocument } from "./selfAssessmentDocument.js";
 
 // Static regulatory/standard reference rows — last-resort fallback only, used
 // when AI mapping is unavailable, disabled, or nothing validated against the
@@ -412,250 +389,24 @@ function buildRiskRewardRows(deptRows, regulatoryExposure) {
   });
 }
 
-// ─── HTML — a typeset document, not an email card ───────────────────────────
-// Full-page layout modelled on the PRISM "Key Insights & Priority Actions"
-// report: navy section headers with a rule, navy table header rows, numbered
-// sections, narrative intros. Rendered as-is both in the email and (via an
-// iframe) in the in-app Team Report, so all three surfaces are identical.
-
-const NAVY = "#4F46E5";
-const NAVY_DARK = "#0F172A";
-const NAVY_SOFT = "#F8FAFD";
-const DOC_INK = "#1E293B";
-const DOC_MUTED = "#64748B";
-const DOC_BORDER = "rgba(163, 178, 204, 0.45)";
-const DOC_BG = "#E8EEF6";
-const AMBER_BG = "rgba(245, 158, 11, 0.08)";
-const AMBER_BORDER = "rgba(245, 158, 11, 0.3)";
-const AMBER_INK = "#B45309";
-const DOC_FONT = "'Sora', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-const MONO_FONT = "'JetBrains Mono', monospace";
-
-const bandColor = (pct) => scoreBand(pct).color;
-
-function docSection(n, label, body) {
-  return `
-    <h2 style="font-family:${DOC_FONT};font-size:18px;font-weight:800;color:${NAVY_DARK};margin:38px 0 0;padding-bottom:8px;border-bottom:2px solid ${NAVY};letter-spacing:-0.01em;">
-      ${n ? `${n}. ` : ""}${esc(label)}
-    </h2>
-    <div style="margin-top:14px;">${body}</div>`;
-}
-
-function para(text) {
-  return `<p style="font-family:${DOC_FONT};font-size:14px;line-height:1.68;color:${DOC_INK};margin:0 0 14px;">${text}</p>`;
-}
-function caveat(text) {
-  return `<p style="font-family:${DOC_FONT};font-size:12.5px;line-height:1.6;color:${DOC_MUTED};font-style:italic;margin:0 0 14px;">${esc(text)}</p>`;
-}
-function bullets(items) {
-  return `<ul style="font-family:${DOC_FONT};margin:0 0 8px;padding-left:20px;">${items.map(b => `<li style="font-size:13.5px;line-height:1.65;color:${DOC_INK};margin-bottom:8px;">${esc(b)}</li>`).join("")}</ul>`;
-}
-
-function docTable(headers, rows, { widths = [] } = {}) {
-  const th = headers.map((h, i) =>
-    `<th style="background:linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);color:#fff;font-family:${DOC_FONT};font-size:11.5px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;text-align:left;padding:11px 14px;${widths[i] ? `width:${widths[i]};` : ""}">${esc(h)}</th>`
-  ).join("");
-  const tr = rows.map((cells, r) => {
-    const bg = r % 2 ? NAVY_SOFT : "#fff";
-    const tds = cells.map(c => {
-      const { html, colspan, ...st } = typeof c === "object" && c !== null ? c : { html: c };
-      const style = Object.entries(st).map(([k, v]) => `${k.replace(/[A-Z]/g, m => "-" + m.toLowerCase())}:${v}`).join(";");
-      return `<td${colspan ? ` colspan="${colspan}"` : ""} style="font-family:${DOC_FONT};font-size:13.5px;line-height:1.55;color:${DOC_INK};padding:11px 14px;border-bottom:1px solid ${DOC_BORDER};vertical-align:top;${style}">${html}</td>`;
-    }).join("");
-    return `<tr style="background:${bg};">${tds}</tr>`;
-  }).join("");
-  return `<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid ${DOC_BORDER};border-radius:10px;overflow:hidden;margin-bottom:8px;"><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>`;
-}
-
-function statusCell(pct) {
-  const b = scoreBand(pct);
-  return { html: `<strong style="color:${b.color};font-family:${DOC_FONT};">${b.label}</strong>` };
-}
-
-export function buildSelfAssessmentReportHtml({
-  companyName, submissions, deptRows, overallScore, executiveSummary, priorityFocus,
-  quickWins, dataQualityNotes, roadmap, regulatoryExposure, regulatoryExposureSource,
-  requestedByEmail, logoDataUri,
-}) {
-  const generatedAt = new Date().toLocaleDateString("en-IN", { dateStyle: "long" });
-  const band = scoreBand(overallScore);
-  const notAssessed = deptRows.filter(d => d.avgScore === null).map(d => d.dept);
-  const co = esc(companyName || "Your organization");
-
-  // 2 — Department Scorecard
-  const scorecard = docTable(
-    ["Department", "Score", "Status", "Gaps", "Partials"],
-    deptRows.map(d => [
-      { html: `<strong>${esc(d.dept)}</strong>` },
-      { html: d.avgScore !== null ? `${d.avgScore}%` : "—", "font-weight": "700", "font-family": MONO_FONT },
-      d.avgScore !== null ? statusCell(d.avgScore) : { html: `<span style="color:${DOC_MUTED};">Not Assessed</span>` },
-      { html: String(d.gapCount), color: d.gapCount ? "#EF4444" : DOC_MUTED, "font-weight": d.gapCount ? "700" : "400", "font-family": MONO_FONT },
-      { html: String(d.partialCount), color: d.partialCount ? "#F59E0B" : DOC_MUTED, "font-weight": d.partialCount ? "700" : "400", "font-family": MONO_FONT },
-    ]),
-    { widths: ["", "12%", "16%", "10%", "10%"] }
-  );
-
-  // 3 — Priority Focus
-  const priority = priorityFocus.length ? docTable(
-    ["Department", "Score", "Open Items (Gaps + Partials)", "Share of Org-Wide Total"],
-    priorityFocus.map(d => [
-      { html: `<strong>${esc(d.dept)}</strong>` },
-      { html: d.avgScore !== null ? `${d.avgScore}%` : "—", "font-family": MONO_FONT },
-      `${d.openItems} (${d.gapCount} gap${d.gapCount !== 1 ? "s" : ""}, ${d.partialCount} partial${d.partialCount !== 1 ? "s" : ""})`,
-      `≈ ${d.shareOfOrgWideTotal}% of all open items org-wide`,
-    ])
-  ) : para("No department has an open item this round.");
-
-  // 4 — Quick Wins
-  const quick = quickWins.length ? docTable(
-    ["Department", "Movement If Closed", "Remaining Items"],
-    quickWins.map(d => [
-      { html: `<strong>${esc(d.dept)}</strong>` },
-      `${d.avgScore}% → 100%`,
-      `${d.gapCount} gap${d.gapCount !== 1 ? "s" : ""} + ${d.partialCount} partial${d.partialCount !== 1 ? "s" : ""}`,
-    ])
-  ) : para("No department is within one or two fixes of a perfect score this round.");
-
-  // 5 — Regulatory Exposure
-  const exposure = regulatoryExposure.length ? (
-    docTable(
-      ["Framework", "Provision", "Requirement", "Penalty / Fine"],
-      regulatoryExposure.flatMap(row => [
-        [
-          { html: `<strong>${esc(row.framework)}</strong>` },
-          esc(row.provisionLabel),
-          esc(row.summary),
-          { html: esc(row.penalty), "font-weight": "700", color: "#EF4444" },
-        ],
-        [{
-          html: `<span style="color:${NAVY};"><strong>Why this applies to you:</strong> ${esc(row.triggeredBy.map(t => t.dept).join(", "))} — self-assessed with open gaps in this exact area.</span>${row.url ? ` <a href="${esc(row.url)}" style="color:${NAVY};font-weight:600;">View official source ↗</a>` : ""}`,
-          colspan: "4",
-          "font-size": "12px",
-          background: "#fff",
-        }],
-      ])
-    ) +
-    caveat(regulatoryExposureSource === "ai"
-      ? "Each row was mapped from this organization's actual open self-assessment items by AI and checked against a curated index of official provisions — the provision id shown is never invented. Follow \"View official source\" to verify. Penalty figures are commonly-cited public maxima, for awareness only — not legal advice."
-      : "AI mapping was unavailable for this report, so this table is a static, department-bucket reference — not derived from the specific open items. Penalty figures are commonly-cited public maxima, for awareness only — not legal advice.")
-  ) : para("No open self-assessment item mapped to a tracked regulatory provision this round.");
-
-  // 7 — Roadmap
-  const phaseTable = (phase) => !phase.actions.length ? "" : `
-    <h3 style="font-family:${DOC_FONT};font-size:14px;font-weight:700;color:${NAVY};margin:20px 0 10px;">${esc(phase.title || phase.label)}</h3>
-    ${docTable(["#", "Action"], phase.actions.map((a, i) => [
-      { html: String(i + 1), "font-weight": "700", "text-align": "center", "font-family": MONO_FONT },
-      esc(a),
-    ]), { widths: ["6%", ""] })}`;
-  const roadmapBody =
-    para("The roadmap sequences remediation by urgency and by where open items are concentrated: Phase 1 targets the highest-volume items first, Phase 2 the remaining regulation-mapped gaps, Phase 3 the lower-priority items plus a repeatable review process.") +
-    phaseTable({ ...roadmap.phase1, title: `Phase 1 — ${roadmap.phase1.label}` }) +
-    phaseTable({ ...roadmap.phase2, title: `Phase 2 — ${roadmap.phase2.label}` }) +
-    phaseTable({ ...roadmap.phase3, title: `Phase 3 — ${roadmap.phase3.label}` });
-
-  // Annexure B — full detail + regulatory scope per department
-  const legend = docTable(["Term", "Meaning"], [
-    [{ html: `<strong style="color:${bandColor(85)};">Strong</strong>` }, "Self-assessed score of 80% or higher"],
-    [{ html: `<strong style="color:${bandColor(70)};">Moderate</strong>` }, "Self-assessed score of 60%–79%"],
-    [{ html: `<strong style="color:${bandColor(45)};">Developing</strong>` }, "Self-assessed score of 40%–59%"],
-    [{ html: `<strong style="color:${bandColor(10)};">Needs work</strong>` }, "Self-assessed score below 40%"],
-    [{ html: `<span style="color:${DOC_MUTED};">Not Assessed</span>` }, "No scoreable answers submitted — excluded from the overall score"],
-    ["Gaps", "Unresolved control items, as self-reported by the department"],
-    ["Partials", "Controls reported as partially, but not fully, in place"],
-  ], { widths: ["22%", ""] });
-  const annexure = docTable(
-    ["Department", "Score", "Status", "Open Items", "Regulatory Scope (this assessment)"],
-    deptRows.map(d => [
-      { html: `<strong>${esc(d.dept)}</strong>` },
-      { html: d.avgScore !== null ? `${d.avgScore}%` : "—", "font-family": MONO_FONT },
-      d.avgScore !== null ? statusCell(d.avgScore) : { html: `<span style="color:${DOC_MUTED};">Not Assessed</span>` },
-      `${d.gapCount} gap${d.gapCount !== 1 ? "s" : ""}, ${d.partialCount} partial${d.partialCount !== 1 ? "s" : ""}`,
-      { html: esc(d.regulatoryScope || "None mapped in this assessment"), color: d.regulatoryScope ? DOC_INK : DOC_MUTED },
-    ]),
-    { widths: ["", "10%", "14%", "20%", "30%"] }
-  );
-
-  const body = `
-  <div style="background:${DOC_BG};padding:36px 16px;font-family:${DOC_FONT};">
-    <div style="max-width:840px;margin:0 auto;background:#FFFFFF;border:1px solid ${DOC_BORDER};border-radius:18px;box-shadow:0 12px 36px rgba(163, 178, 204, 0.35);padding:52px 60px 44px;">
-
-      ${logoDataUri ? `<img src="${logoDataUri}" alt="PRISM" style="height:38px;width:auto;margin-bottom:22px;" />` : ""}
-      <div style="font-size:28px;font-weight:800;color:${NAVY_DARK};letter-spacing:-0.02em;font-family:${DOC_FONT};">${co}</div>
-      <div style="font-size:16px;font-weight:700;color:${NAVY};margin-top:4px;font-family:${DOC_FONT};">PRISM Team Self-Assessment — Key Insights &amp; Priority Actions</div>
-      <div style="font-size:12.5px;color:${DOC_MUTED};margin-top:8px;line-height:1.6;font-family:${DOC_FONT};">
-        ${submissions.length} self-assessment submission${submissions.length !== 1 ? "s" : ""} across ${deptRows.length} department${deptRows.length !== 1 ? "s" : ""}
-        &nbsp;•&nbsp; Generated ${esc(generatedAt)}
-        &nbsp;•&nbsp; Overall Compliance Score: <strong style="color:${band.color};font-style:normal;font-family:${MONO_FONT};">${overallScore !== null ? `${overallScore}%` : "—"} (${band.label})</strong>
-        ${requestedByEmail ? `<br/>Requested by ${esc(requestedByEmail)}` : ""}
-        ${notAssessed.length ? `<br/>${esc(notAssessed.join(", "))} treated as Not Assessed and excluded from the overall score` : ""}
-      </div>
-
-      <div style="background:${AMBER_BG};border:1px solid ${AMBER_BORDER};border-radius:12px;padding:14px 18px;margin-top:20px;">
-        <div style="font-size:13px;font-weight:700;color:${AMBER_INK};font-family:${DOC_FONT};">Basis of Assessment: Trust-Based Self-Reporting</div>
-        <div style="font-size:12.5px;color:${DOC_INK};line-height:1.6;margin-top:4px;font-family:${DOC_FONT};">
-          This report is generated from a trust-based, self-reported assessment. Each department submitted its own responses through PRISM, and the scores, gaps, and partials reflect what each department reported about itself. No independent verification, evidence review, or third-party validation was performed as part of this exercise.
-        </div>
-      </div>
-
-      ${docSection(1, "Executive Summary",
-        para(executiveSummary.narrative) + caveat(executiveSummary.caveat) + bullets(executiveSummary.bullets))}
-
-      ${docSection(2, "Department Scorecard",
-        para("Full self-assessment results by department, ranked from lowest to highest score. “Gaps” are unresolved control items; “Partials” are controls that are partly, but not fully, in place.") + scorecard)}
-
-      ${docSection(3, "Priority Focus Areas",
-        para("Ranking departments purely by score can understate where the real remediation effort is needed. Ranking instead by the raw count of open items (gaps + partials) shows where effort is concentrated:") + priority)}
-
-      ${docSection(4, "Quick-Win Opportunities",
-        para("Departments already close to a perfect score that can reach 100% with minimal additional effort — useful as early, visible progress while larger remediation work is underway elsewhere:") + quick)}
-
-      ${docSection(5, "Regulatory Exposure Summary",
-        para("The self-reported gaps and partials cluster around a small number of regulatory provisions. This table consolidates which provisions each department's open items fall within scope of.") + exposure)}
-
-      ${docSection(6, "Basis of Assessment & Data Quality Notes", bullets(dataQualityNotes.map(n => n.text)))}
-
-      ${docSection(7, "Recommended Remediation Roadmap", roadmapBody)}
-
-      ${docSection(null, "Annexure B — Full Department-Wise Detail",
-        para("Every department's self-assessment result in full, including the specific regulatory provisions its open items were mapped to (where applicable). All figures are self-reported and have not been independently verified.") +
-        `<h3 style="font-family:${DOC_FONT};font-size:14px;font-weight:700;color:${NAVY};margin:20px 0 10px;">Legend</h3>` + legend +
-        `<div style="height:14px;"></div>` + annexure)}
-
-      <div style="border-top:1px solid ${DOC_BORDER};margin-top:36px;padding-top:16px;font-size:11.5px;color:${DOC_MUTED};line-height:1.6;font-family:${DOC_FONT};">
-        Breach of any other provision of this Act or the rules made thereunder. The fine may extend upto 50 cr Under The Schedule to the DPDPA 2023.<br/>
-        Source: PRISM Team Self-Assessment — ${co}, generated ${esc(generatedAt)}.<br/>
-        Generated by PRISM. This document is confidential and intended for internal circulation only.
-      </div>
-    </div>
-  </div>`;
-
-  const text = `PRISM Team Self-Assessment — ${companyName || "Your organization"}\n` +
-    `${submissions.length} submissions across ${deptRows.length} departments. Overall Compliance Score: ${overallScore !== null ? `${overallScore}%` : "—"} (${band.label})\n` +
-    (requestedByEmail ? `Requested by ${requestedByEmail}\n` : "") +
-    `\n1. EXECUTIVE SUMMARY\n${executiveSummary.narrative}\n${executiveSummary.caveat}\n${executiveSummary.bullets.map(b => `  - ${b}`).join("\n")}\n` +
-    `\n2. DEPARTMENT SCORECARD\n` +
-    deptRows.map(d => `  ${d.dept}: ${d.avgScore !== null ? `${d.avgScore}%` : "Not Assessed"} — ${d.gapCount} gaps, ${d.partialCount} partials`).join("\n") +
-    `\n\n5. REGULATORY EXPOSURE\n` +
-    (regulatoryExposure.length
-      ? regulatoryExposure.map(r => `  ${r.framework} ${r.provisionLabel} — ${r.penalty}  (${r.triggeredBy.map(t => t.dept).join(", ")})${r.url ? `\n    ${r.url}` : ""}`).join("\n")
-      : "  (none mapped this round)") +
-    `\n\n7. REMEDIATION ROADMAP\n` +
-    [roadmap.phase1, roadmap.phase2, roadmap.phase3].map(p =>
-      p.actions.length ? `  ${p.label}\n` + p.actions.map((a, i) => `    ${i + 1}. ${a}`).join("\n") : ""
-    ).filter(Boolean).join("\n") +
-    `\n\nBreach of any other provision of this Act or the rules made thereunder. The fine may extend upto 50 cr Under The Schedule to the DPDPA 2023.`;
-
-  return { html: body, text };
-}
 
 /**
- * @param {{ companyName?: string, submissions: Array, requestedByEmail?: string,
- *   aiExposureMappings?: Array }} args
+ * @param {{ companyName?: string, companyProfile?: object, submissions: Array,
+ *   requestedByEmail?: string, aiExposureMappings?: Array, narrative?: object|null,
+ *   engagement?: object }} args
  *   aiExposureMappings: already-validated output of
  *   aiProvider.mapRegulatoryExposure() (see aiProvider.js's validExposureMapping) —
  *   pass [] when AI is unavailable/disabled to use the static fallback table.
+ *   narrative: normalised output of aiProvider.generateReadinessNarrative(), or
+ *   null → the Big-4 `document` renders its templated fallback prose.
+ *
+ *   Returns the compact email `html`/`text`, the paginated Big-4 `document`, the
+ *   headline `overallScore`/`overallBand` (consumed by POST /self-assessment/
+ *   complete), and the structured `deptRows`/`priorityFocus`/`quickWins`/
+ *   `dataQualityNotes`/`roadmap`/`regulatoryExposure`/`executiveSummary` plus the
+ *   readiness engine's `maturity`/`findings`/`traceability`/`roleMap`.
  */
-export function buildSelfAssessmentReport({ companyName, submissions, requestedByEmail, aiExposureMappings = [] }) {
+export function buildSelfAssessmentReport({ companyName, companyProfile = {}, submissions, requestedByEmail, aiExposureMappings = [], narrative = null, engagement = {} }) {
   const byDept = {};
   for (const s of submissions) (byDept[s.department] ||= []).push(s);
 
@@ -678,21 +429,39 @@ export function buildSelfAssessmentReport({ companyName, submissions, requestedB
   const scopeByDept = regulatoryScopeByDept(regulatoryExposure);
   for (const d of deptRows) d.regulatoryScope = scopeByDept[d.dept] || null;
 
-  const riskRewardRows = buildRiskRewardRows(deptRows, regulatoryExposure);
-
   const executiveSummary = buildExecutiveSummary({
     companyName, deptRows, overallScore, priorityFocus, quickWins, regulatoryExposure, notAssessedDepts,
   });
 
-  const { html, text } = buildSelfAssessmentReportHtml({
-    companyName, submissions, deptRows, overallScore, executiveSummary, priorityFocus,
-    quickWins, dataQualityNotes, roadmap, regulatoryExposure,
-    regulatoryExposureSource, requestedByEmail, logoDataUri: PRISM_LOGO_DATA_URI,
-  });
+  // The Big-4 readiness document — deterministic engine + optional AI narrative.
+  // The document renders every section from `assessment` alone; `narrative`
+  // ({ readiness, gapContext } | null) only adds optional lines.
+  const assessment = buildReadinessAssessment(submissions);
+  let document = null;
+  try {
+    document = buildReadinessDocument({
+      companyName, companyProfile, requestedByEmail, submissions, deptRows, overallScore,
+      regulatoryExposure, regulatoryExposureSource, assessment, narrative, engagement,
+      generatedAt: new Date(),
+    });
+  } catch (err) {
+    console.error("[self-assessment/report] Big-4 document render failed:", err.message);
+  }
+
+  // `text` is the concise notification body for the ?email=1 mail — NOT a
+  // rendered report (there is no compact HTML report any more).
+  const fc = assessment.findingCounts;
+  const text = [
+    `The DPDP Act 2023 Readiness Assessment for ${companyName || "your organisation"} is ready.`,
+    `Findings: ${fc.total} (${fc.critical} Critical, ${fc.high} High).`,
+    `Weighted maturity: ${assessment.maturity.weightedNow} / 5 (target ${assessment.maturity.weightedTarget}).`,
+    `Assessment coverage: ${assessment.traceability.coveragePct}% of assessable DPDP Act obligations.`,
+    `Open it in PRISM to view the full report.`,
+  ].join("\n");
 
   return {
-    html,
     text,
+    document,
     overallScore,
     overallBand: scoreBand(overallScore).label,
     deptRows,
@@ -700,10 +469,17 @@ export function buildSelfAssessmentReport({ companyName, submissions, requestedB
     quickWins,
     dataQualityNotes,
     roadmap,
-    riskRewardRows,
     regulatoryExposure,
     regulatoryExposureSource,
     executiveSummary,
+    gaps: assessment.gaps,
+    findings: assessment.findings,
+    findingCounts: assessment.findingCounts,
+    maturity: assessment.maturity,
+    traceability: assessment.traceability,
+    roleMap: assessment.roleMap,
+    contradictions: assessment.contradictions,
+    exposureFraming: assessment.exposureFraming,
   };
 }
 

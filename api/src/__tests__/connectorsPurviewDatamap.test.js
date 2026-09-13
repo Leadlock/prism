@@ -101,7 +101,6 @@ describe("checkSourcesScanned", () => {
   });
 
   test("picks the most recent successful scan result across multiple scans/results, case-insensitive status, falling back to startTime", async () => {
-    const scanTime = isoDaysAgo(10);
     const dataMap = {
       get: async () => ({
         value: [
@@ -115,7 +114,7 @@ describe("checkSourcesScanned", () => {
                 id: "scan2",
                 scanResults: [
                   { status: "Failed", endTime: isoDaysAgo(1) },
-                  { status: "Completed", endTime: scanTime },
+                  { status: "Completed", endTime: isoDaysAgo(10) },
                 ],
               },
             ],
@@ -125,7 +124,7 @@ describe("checkSourcesScanned", () => {
     };
     const results = await checkSourcesScanned(dataMap);
     expect(results[0].status).toBe("pass");
-    expect(results[0].evidencePayload.mostRecentScanTime).toBe(scanTime);
+    expect(results[0].evidencePayload.mostRecentScanTime).toBe(isoDaysAgo(10));
   });
 
   // 6c: resourceId must never resolve to undefined/empty (evidence_test_results.resource_id is NOT NULL).

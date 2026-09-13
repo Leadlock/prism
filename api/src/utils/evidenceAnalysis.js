@@ -2,6 +2,10 @@ import { query, mapRow } from "../db/index.js";
 import { analyzeEvidence } from "./aiProvider.js";
 import { withLocalCopy } from "./evidenceStorage.js";
 
+// Guards against the same vault item being auto-analysed twice concurrently in
+// one process (e.g. two version writes racing). Mirrors storageMigration.js.
+const _running = new Set();
+
 /**
  * Run AI analysis for a single evidence_vault item and persist the result on the
  * vault row (ai_contributor_comments / ai_reviewer_comments / ai_gaps /
@@ -75,6 +79,7 @@ export async function runEvidenceAnalysis({ vaultId, companyId, provider = null,
             ai_analyzed_version = (
               SELECT COALESCE(MAX(version_number), 1) FROM evidence_versions WHERE evidence_id = $7
             ),
+            ai_analysis_status = NULL,
             updated_at = NOW()
       WHERE id = $7 AND company_id = $8
       RETURNING *`,
@@ -93,6 +98,77 @@ export async function runEvidenceAnalysis({ vaultId, companyId, provider = null,
   );
 
   return { analysis, vaultItem: mapRow(updated) };
+}
+
+/**
+ * Fire-and-forget auto-analysis for a vault item, run after an upload or a new
+ * file version so a cached result is always waiting for reviewers and auditors.
+ *
+ * Never throws and never needs awaiting — the caller kicks it off and returns.
+ * (A promise is returned for tests; callers ignore it.) Progress is tracked on
+ * evidence_vault.ai_analysis_status ('running' -> in flight / interrupted by a
+ * restart, 'failed' -> stopped on an error, NULL -> done). The scheduler
+ * re-queues any row left 'running' on boot.
+ *
+ * @param {{ vaultId:number, companyId:number }} args
+ * @returns {Promise<void>|undefined}
+ */
+export function queueEvidenceAnalysis({ vaultId, companyId }) {
+  if (!vaultId || !companyId) return undefined;
+  if (_running.has(vaultId)) return undefined;
+  _running.add(vaultId);
+
+  return (async () => {
+    try {
+      const settingsRes = await query(
+        "SELECT ai_enabled, ai_provider FROM company_settings WHERE company_id = $1",
+        [companyId]
+      );
+      const settings = mapRow(settingsRes);
+      if (!settings?.aiEnabled) return;  // AI is opt-in per company
+
+      await query(
+        "UPDATE evidence_vault SET ai_analysis_status = 'running' WHERE id = $1 AND company_id = $2",
+        [vaultId, companyId]
+      );
+
+      // runEvidenceAnalysis persists the result and clears ai_analysis_status.
+      await runEvidenceAnalysis({
+        vaultId,
+        companyId,
+        provider: settings?.aiProvider || null,
+      });
+    } catch (e) {
+      console.error(`[evidenceAnalysis] auto-analysis failed for vault=${vaultId}:`, e.message); // nosemgrep
+      try {
+        await query(
+          "UPDATE evidence_vault SET ai_analysis_status = 'failed' WHERE id = $1 AND company_id = $2",
+          [vaultId, companyId]
+        );
+      } catch { /* best effort */ }
+    } finally {
+      _running.delete(vaultId);
+    }
+  })();
+}
+
+/** Test-only: whether an auto-analysis is currently in flight for a vault id. */
+export function _isAnalysisRunning(vaultId) {
+  return _running.has(vaultId);
+}
+
+/**
+ * Re-queue any vault items whose auto-analysis was interrupted by an API restart.
+ * Called once from the scheduler on boot.
+ */
+export async function resumeInterruptedAnalysis() {
+  const stuck = await query(
+    "SELECT id, company_id FROM evidence_vault WHERE ai_analysis_status IN ('queued', 'running')"
+  );
+  for (const row of stuck.rows) {
+    queueEvidenceAnalysis({ vaultId: row.id, companyId: row.company_id });
+  }
+  return stuck.rowCount;
 }
 
 /**

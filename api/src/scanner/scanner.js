@@ -6,6 +6,7 @@
 import * as cheerio from 'cheerio';
 import dns from 'node:dns';
 import { promisify } from 'node:util';
+import { safeFetch } from './safeFetch.js';
 
 const resolve4 = promisify(dns.resolve4);
 
@@ -122,19 +123,18 @@ function normalizeUrl(input) {
   return new URL(u);
 }
 
+// F-05: the only outbound-request primitive in this file. Delegates to
+// safeFetch(), the single SSRF-safe boundary — see scanner/safeFetch.js.
 async function fetchWithTimeout(url, opts = {}, timeoutMs = 20000) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
+  return safeFetch(
+    url,
+    {
       redirect: 'follow',
       headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml' },
-      signal: controller.signal,
       ...opts,
-    });
-  } finally {
-    clearTimeout(t);
-  }
+    },
+    timeoutMs
+  );
 }
 
 // Patterns are pre-lowercased above; haystack is lowercased once here.

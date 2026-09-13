@@ -91,6 +91,7 @@ export const intuneTests = [
     failTitle: "No Intune compliance policy is assigned for a managed platform",
     severityDefault: "high",
     isoReferences: ["A.6.2.1"],
+    dpdpaControlAreas: ["Security Safeguards Program"],
     run: (clients) => checkCompliancePolicyAssignedAllPlatforms(clients.getGraphToken, clients.tenantId),
   },
   {
@@ -99,6 +100,7 @@ export const intuneTests = [
     failTitle: "Non-compliant managed devices exceed the 10% threshold",
     severityDefault: "medium",
     isoReferences: ["A.6.2.1"],
+    dpdpaControlAreas: ["Vulnerability & Patch Management"],
     run: (clients) => checkNoncompliantDevicesRemediated(clients.getGraphToken, clients.tenantId),
   },
 ];

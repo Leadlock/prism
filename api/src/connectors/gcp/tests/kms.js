@@ -52,6 +52,7 @@ export const kmsTests = [
     failTitle: "Cloud KMS symmetric key has no automatic rotation configured",
     severityDefault: "medium",
     isoReferences: ["A.10.1.2"],
+    dpdpaControlAreas: ["Encryption"],
     run: (clients) => checkKeyRotationEnabled(clients.cloudkms, clients.projectId),
   },
 ];

@@ -65,6 +65,7 @@ export const iamTests = [
     failTitle: "Too many principals hold the Owner role at project scope",
     severityDefault: "medium",
     isoReferences: ["A.9.1.2"],
+    dpdpaControlAreas: ["Privileged Access Management"],
     run: (clients) => checkOwnerRoleAssignmentsLimited(clients.cloudresourcemanager, clients.projectId),
   },
   {
@@ -73,6 +74,7 @@ export const iamTests = [
     failTitle: "User-managed service account key exceeds the rotation threshold",
     severityDefault: "high",
     isoReferences: ["A.9.2.4"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkServiceAccountKeysRotated(clients.iam, clients.projectId),
   },
 ];

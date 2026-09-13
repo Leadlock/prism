@@ -1,7 +1,8 @@
 import { describe, test, expect } from "vitest";
 import request from "supertest";
 import app from "../../app.js";
-import { createCompany, createUser } from "../setup/helpers.js";
+import { createCompany, createUser, createSuperAdmin } from "../setup/helpers.js";
+import { query } from "../../db/index.js";
 
 describe("GET /api/settings", () => {
   test("returns default settings for a company", async () => {
@@ -63,5 +64,58 @@ describe("PUT /api/settings/tech-stack", () => {
       .send({ cloud: ["AWS"] });
 
     expect(res.status).toBe(403);
+  });
+});
+
+describe("AI is opt-in per company", () => {
+  test("a fresh company has AI disabled (no company_settings row)", async () => {
+    const company = await createCompany({ domain: `ai-optin-${Date.now()}.com` });
+    const admin = await createUser(company.id, "ADMIN");
+
+    const res = await request(app)
+      .get("/api/settings")
+      .set("Authorization", `Bearer ${admin.token}`);
+    expect(res.body.aiEnabled).toBe(false);
+  });
+
+  test("AI-gated endpoints 403 until a superadmin enables AI", async () => {
+    const company = await createCompany({ domain: `ai-gate-${Date.now()}.com` });
+    const admin = await createUser(company.id, "ADMIN");
+    const su = await createSuperAdmin();
+
+    // The AI-enabled gate is checked before the evidence lookup, so a
+    // non-existent evidence id still exercises it.
+    const blocked = await request(app)
+      .post(`/api/evidence/999999/analyze`)
+      .set("Authorization", `Bearer ${admin.token}`);
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error).toMatch(/disabled/i);
+
+    // superadmin flips it on
+    const toggle = await request(app)
+      .patch(`/api/superadmin/companies/${company.id}/ai-toggle`)
+      .set("Authorization", `Bearer ${su.token}`)
+      .send({ aiEnabled: true });
+    expect(toggle.status).toBe(200);
+
+    // now it gets past the gate (404 for the missing evidence, not a 403)
+    const allowed = await request(app)
+      .post(`/api/evidence/999999/analyze`)
+      .set("Authorization", `Bearer ${admin.token}`);
+    expect(allowed.status).not.toBe(403);
+  });
+
+  test("a company ADMIN cannot enable AI via PUT /api/settings", async () => {
+    const company = await createCompany({ domain: `ai-selfserve-${Date.now()}.com` });
+    const admin = await createUser(company.id, "ADMIN");
+
+    await request(app)
+      .put("/api/settings")
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ aiEnabled: true, primaryColor: "#123456" });
+
+    const row = await query("SELECT ai_enabled FROM company_settings WHERE company_id = $1", [company.id]);
+    // row may exist (primaryColor written) but ai_enabled must not be TRUE
+    expect(row.rows[0]?.ai_enabled ?? false).toBe(false);
   });
 });

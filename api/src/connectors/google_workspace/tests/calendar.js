@@ -28,6 +28,7 @@ export const calendarTests = [
     failTitle: "Calendar external sharing default exposes more than free/busy information",
     severityDefault: "medium",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkCalendarExternalSharingRestricted(clients.cloudidentity, clients.customerId),
   },
 ];

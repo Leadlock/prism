@@ -64,14 +64,15 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: 587
-      SMTP_STARTTLS: "true"
-      SMTP_SECURE: "false"
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      EMAIL_FROM: ${EMAIL_FROM:-noreply@auditready.local}
-      CONTACT_EMAIL: ${CONTACT_EMAIL:-ab@neozaar.com}
+      EMAIL_FROM: ${EMAIL_FROM:-team@prismgrc.co}
+      CONTACT_EMAIL: ${CONTACT_EMAIL:-team@prismgrc.co}
+      TEAM_NOTIFY_EMAIL: ${TEAM_NOTIFY_EMAIL:-team@prismgrc.co}
+      GAP_REPORT_RECIPIENT: ${GAP_REPORT_RECIPIENT:-ab@neozaar.com}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_REGION: ${AWS_REGION:-us-east-1}

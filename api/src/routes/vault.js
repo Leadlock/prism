@@ -10,7 +10,8 @@ import { longRequestTimeout } from "../middleware/timeout.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { notifyReviewers } from "../utils/notifyReviewers.js";
 import { chatWithDocuments } from "../utils/aiProvider.js";
-import { runEvidenceAnalysis } from "../utils/evidenceAnalysis.js";
+import { runEvidenceAnalysis, queueEvidenceAnalysis } from "../utils/evidenceAnalysis.js";
+import { runPolicyAnalysis } from "../utils/policyAnalysis.js";
 import { getCompanyAiProvider } from "../utils/aiSettings.js";
 import { scanBuffer } from "../utils/scanFile.js";
 import { saveObject, openObjectStream, deleteObject, withLocalCopy } from "../utils/evidenceStorage.js";
@@ -170,11 +171,12 @@ router.get("/", authenticate, requireVaultPin, requireReadOnly(VAULT_READERS), a
     `SELECT ev.*, COUNT(qe.id)::INT AS linked_count,
             EXISTS (
               SELECT 1 FROM question_evidence qe2
-              JOIN assessments a ON a.quest_id = qe2.quest_id AND a.company_id = qe2.company_id AND a.review_status = 'FINISHED'
+              JOIN assessments a ON a.quest_id = qe2.quest_id AND a.company_id = qe2.company_id AND a.review_status IN ('FINISHED', 'AUDITED')
               WHERE qe2.vault_id = ev.id
             ) AS locked,
             aei.status AS freshness_status,
-            aei.test_key
+            aei.test_key,
+            (SELECT COALESCE(MAX(version_number), 1) FROM evidence_versions WHERE evidence_id = ev.id) AS current_version
      FROM evidence_vault ev
      ${joinClause}
      LEFT JOIN question_evidence qe ON qe.vault_id = ev.id
@@ -266,7 +268,7 @@ router.get("/suggestions", authenticate, requireVaultPin, requireReadOnly(VAULT_
 router.post("/chat", authenticate, requireVaultPin, requireReadOnly(VAULT_READERS), longRequestTimeout(60000), asyncHandler(async (req, res) => {
   const settingsResult = await query("SELECT ai_enabled, ai_provider FROM company_settings WHERE company_id = $1", [req.user.companyId]);
   const settings = mapRow(settingsResult);
-  if (settings && settings.aiEnabled === false) {
+  if (!settings?.aiEnabled) {
     return res.status(403).json({ error: "AI features are disabled for your company" });
   }
 
@@ -370,7 +372,10 @@ router.get("/quest-links", authenticate, requireReadOnly(VAULT_READERS), asyncHa
 
   const placeholders = ids.map((_, i) => `$${i + 2}`).join(", ");
   const result = await query(
-    `SELECT qe.quest_id, ev.id, ev.title, ev.description, ev.evidence_link, ev.file_name, ev.file_type, ev.uploaded_by, ev.uploaded_at
+    `SELECT qe.quest_id, ev.id, ev.title, ev.description, ev.evidence_link, ev.file_name, ev.file_type, ev.uploaded_by, ev.uploaded_at,
+            ev.ai_contributor_comments, ev.ai_reviewer_comments, ev.ai_gaps, ev.ai_suggestions,
+            ev.ai_analyzed_at, ev.ai_date_warning, ev.ai_analyzed_version, ev.ai_analysis_status,
+            (SELECT COALESCE(MAX(version_number), 1) FROM evidence_versions WHERE evidence_id = ev.id) AS current_version
      FROM question_evidence qe
      JOIN evidence_vault ev ON ev.id = qe.vault_id
      WHERE qe.company_id = $1 AND qe.quest_id IN (${placeholders})
@@ -390,9 +395,10 @@ router.get("/:id", authenticate, requireVaultPin, requireReadOnly(VAULT_READERS)
       `SELECT ev.*, COUNT(qe.id)::INT AS linked_count,
               EXISTS (
                 SELECT 1 FROM question_evidence qe2
-                JOIN assessments a ON a.quest_id = qe2.quest_id AND a.company_id = qe2.company_id AND a.review_status = 'FINISHED'
+                JOIN assessments a ON a.quest_id = qe2.quest_id AND a.company_id = qe2.company_id AND a.review_status IN ('FINISHED', 'AUDITED')
                 WHERE qe2.vault_id = ev.id
-              ) AS locked
+              ) AS locked,
+              (SELECT COALESCE(MAX(version_number), 1) FROM evidence_versions WHERE evidence_id = ev.id) AS current_version
        FROM evidence_vault ev
        LEFT JOIN question_evidence qe ON qe.vault_id = ev.id
        WHERE ev.id = $1 AND ev.company_id = $2
@@ -406,7 +412,7 @@ router.get("/:id", authenticate, requireVaultPin, requireReadOnly(VAULT_READERS)
               q.next_due_date,
               EXISTS (
                 SELECT 1 FROM assessments a
-                WHERE a.quest_id = qe.quest_id AND a.company_id = $2 AND a.review_status = 'FINISHED'
+                WHERE a.quest_id = qe.quest_id AND a.company_id = $2 AND a.review_status IN ('FINISHED', 'AUDITED')
               ) AS is_reviewed
        FROM question_evidence qe
        LEFT JOIN LATERAL (
@@ -477,7 +483,7 @@ router.post("/:id/analyze", authenticate, requireVaultPin, requireRole(["ADMIN",
 
   const settingsResult = await query("SELECT ai_enabled, ai_provider FROM company_settings WHERE company_id = $1", [cid]);
   const settings = mapRow(settingsResult);
-  if (settings && settings.aiEnabled === false) {
+  if (!settings?.aiEnabled) {
     return res.status(403).json({ error: "AI features are disabled for your company" });
   }
 
@@ -500,29 +506,30 @@ router.post("/:id/analyze-policy", authenticate, requireRole(["ADMIN"]), longReq
 
   const settingsResult = await query("SELECT ai_enabled, ai_provider FROM company_settings WHERE company_id = $1", [cid]);
   const settings = mapRow(settingsResult);
-  if (settings && settings.aiEnabled === false) {
+  if (!settings?.aiEnabled) {
     return res.status(403).json({ error: "AI features are disabled for your company" });
   }
 
-  const result = await query(
-    "SELECT title, file_name, file_type, storage_path FROM evidence_vault WHERE id = $1 AND company_id = $2",
-    [id, cid]
-  );
-  const item = mapRow(result);
-  if (!item) return res.status(404).json({ error: "Vault item not found" });
-  if (!item.storagePath) return res.status(400).json({ error: "No file available to analyse" });
+  // Cached on the vault row and keyed by file version + policy label + model, so
+  // re-opening onboarding (or any future viewer) reuses the result instead of
+  // re-billing a ~90s Bedrock call. `force` bypasses the cache for an explicit
+  // re-analyse.
+  const force = req.body.force === true || req.query.force === "1" || req.query.force === "true";
 
-  const fileExt = path.extname(item.fileName || item.storagePath).replace(".", "").toLowerCase();
-  const { analyzePolicy } = await import("../utils/aiProvider.js");
-
-  const analysis = await withLocalCopy(cid, item.storagePath, (filePath) => analyzePolicy({
-    provider: settings?.aiProvider || null,
-    policyName: req.body.policyName || item.title,
-    filePath,
-    fileExt,
-  }));
-
-  res.json(analysis);
+  try {
+    const { analysis, cached } = await runPolicyAnalysis({
+      vaultId: id,
+      companyId: cid,
+      provider: settings?.aiProvider || null,
+      policyName: req.body.policyName || null,
+      force,
+    });
+    res.json({ ...analysis, cached });
+  } catch (err) {
+    if (err.status === 404) return res.status(404).json({ error: "Vault item not found" });
+    if (err.status === 400) return res.status(400).json({ error: "No file available to analyse" });
+    throw err;
+  }
 }));
 
 // POST /api/vault — upload new vault item (multipart); pass questId to auto-link
@@ -590,6 +597,9 @@ router.post("/", authenticate, requireVaultPin, requireRole(VAULT_WRITERS), uplo
     item.linkedCount = 0;
   }
 
+  // Auto-run AI analysis so reviewers/auditors have a cached result. Fire-and-forget.
+  if (req.file) queueEvidenceAnalysis({ vaultId: item.id, companyId: cid });
+
   res.status(201).json(item);
 }));
 
@@ -627,7 +637,7 @@ router.delete("/:id", authenticate, requireVaultPin, requireRole(VAULT_DELETERS)
             COUNT(*) FILTER (
               WHERE EXISTS (
                 SELECT 1 FROM assessments a
-                WHERE a.quest_id = qe.quest_id AND a.company_id = qe.company_id AND a.review_status = 'FINISHED'
+                WHERE a.quest_id = qe.quest_id AND a.company_id = qe.company_id AND a.review_status IN ('FINISHED', 'AUDITED')
               )
             )::INT AS reviewed_n
      FROM question_evidence qe WHERE qe.vault_id = $1 AND qe.company_id = $2`,
@@ -737,6 +747,9 @@ router.post("/:id/versions", authenticate, requireVaultPin, requireRole(VAULT_WR
     entityId: id,
   });
 
+  // A new version means the cached analysis is stale — re-run it. Fire-and-forget.
+  queueEvidenceAnalysis({ vaultId: id, companyId: cid });
+
   res.status(201).json(mapRow(verResult));
 }));
 
@@ -822,6 +835,9 @@ router.post("/:id/versions/:versionId/restore", authenticate, requireVaultPin, r
     [oldVer.fileName, oldVer.fileType, oldVer.fileSize, oldVer.storagePath, id]
   );
 
+  // Restored content is now the current version — re-run analysis. Fire-and-forget.
+  queueEvidenceAnalysis({ vaultId: id, companyId: cid });
+
   res.status(201).json(mapRow(newVerResult));
 }));
 
@@ -855,7 +871,7 @@ router.delete("/:id/link/:questId", authenticate, requireVaultPin, requireRole(V
   const questId = req.params.questId;
 
   const reviewed = await query(
-    "SELECT 1 FROM assessments WHERE quest_id = $1 AND company_id = $2 AND review_status = 'FINISHED' LIMIT 1",
+    "SELECT 1 FROM assessments WHERE quest_id = $1 AND company_id = $2 AND review_status IN ('FINISHED', 'AUDITED') LIMIT 1",
     [questId, cid]
   );
   if (reviewed.rows.length > 0) {

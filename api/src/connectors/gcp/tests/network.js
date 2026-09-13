@@ -46,6 +46,7 @@ export const networkTests = [
     failTitle: "Firewall rule exposes a management port to the public internet",
     severityDefault: "critical",
     isoReferences: ["A.13.1.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkFirewallNoOpenManagementPorts(clients.compute, clients.projectId),
   },
 ];

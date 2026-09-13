@@ -57,6 +57,7 @@ export const usersTests = [
     failTitle: "Suspended or long-inactive user account is retained",
     severityDefault: "medium",
     isoReferences: ["A.9.2.6"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkInactiveAccountsReviewed(clients.directory, clients.customerId),
   },
 ];

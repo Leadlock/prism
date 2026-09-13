@@ -95,7 +95,7 @@ export async function checkAuditingEnabled(sql) {
 }
 
 export const sqlTests = [
-  { key: "azure.sql.transparent_data_encryption_enabled", title: "SQL databases have transparent data encryption enabled", failTitle: "SQL database does not have transparent data encryption enabled", severityDefault: "critical", isoReferences: ["A.8.2.3"], run: (clients) => checkTransparentDataEncryptionEnabled(clients.sql) },
-  { key: "azure.sql.public_network_access_disabled", title: "SQL servers do not allow public network access", failTitle: "SQL server allows public network access", severityDefault: "critical", isoReferences: ["A.13.1.1"], run: (clients) => checkPublicNetworkAccessDisabled(clients.sql) },
-  { key: "azure.sql.auditing_enabled", title: "SQL server auditing is enabled", failTitle: "SQL server does not have auditing enabled", severityDefault: "high", isoReferences: ["A.12.4.1"], run: (clients) => checkAuditingEnabled(clients.sql) },
+  { key: "azure.sql.transparent_data_encryption_enabled", title: "SQL databases have transparent data encryption enabled", failTitle: "SQL database does not have transparent data encryption enabled", severityDefault: "critical", isoReferences: ["A.8.2.3"], dpdpaControlAreas: ["Encryption"], run: (clients) => checkTransparentDataEncryptionEnabled(clients.sql) },
+  { key: "azure.sql.public_network_access_disabled", title: "SQL servers do not allow public network access", failTitle: "SQL server allows public network access", severityDefault: "critical", isoReferences: ["A.13.1.1"], dpdpaControlAreas: ["Access Control & Least Privilege"], run: (clients) => checkPublicNetworkAccessDisabled(clients.sql) },
+  { key: "azure.sql.auditing_enabled", title: "SQL server auditing is enabled", failTitle: "SQL server does not have auditing enabled", severityDefault: "high", isoReferences: ["A.12.4.1"], dpdpaControlAreas: ["Logging & Monitoring"], run: (clients) => checkAuditingEnabled(clients.sql) },
 ];

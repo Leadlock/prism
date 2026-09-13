@@ -33,6 +33,7 @@ function load() {
         id: p.id,
         title: p.title,
         penalty: p.penalty ?? parsed.defaultPenalty ?? null,
+        url: p.url ?? parsed.url ?? null,
       });
     }
     byFramework[key] = {
@@ -66,7 +67,7 @@ export function lookupProvision(framework, provisionId) {
   return {
     framework,
     frameworkName: fw.frameworkName,
-    url: fw.url,
+    url: p.url ?? fw.url,
     id: p.id,
     title: p.title,
     penalty: p.penalty,

@@ -119,6 +119,7 @@ export const analyticsTests = [
     failTitle: "Analytics workspace is shared with everyone in the organization rather than specific users/groups",
     severityDefault: "high",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkDataSharingReview(clients),
   },
   {
@@ -127,6 +128,7 @@ export const analyticsTests = [
     failTitle: "Analytics workspace/view has a public/embedded link that requires no authentication",
     severityDefault: "critical",
     isoReferences: ["A.9.4.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkPublicViewLinkRestricted(clients),
   },
   {
@@ -135,6 +137,7 @@ export const analyticsTests = [
     failTitle: "Analytics workspace has an excessive number of admin/owner assignments",
     severityDefault: "medium",
     isoReferences: ["A.9.2.3"],
+    dpdpaControlAreas: ["Privileged Access Management"],
     run: (clients) => checkWorkspacePermissionReview(clients),
   },
 ];

@@ -95,6 +95,7 @@ export const devicesTests = [
     failTitle: "Device is not onboarded to Defender for Endpoint",
     severityDefault: "high",
     isoReferences: ["A.8.1.1"],
+    dpdpaControlAreas: ["Security Safeguards Program"],
     run: (clients) => checkOnboardingCoverageComplete(clients.getToken, clients.baseUrl),
   },
   {
@@ -103,6 +104,7 @@ export const devicesTests = [
     failTitle: "Onboarded device reports unhealthy sensor status",
     severityDefault: "medium",
     isoReferences: ["A.12.2.1"],
+    dpdpaControlAreas: ["Security Safeguards Program"],
     run: (clients) => checkSensorHealthActive(clients.getToken, clients.baseUrl),
   },
   {
@@ -111,6 +113,7 @@ export const devicesTests = [
     failTitle: "Device has High exposure level and requires active remediation",
     severityDefault: "high",
     isoReferences: ["A.12.6.1"],
+    dpdpaControlAreas: ["Vulnerability & Patch Management"],
     run: (clients) => checkHighExposureDevicesRemediated(clients.getToken, clients.baseUrl),
   },
 ];

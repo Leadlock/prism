@@ -1,5 +1,6 @@
 import { apiUpload, apiFetch } from "../api/client.js";
 import { useEffect, useState } from "react";
+import { isApprovedStatus } from "../utils/reviewStatus.js";
 
 function localToday() {
   const d = new Date();
@@ -90,7 +91,8 @@ export default function QuestionCard({ question, assessment, response, onSetResp
   };
 
   const reviewStatus = assessment?.reviewStatus || assessment?.review_status;
-  const reviewerPassed = reviewStatus === "FINISHED";
+  const reviewerPassed = isApprovedStatus(reviewStatus); // FINISHED or AUDITED
+  const auditPassed = reviewStatus === "AUDITED";
   const submittedForReview = reviewStatus === "Submitted";
 
   const needsActionDetails = ["NOT_IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "PLANNED"].includes(response.answer);
@@ -265,7 +267,9 @@ export default function QuestionCard({ question, assessment, response, onSetResp
   const showReadOnly = (reviewerPassed || submittedForReview) && !isEditing;
 
   const rejectedByReviewer = reviewStatus === "WIP" && !!(assessment?.reviewerNotes || assessment?.reviewer_notes);
-  const rejectedByAuditor = !!(assessment?.auditorNotes || assessment?.auditor_notes);
+  // Only a rejection (status sent back to WIP) — an auditor may also leave notes
+  // on an approval, which must not render as a rejection.
+  const rejectedByAuditor = reviewStatus === "WIP" && !!(assessment?.auditorNotes || assessment?.auditor_notes);
 
   return (
     <div className="quest-card">
@@ -365,7 +369,11 @@ export default function QuestionCard({ question, assessment, response, onSetResp
       {showReadOnly ? (
         <div className="assessment-info-card">
           <div className="assessment-info-title">
-            {reviewerPassed && isImplementedAnswer ? "✓ Review completed" : reviewerPassed ? "✓ Quest completed" : "⏳ Submitted — awaiting review"}
+            {auditPassed
+              ? "✓ Audited — auditor sign-off complete"
+              : reviewerPassed && isImplementedAnswer ? "✓ Review completed"
+              : reviewerPassed ? "✓ Quest completed"
+              : "⏳ Submitted — awaiting review"}
           </div>
           <div className="assessment-info-row">
             <div className="assessment-info-label">Answer:</div>

@@ -44,6 +44,7 @@ export const auditTests = [
     failTitle: "Admin or login audit log has no recent activity",
     severityDefault: "high",
     isoReferences: ["A.12.4.1"],
+    dpdpaControlAreas: ["Logging & Monitoring"],
     run: (clients) => checkAuditLogRetentionConfigured(clients.reports, clients.customerId),
   },
 ];

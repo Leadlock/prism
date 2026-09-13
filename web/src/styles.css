@@ -1645,6 +1645,81 @@ body {
   margin-bottom: 0;
 }
 
+.ai-feedback-timestamp {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text3, #94a3b8);
+  font-weight: 500;
+}
+
+.ai-feedback-muted {
+  color: var(--text3, #94a3b8);
+  font-style: italic;
+}
+
+.ai-feedback-stale {
+  margin: 8px 14px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.ai-feedback-datewarning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 14px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--amber, #dc9628);
+  background: rgba(220, 150, 40, 0.1);
+  border: 1px solid rgba(220, 150, 40, 0.3);
+}
+
+.ai-feedback-suggestions {
+  margin: 0 14px 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid rgba(16, 185, 129, 0.15);
+}
+
+.ai-feedback-suggestions-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #059669;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ai-feedback-reviewer {
+  margin: 0 14px 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text2, #475569);
+  background: rgba(99, 102, 241, 0.05);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+}
+
+.ai-feedback-reviewer-header {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--accent, #6366f1);
+  margin-bottom: 4px;
+}
+
 /* TOAST */
 .toast {
   position: fixed;
@@ -4839,6 +4914,15 @@ textarea:focus:not(.integrations-page *) {
   line-height: 1;
 }
 
+/* Keep the document list and the open info panel as independent scroll targets. */
+.vault-detail-panel {
+  max-height: calc(100vh - 40px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+}
+
 .section-title {
   font-family: var(--dp-font-sans, 'Sora', sans-serif);
   font-size: 16.5px;
@@ -4847,6 +4931,30 @@ textarea:focus:not(.integrations-page *) {
   margin-bottom: 18px;
   padding-left: 12px;
   border-left: 3px solid var(--dp-accent, #4F46E5);
+}
+
+.detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--dp-line, rgba(163, 178, 204, 0.35));
+  font-size: 13.5px;
+  color: var(--dp-ink, #0F172A);
+  line-height: 1.5;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.detail-label {
+  font-weight: 600;
+  color: var(--text2, #64748B);
+  min-width: 150px;
+  flex-shrink: 0;
 }
 
 .list {
@@ -8185,14 +8293,46 @@ textarea:focus:not(.integrations-page *) {
 /* ─── DASHBOARD PAGE RESPONSIVE ───────────────────────────────── */
 @media (max-width: 768px) {
   .dash-header {
-    padding: 14px 16px;
+    padding: 12px 16px;
     flex-wrap: wrap;
     gap: 10px;
   }
 
   .dash-header-actions {
     flex-wrap: wrap;
+    justify-content: flex-start;
     gap: 6px;
+    width: 100%;
+  }
+
+  /* Audit-standing band: hero + readout column stack vertically */
+  .dash-standing {
+    flex-direction: column;
+    gap: 20px;
+    padding: 18px 16px;
+  }
+
+  .dash-standing-hero {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .dash-tristate {
+    max-width: none;
+  }
+
+  .dash-standing-read {
+    gap: 12px;
+  }
+
+  .dash-canvas-wrap {
+    padding: 16px;
+  }
+
+  .dash-grid-stack {
+    padding: 16px 16px 28px;
   }
 
   .dash-grid {
@@ -8214,6 +8354,29 @@ textarea:focus:not(.integrations-page *) {
 @media (max-width: 480px) {
   .dash-header {
     padding: 12px;
+  }
+
+  .dash-standing {
+    padding: 16px 12px;
+  }
+
+  .dash-standing-num {
+    font-size: 44px;
+  }
+
+  .dash-readouts {
+    gap: 10px 12px;
+  }
+
+  .dash-readout {
+    padding: 12px 14px;
+    min-height: 64px;
+  }
+
+  .dash-canvas-wrap,
+  .dash-grid-stack {
+    padding-left: 12px;
+    padding-right: 12px;
   }
 
   .dash-grid {

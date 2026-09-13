@@ -40,6 +40,6 @@ export async function checkOwnersCountMinimized(octokit, org) {
 }
 
 export const orgManagementTests = [
-  { key: "github.org.default_repository_permission_restricted", title: "Default repository permission is not admin", failTitle: "Default repository permission is admin", severityDefault: "medium", isoReferences: ["A.9.2.3"], run: (clients) => checkDefaultRepositoryPermissionRestricted(clients.octokit, clients.org) },
-  { key: "github.org.owners_count_minimized", title: "Organization owner role is limited to necessary personnel", failTitle: "Organization owner role is granted to more than the necessary personnel", severityDefault: "medium", isoReferences: ["A.9.2.3"], run: (clients) => checkOwnersCountMinimized(clients.octokit, clients.org) },
+  { key: "github.org.default_repository_permission_restricted", title: "Default repository permission is not admin", failTitle: "Default repository permission is admin", severityDefault: "medium", isoReferences: ["A.9.2.3"], dpdpaControlAreas: ["Access Control & Least Privilege"], run: (clients) => checkDefaultRepositoryPermissionRestricted(clients.octokit, clients.org) },
+  { key: "github.org.owners_count_minimized", title: "Organization owner role is limited to necessary personnel", failTitle: "Organization owner role is granted to more than the necessary personnel", severityDefault: "medium", isoReferences: ["A.9.2.3"], dpdpaControlAreas: ["Privileged Access Management"], run: (clients) => checkOwnersCountMinimized(clients.octokit, clients.org) },
 ];

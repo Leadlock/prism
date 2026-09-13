@@ -89,6 +89,7 @@ export const booksTests = [
     failTitle: "Books user is assigned the Admin role without being the org owner",
     severityDefault: "medium",
     isoReferences: ["A.9.2.2"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkUserRoleReview(clients),
   },
   {
@@ -97,6 +98,7 @@ export const booksTests = [
     failTitle: "Books two-factor authentication is not enforced",
     severityDefault: "critical",
     isoReferences: ["A.9.4.2"],
+    dpdpaControlAreas: ["MFA for Sensitive Systems"],
     run: (clients) => checkTwoFactorAuthEnforced(clients),
   },
   {
@@ -105,6 +107,7 @@ export const booksTests = [
     failTitle: "Books audit trail is not enabled or not accessible",
     severityDefault: "medium",
     isoReferences: ["A.12.4.1"],
+    dpdpaControlAreas: ["Logging & Monitoring"],
     run: (clients) => checkAuditTrailEnabled(clients),
   },
 ];

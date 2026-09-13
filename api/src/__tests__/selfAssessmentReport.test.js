@@ -160,3 +160,44 @@ describe("buildDeptOpenItems — feeds the AI mapping call", () => {
     expect(it.partialQuestions).toEqual([]);
   });
 });
+
+describe("buildSelfAssessmentReport — AI-absent invariance for the Big-4 document", () => {
+  const submissions = [
+    sub("IT", "it@co.com", { "it-1": "NO", "it-8": "NO", "it-12": "NO", "it-14": "YES", "it-11": "NO", "lg-6": "NO", "hr-4": "NO" }),
+    sub("Legal", "lg@co.com", { "lg-2": "PARTIAL", "lg-3": "YES", "lg-5": "YES" }),
+  ];
+  const structuralNeedles = [
+    "Cross-Department Consistency Checks",
+    "Annexure G — Gap Remediation Detail",
+    "Findings Register",
+    "DPDPA Requirements Traceability Matrix",
+    "entries reviewed",
+  ];
+
+  test("no `html` field; `text` is the concise notification, `document` is the paginated report", () => {
+    const r = buildSelfAssessmentReport({ companyName: "Acme Ltd", submissions, aiExposureMappings: [], narrative: null });
+    expect(r).not.toHaveProperty("html");
+    expect(r.text).toMatch(/Assessment coverage:/);
+    expect(r.text).toMatch(/Open it in PRISM/);
+    expect(r.document).toContain("Document Control");
+  });
+
+  test.each([
+    ["narrative: null", null],
+    ["readiness only", { readiness: { businessContext: "ctx" }, gapContext: null }],
+    ["gapContext only", { readiness: null, gapContext: { tailoring: [], contradictions: [], roadmapPhasing: [{ phase: 0, rationale: "", stepRefs: [] }, { phase: 1, rationale: "", stepRefs: [] }, { phase: 2, rationale: "", stepRefs: [] }, { phase: 3, rationale: "", stepRefs: [] }] } }],
+    ["malformed blob", { garbage: true }],
+  ])("renders the full document structure with %s", (_label, narrative) => {
+    const r = buildSelfAssessmentReport({ companyName: "Acme Ltd", submissions, aiExposureMappings: [], narrative });
+    expect(typeof r.document).toBe("string");
+    for (const needle of structuralNeedles) expect(r.document).toContain(needle);
+    // a fired gap's static guidance text is always present
+    expect(r.document).toMatch(/Why it matters/);
+  });
+
+  test("falls back to the static PHASING prose (no per-step Phase tags) when gapContext is absent", () => {
+    const r = buildSelfAssessmentReport({ companyName: "Acme Ltd", submissions, aiExposureMappings: [], narrative: null });
+    expect(r.document).toContain("Phase 0 — Mobilise");
+    expect(r.document).not.toContain('class="a-phase"');
+  });
+});

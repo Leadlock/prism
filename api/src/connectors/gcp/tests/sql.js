@@ -51,6 +51,7 @@ export const sqlTests = [
     failTitle: "Cloud SQL instance does not require SSL/TLS for connections",
     severityDefault: "critical",
     isoReferences: ["A.8.2.3"],
+    dpdpaControlAreas: ["Encryption"],
     run: (clients) => checkSqlSslEnforced(clients.sqladmin, clients.projectId),
   },
   {
@@ -59,6 +60,7 @@ export const sqlTests = [
     failTitle: "Cloud SQL instance authorizes connections from 0.0.0.0/0",
     severityDefault: "critical",
     isoReferences: ["A.13.1.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkSqlPublicAccessDisabled(clients.sqladmin, clients.projectId),
   },
 ];

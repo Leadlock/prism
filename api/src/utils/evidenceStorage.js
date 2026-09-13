@@ -74,6 +74,34 @@ function safeLocalPath(key) {
   return resolved;
 }
 
+function safeCompanyLocalPath(companyId, key) {
+  const resolved = safeLocalPath(key);
+  const companyRoot = path.resolve(uploadRoot(), String(companyId));
+  const safeCompanyRoot = `${companyRoot}${path.sep}`;
+  if (!resolved.startsWith(safeCompanyRoot)) {
+    const err = new Error("Invalid tenant storage path");
+    err.status = 400;
+    throw err;
+  }
+  return resolved;
+}
+
+function assertTenantStorageKey(companyId, parsed, config = {}) {
+  if (parsed.backend === "local") {
+    safeCompanyLocalPath(companyId, parsed.key);
+    return;
+  }
+
+  const expectedPrefix = parsed.backend === "s3"
+    ? `${s3Key(config, companyId, null, "")}/`
+    : `${companyId}/`;
+  if (!parsed.key.startsWith(expectedPrefix)) {
+    const err = new Error("Invalid tenant storage reference");
+    err.status = 400;
+    throw err;
+  }
+}
+
 const localBackend = {
   async save(companyId, { buffer, originalName, scope }) {
     const base = process.env.UPLOAD_DIR || "./uploads";
@@ -276,9 +304,9 @@ export function getBackendHandler({ backend, config, authType, secret }) {
 
 async function backendForRef(companyId, ref) {
   const { backend } = parseRef(ref) || { backend: "local" };
-  if (backend === "local") return localBackend;
+  if (backend === "local") return { handler: localBackend, config: {} };
   const cfg = await loadStorageConfig(companyId);
-  if (cfg.backend === backend) return getBackendHandler(cfg);
+  if (cfg.backend === backend) return { handler: getBackendHandler(cfg), config: cfg.config };
   const e = new Error(
     `This file is stored on ${backend} but the company is now configured for ${cfg.backend}. Storage migration may still be running.`
   );
@@ -301,9 +329,11 @@ export async function saveObject(companyId, { buffer, originalName, scope, conte
 
 /** Open a readable stream for a stored ref, or null if the object is missing. */
 export async function openObjectStream(companyId, ref) {
-  const { key } = parseRef(ref) || {};
-  if (key == null) return null;
-  const handler = await backendForRef(companyId, ref);
+  const parsed = parseRef(ref);
+  if (!parsed) return null;
+  const { handler, config } = await backendForRef(companyId, ref);
+  assertTenantStorageKey(companyId, parsed, config);
+  const { key } = parsed;
   return handler.openStream(key);
 }
 
@@ -316,9 +346,11 @@ export async function readObjectBuffer(companyId, ref) {
 
 /** Best-effort delete of a single stored object. */
 export async function deleteObject(companyId, ref) {
-  const { key } = parseRef(ref) || {};
-  if (key == null) return;
-  const handler = await backendForRef(companyId, ref);
+  const parsed = parseRef(ref);
+  if (!parsed) return;
+  const { handler, config } = await backendForRef(companyId, ref);
+  assertTenantStorageKey(companyId, parsed, config);
+  const { key } = parsed;
   await handler.delete(key);
 }
 
@@ -341,7 +373,7 @@ export async function withLocalCopy(companyId, ref, fn) {
   if (!parsed) throw new Error("Missing storage ref");
 
   if (parsed.backend === "local") {
-    const resolved = safeLocalPath(parsed.key);
+    const resolved = safeCompanyLocalPath(companyId, parsed.key);
     if (!fs.existsSync(resolved)) {
       const err = new Error("File not found on disk");
       err.status = 404;

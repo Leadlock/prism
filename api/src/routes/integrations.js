@@ -382,6 +382,371 @@ router.get("/gcp/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), 
   res.json({ roles: GCP_RECOMMENDED_ROLES });
 }));
 
+// OneTrust Client Credential read scopes, one per audited module. Kept in code
+// (not DB) next to the route — tightly coupled to what connectors/onetrust/*
+// actually calls; a module added to the connector adds its scope here too. A
+// missing scope makes that module's endpoints 403 and its checks fall back to
+// not_applicable (see connectors/onetrust/index.js runTests).
+const ONETRUST_SCOPES = [
+  { scope: "ORGANIZATION", note: "Base scope — used by the connection test (external organizations)." },
+  { scope: "ASSESSMENT_READ", note: "PIA/DPIA assessments and their risk exports." },
+  { scope: "INVENTORY_READ", note: "Data inventory: assets, processing activities (RoPA), entities, vendors. (Some tenants name this DATA_CATALOG_READ.)" },
+  { scope: "DSAR_READ", note: "Data-subject / privacy-rights request queues." },
+  { scope: "INCIDENT_READ", note: "Incident register and breach-notification decision fields." },
+  { scope: "RISK", note: "Risk register." },
+  { scope: "VRM_READ", note: "Third-party / vendor risk inventory and assessments." },
+];
+
+router.get("/onetrust/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    scopes: ONETRUST_SCOPES,
+    hostnameHint: "The tenant domain you sign in with, e.g. acme.my.onetrust.com, app-eu.onetrust.com, or trial.onetrust.com",
+  });
+}));
+
+// Tables the ServiceNow integration user must be able to read. Kept in code next
+// to the route — tightly coupled to what connectors/servicenow/* actually calls.
+// A table the user's roles can't read comes back 403 and those checks fall back
+// to not_applicable (see connectors/servicenow/index.js runTests).
+const SERVICENOW_TABLES = [
+  { table: "sys_user", note: "User records — active flag, web-service-only flag, last login." },
+  { table: "sys_user_has_role", note: "User-to-role assignments (privileged-role checks)." },
+  { table: "sys_user_group", note: "Groups (privileged-group review)." },
+  { table: "sys_user_grmember", note: "Group membership." },
+  { table: "sys_security_acl", note: "Access Control List rules for the sensitive-table check." },
+  { table: "sys_audit", note: "Field-level audit history." },
+  { table: "sys_properties", note: "Instance properties — MFA enforcement, password policy." },
+  { table: "sys_user_password_policy", note: "Password Policy plugin records (optional — skipped if the plugin is absent)." },
+  { table: "sys_ws_api_access_policy", note: "REST API Access Policies (optional — skipped if not readable)." },
+];
+
+router.get("/servicenow/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    tables: SERVICENOW_TABLES,
+    roleHint: "Grant the integration user snc_platform_rest_api_access plus a read-only role covering the tables below. Enable the Client Credentials grant (system property glide.oauth.inbound.client.credential.grant_type.enabled = true) and set an OAuth Application User on the Application Registry record.",
+    instanceUrlHint: "The instance base URL you sign in to, e.g. acme.service-now.com or https://acme.service-now.com",
+  });
+}));
+
+// Privy by IDfy modules Prism audits, one row per module. Kept in code next to
+// the route — tightly coupled to what connectors/privy/* actually calls. A module
+// the tenant's API key can't reach comes back 403/404 and those checks fall back
+// to not_applicable (see connectors/privy/index.js runTests).
+const PRIVY_MODULES = [
+  { module: "Consent Governance", note: "Consent collection points and consent artefacts." },
+  { module: "Data Principal Rights (DPRM)", note: "Rights-request queue and statutory deadlines." },
+  { module: "Privacy Impact Assessments", note: "PIA/DPIA assessments and their risks." },
+  { module: "Incident Management", note: "Incident register and breach-notification decisions." },
+  { module: "Third-Party Risk (TPRM)", note: "Processor / third-party inventory and risk assessments." },
+  { module: "Data Discovery (Data Compass)", note: "Processing-activity and asset inventory (RoPA)." },
+];
+
+router.get("/privy/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    modules: PRIVY_MODULES,
+    baseUrlHint: "The Privy tenant domain you sign in with, e.g. acme.privybyidfy.com or app.privybyidfy.com",
+    apiKeyHint: "Issue a read-only API key from Privy → Settings → API Keys, or ask your IDfy account team. A module the key cannot reach is skipped (its checks report not applicable).",
+  });
+}));
+
+// CrowdStrike Falcon read scopes, one per audited collection. Kept in code next
+// to the route — tightly coupled to what connectors/crowdstrike/* actually
+// calls. A scope the API client is missing makes that collection 403 and those
+// checks fall back to not_applicable (see connectors/crowdstrike/index.js
+// runTests). Regions are separate API hosts with no cross-region routing, so the
+// region is an explicit dropdown, not free text.
+const CROWDSTRIKE_SCOPES = [
+  { scope: "hosts:read", note: "Device / endpoint inventory — OS, sensor version, last seen, reduced functionality mode." },
+  { scope: "sensor-update-policies:read", note: "Sensor update policy definitions and host-group assignment." },
+  { scope: "alerts:read", note: "The unified alert stream (severity, status, host) — the current detections API." },
+  { scope: "detects:read", note: "Legacy Detects API — used as a fallback during CrowdStrike's Alerts migration." },
+  { scope: "spotlight-vulnerabilities:read", note: "Per-host CVE exposure, severity, and remediation status." },
+  { scope: "user-management:read", note: "Falcon console user / role inventory, for the admin-role review check." },
+];
+
+const CROWDSTRIKE_REGIONS = [
+  { value: "us-1", label: "US-1 (falcon.crowdstrike.com)", baseUrl: "https://api.crowdstrike.com" },
+  { value: "us-2", label: "US-2 (falcon.us-2.crowdstrike.com)", baseUrl: "https://api.us-2.crowdstrike.com" },
+  { value: "eu-1", label: "EU-1 (falcon.eu-1.crowdstrike.com)", baseUrl: "https://api.eu-1.crowdstrike.com" },
+  { value: "us-gov-1", label: "US-GOV-1 (falcon.laggar.gcw.crowdstrike.com)", baseUrl: "https://api.laggar.gcw.crowdstrike.com" },
+  { value: "us-gov-2", label: "US-GOV-2 (falcon.us-gov-2.crowdstrike.mil)", baseUrl: "https://api.us-gov-2.crowdstrike.mil" },
+];
+
+router.get("/crowdstrike/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    scopes: CROWDSTRIKE_SCOPES,
+    regions: CROWDSTRIKE_REGIONS,
+    regionHint: "Pick the region your Falcon console runs in — a Client ID / Secret only authenticates against the region it was created in.",
+  });
+}));
+
+const SOPHOS_SETUP_STEPS = [
+  "In Sophos Central Admin, open Global Settings > API Credentials and click Add Credential.",
+  "Name the service principal (for example, Prism Compliance Reader) and assign the narrowest read-only role that covers the Sophos products you want Prism to audit.",
+  "Save the credential, then copy its Client ID and Client Secret. Sophos displays the secret only at creation time.",
+  "Paste both values below and click Connect. Prism uses whoami to discover the tenant ID and regional API host automatically.",
+];
+
+const SOPHOS_ROLE_HINT =
+  "Use a tenant-level service principal with read-only access. Partner and organization credentials are deliberately rejected; create the credential inside the customer tenant.";
+
+router.get("/sophos/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    steps: SOPHOS_SETUP_STEPS,
+    roleHint: SOPHOS_ROLE_HINT,
+    regionHint: "No region selection is required. Sophos whoami returns the tenant data-region host for each connection and collection run.",
+    scopeNote: "Endpoint access is required to connect. Unlicensed or inaccessible product areas are isolated and reported as not applicable without stopping other checks.",
+    areas: ["Endpoint", "Common", "Detections", "Audit", "XDR Data Lake", "SIEM", "Firewall", "Web Control", "DNS Protection"],
+  });
+}));
+
+// Salesforce JWT Bearer flow setup. The connector reads Setup metadata via SOQL
+// / the Tooling API, so the integration user needs a small read-only permission
+// set — an object it can't read makes those checks report not_applicable (see
+// connectors/salesforce/index.js runTests). The customer records their My Domain
+// login URL (JWT audience) explicitly rather than us inferring a pod.
+const SALESFORCE_PERMISSIONS = [
+  { permission: "API Enabled", note: "Baseline — required for every REST/SOQL call the connector makes." },
+  { permission: "View Setup and Configuration", note: "Session Settings / MFA policy, password policies, Login IP Ranges, connected apps." },
+  { permission: "View All Users", note: "Full user list with profile + active flag, for the inactive-privileged-user check." },
+  { permission: "View All Data (or Manage Users)", note: "Permission-set assignments and the Setup Audit Trail. Do NOT grant Modify All Data." },
+];
+
+const SALESFORCE_OAUTH_SCOPES = [
+  { scope: "api", note: "Manage user data via APIs — required for all REST/SOQL/Tooling calls." },
+  { scope: "refresh_token, offline_access", note: "Perform requests at any time — required for the unattended JWT token lifecycle." },
+];
+
+router.get("/salesforce/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    permissions: SALESFORCE_PERMISSIONS,
+    oauthScopes: SALESFORCE_OAUTH_SCOPES,
+    steps: [
+      'Generate an RSA keypair locally: openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 -keyout salesforce.key -out salesforce.crt',
+      'In Salesforce Setup > App Manager, create a New Connected App (or a New External Client App on Spring ’26+ orgs). Enable OAuth, set any callback URL, and under "Use digital signatures" upload salesforce.crt.',
+      'Select the OAuth scopes "api" and "refresh_token, offline_access" — nothing broader.',
+      'Save and wait up to 10 minutes for propagation. Under Manage > Edit Policies, set Permitted Users to "Admin approved users are pre-authorized", then pre-authorize the integration user’s profile or a dedicated permission set.',
+      'Create (or reuse) a dedicated integration user with the read-only permission set below.',
+      'Copy the Consumer Key from Manage Consumer Details — that is the Client ID below. Paste the contents of salesforce.key as the private key.',
+    ],
+    loginUrlHint: 'Your My Domain login URL, e.g. https://acme.my.salesforce.com (use https://test.salesforce.com for a sandbox).',
+  });
+}));
+
+// Acronis Cyber Protect Cloud connects with an OAuth2 client-credentials API
+// client created in the management console. Acronis has no least-privilege
+// policy JSON — its model is coarse built-in roles — so this is a static
+// instructional walkthrough, not a computed document. A module the client's role
+// can't read comes back 403/404 and those checks fall back to not_applicable
+// (see connectors/acronis/index.js runTests).
+const ACRONIS_MODULES = [
+  { module: "Resource management", note: "Protected-workload inventory — protection status, last successful backup, last anti-malware scan." },
+  { module: "Alert manager", note: "The alert stream — malware/ransomware detections, vulnerability findings, missing patches, critical alerts." },
+];
+
+router.get("/acronis/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    modules: ACRONIS_MODULES,
+    steps: [
+      "In the Cyber Protect Cloud management console, go to Settings > API clients and click Create API client (name it e.g. \"Prism Compliance Reader\").",
+      "Assign it the most restrictive role that can read across your tenant — \"Read-only administrator\" is recommended. Acronis has no per-endpoint scopes.",
+      "Save, then copy the Client ID and Client secret — the secret is shown only once.",
+      "Copy your data-center URL from the browser address bar while signed into the console (e.g. https://us5-cloud.acronis.com), then paste all three below and click Connect.",
+    ],
+    roleHint: "Grant the API client a Read-only administrator role (or the narrowest role your tenant offers that can read resource management and the alert manager).",
+    datacenterUrlHint: "The Cyber Protect Cloud data-center host you sign in to, e.g. https://us5-cloud.acronis.com or https://eu2-cloud.acronis.com — a credential pair only authenticates against the data center it was created in.",
+  });
+}));
+
+// Commvault connects with a customer-generated Custom-scope access token
+// (Command Center > user > Access Tokens). The `apiEndpoints` allowlist below is
+// kept in lockstep with the exact REST paths connectors/commvault/tests/*.js and
+// index.js's testConnection call, so the token a customer generates grants no
+// more (and no less) than Prism uses. `/v2/StoragePolicy` is listed separately
+// from `/StoragePolicy` because Commvault's Custom-scope allowlist matches on
+// literal path prefixes. Re-verify this list once the connector's TODO CONFIRM
+// endpoint paths are confirmed against a live CommCell.
+const COMMVAULT_ACCESS_TOKEN_SETUP = {
+  tokenType: 3,
+  apiEndpoints: ["/Alerts", "/dashboard", "/StoragePolicy", "/v2/StoragePolicy"],
+  instructions:
+    "In your CommCell's Command Center, go to your username > Access Tokens > Add. " +
+    "Set the scope to \"Custom\", paste the exact API endpoint list Prism shows here, " +
+    "and copy the generated token into Prism's connection form along with your " +
+    "WebConsole base URL (e.g. https://commvault.example.com).",
+};
+
+router.get("/commvault/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    accessTokenSetup: COMMVAULT_ACCESS_TOKEN_SETUP,
+    steps: [
+      "In Command Center, open your user menu (top-right) > Access Tokens, and click Add.",
+      "Set Token type / scope to \"Custom\" and add exactly these API endpoints to the allowlist: /Alerts, /dashboard, /StoragePolicy, /v2/StoragePolicy.",
+      "Generate the token and copy it — it is shown only once.",
+      "Copy your CommCell WebConsole base URL from the browser address bar (e.g. https://commvault.example.com), then paste both below and click Connect.",
+    ],
+    webconsoleUrlHint: "The CommCell WebConsole base URL you sign in to, e.g. https://commvault.example.com — copy it from the browser address bar while signed into Command Center.",
+  });
+}));
+
+// Carbonite Core Endpoint Backup connects with a customer-generated API key
+// (dashboard > Key Management) used as the SOAP CallingContext token, plus the
+// account email. Static instructions (no live call), matching Azure/Commvault.
+// Carbonite does not publish per-endpoint scopes or the real dashboard host
+// pattern — the wording below is provisional pending a live tenant (see
+// api/src/connectors/carbonite/ TODO CONFIRM markers).
+router.get("/carbonite/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    operations: [
+      { operation: "GetDeviceList", note: "Enumerates protected devices and their protection state." },
+      { operation: "GetDashboardDeviceInfo", note: "Per-device detail including the last completed backup time." },
+    ],
+    steps: [
+      "In the Core Endpoint Backup dashboard, open Key Management and generate an API key with read access to dashboard / device data — do not grant provisioning or restore scopes.",
+      "Copy the API key (it is shown only once) and note the account email it belongs to.",
+      "Find your dashboard host from the browser address bar while signed in (e.g. https://dashboard.carbonite.com).",
+      "In Prism, paste the dashboard host, the account email, and the API key, then click Connect.",
+    ],
+    dashboardHostHint: "The host your Core Endpoint Backup dashboard is served from, e.g. https://dashboard.carbonite.com — copy it from the browser address bar while signed in.",
+    betaNote: "This connector talks to Carbonite's legacy SOAP Dashboard Service, whose wire format Carbonite does not publish. It ships as beta: checks that can't confirm a field against your tenant report \"error\" rather than guess.",
+  });
+}));
+
+// Carbonite Server Backup's API - Monitoring component authenticates via a
+// Keycloak client the customer registers with the vendor's shipped setup script.
+// Its access levels are Admin / Partner / Reseller — Reseller, scoped to the one
+// company being monitored, is the least-privilege tier that can still read
+// safesets and agents, so that is what this walkthrough recommends. Static
+// instructions (no live call), matching every sibling connector's setup-info.
+// The exact script name, realm, and endpoint paths are unconfirmed pending a
+// live install (see api/src/connectors/carbonite-server/ TODO CONFIRM markers).
+const CARBONITE_SERVER_ACCESS_LEVELS = [
+  { level: "Admin", note: "Unrestricted — all companies, all data including vault info. More than Prism needs." },
+  { level: "Partner", note: "Portal-instance data, no vault info. Still broader than Prism needs." },
+  { level: "Reseller", note: "Scoped to specific companies and their safesets — the recommended least-privilege level for Prism." },
+];
+
+router.get("/carbonite-server/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    accessLevels: CARBONITE_SERVER_ACCESS_LEVELS,
+    recommendedAccessLevel: "Reseller",
+    steps: [
+      "On the server running the Carbonite Server Backup \"API - Monitoring\" component, run the vendor-supplied Keycloak client-registration script (shipped with the API installer).",
+      "Register the client at the \"Reseller\" access level, scoped to the single company you want Prism to monitor — this is the least-privilege level that can still read safesets and agents.",
+      "Copy the generated Client ID and Client secret — the secret is shown only once.",
+      "Open the API's Swagger UI (https://<your-api-host>/monitoring/swaggerui/index) once to confirm the host is reachable, and note the Keycloak realm name from its authorize dialog.",
+      "In Prism, paste the API host (e.g. https://backup.example.com), the Keycloak realm, and the Client ID / Client secret, then click Connect.",
+    ],
+    apiDomainHint: "The host the API - Monitoring component is served from, e.g. https://backup.example.com — the same host you open its Swagger UI on.",
+    keycloakRealmHint: "The Keycloak realm the API - Monitoring client is registered in (shown in the Swagger UI's authorize dialog, or the realm named in the registration script output) — not 'master'.",
+  });
+}));
+
+// ── Check Point connectors (three separate auth domains) ────────────────────
+// check_point_mgmt: Security Management API session (administrator API key,
+//   read-only). check_point: Infinity Portal API key (one key per service, or a
+//   broad user key). check_point_cloudguard: CloudGuard/Dome9 key id + secret.
+// All static instructional walkthroughs (no live call), matching every sibling
+// connector; all ship beta pending live-tenant confirmation of cloud response
+// shapes (see the api/src/connectors/check_point*/ modules).
+
+const CHECK_POINT_MGMT_DEPLOYMENTS = [
+  { value: "self_managed", label: "Self-managed Security Management / Multi-Domain server" },
+  { value: "smart1_cloud", label: "Smart-1 Cloud (Check Point hosted)" },
+];
+
+router.get("/check_point_mgmt/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    deployments: CHECK_POINT_MGMT_DEPLOYMENTS,
+    steps: [
+      "In SmartConsole, open Manage & Settings > Permissions > Administrators and create (or reuse) an administrator with a read-only permission profile.",
+      "Generate an API key for that administrator and Publish the session.",
+      "Self-managed: make sure the Management API accepts requests from Prism's egress (Manage & Settings > Blades > Management API > 'All IP addresses' or a specific range), then use your Security Management server URL. Smart-1 Cloud: copy the tenant service URL shown in the Infinity Portal (Smart-1 Cloud > Settings), which ends in /web_api.",
+      "In Prism, choose the deployment, paste the Management URL and the administrator API key, and click Connect. Prism logs in read-only and never writes.",
+    ],
+    areas: ["Access policy", "Gateways", "Threat Prevention / IPS"],
+    mgmtUrlHint: "The origin only, e.g. https://mgmt.example.com (self-managed) or https://<tenant>.maas.checkpoint.com/<id> (Smart-1 Cloud). Prism appends /web_api itself.",
+    roleHint: "Use a read-only permission profile. The connection also sends read-only:true on login so writes are impossible even if the profile is broader.",
+  });
+}));
+
+const CHECK_POINT_REGIONS = [
+  { value: "eu", label: "EU (cloudinfra-gw.portal.checkpoint.com)", gatewayUrl: "https://cloudinfra-gw.portal.checkpoint.com" },
+  { value: "us", label: "US (cloudinfra-gw-us.portal.checkpoint.com)", gatewayUrl: "https://cloudinfra-gw-us.portal.checkpoint.com" },
+  { value: "ap", label: "AP (cloudinfra-gw-ap.portal.checkpoint.com)", gatewayUrl: "https://cloudinfra-gw-ap.portal.checkpoint.com" },
+];
+
+const CHECK_POINT_SERVICES = [
+  { service: "events", label: "Logs / Events", note: "Infinity Events — security event feed and log-retention checks." },
+  { service: "xdr", label: "XDR / XPR", note: "Infinity XDR/XPR — incident triage and investigation freshness checks." },
+  { service: "endpoint", label: "Endpoint", note: "Harmony Endpoint — device check-in, protection blades, signature and incident checks." },
+];
+
+router.get("/check_point/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    regions: CHECK_POINT_REGIONS,
+    services: CHECK_POINT_SERVICES,
+    steps: [
+      "In the Infinity Portal, open Global Settings > API Keys > New.",
+      "An Account API key is scoped to one service — create one key per service you want Prism to audit (Logs/Events, XDR/XPR, Endpoint), or create a broader user API key that covers several.",
+      "Copy each Client ID and Secret Key, and note your Infinity Portal region.",
+      "In Prism, select the region, then paste one Client ID / Secret Key pair (used for every service) or a pair per service. A service left blank is reported as not applicable.",
+    ],
+    regionHint: "Pick the region your Infinity Portal tenant runs in — an API key only authenticates against the gateway for its region.",
+    scopeNote: "Only the services you provide a key for are collected; the rest are skipped as not applicable rather than failing the run.",
+  });
+}));
+
+const CHECK_POINT_CLOUDGUARD_DATA_CENTERS = [
+  { value: "us", label: "US (api.dome9.com)", baseUrl: "https://api.dome9.com/v2" },
+  { value: "eu", label: "EU (api.eu1.dome9.com)", baseUrl: "https://api.eu1.dome9.com/v2" },
+  { value: "ap1", label: "AP1 – Sydney (api.ap1.dome9.com)", baseUrl: "https://api.ap1.dome9.com/v2" },
+  { value: "ap2", label: "AP2 – Singapore (api.ap2.dome9.com)", baseUrl: "https://api.ap2.dome9.com/v2" },
+  { value: "ap3", label: "AP3 – Mumbai (api.ap3.dome9.com)", baseUrl: "https://api.ap3.dome9.com/v2" },
+  { value: "ca", label: "Canada (api.cace1.dome9.com)", baseUrl: "https://api.cace1.dome9.com/v2" },
+];
+
+router.get("/check_point_cloudguard/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json({
+    dataCenters: CHECK_POINT_CLOUDGUARD_DATA_CENTERS,
+    steps: [
+      "In the CloudGuard console, open Settings > Credentials and click Create API Key.",
+      "Assign the key a read-only role that can read Cloud Accounts, Compliance and Posture Findings — grant nothing broader.",
+      "Copy the API Key ID and Secret — the secret is shown only once.",
+      "Find your data centre under Settings > Account Info, then in Prism select it, paste the key id and secret, and click Connect.",
+    ],
+    dataCenterHint: "CloudGuard's API host is fixed by your account's data centre (Settings > Account Info) — a key only authenticates against its own data centre.",
+    areas: ["Cloud account fetch health", "Compliance assessment freshness", "Ruleset coverage", "Critical / high posture findings", "Exclusions"],
+  });
+}));
+
+// ── Akamai connector ───────────────────────────────────────────────────────
+// Kept in lockstep with the scopes connectors/akamai/* actually calls — see
+// docs/connectors/akamai.md §2. A missing scope makes that area's checks
+// fall back to not_applicable (connectors/akamai/index.js runTests).
+const AKAMAI_SETUP = {
+  scopes: [
+    "Application Security — READ-ONLY (WAF, rate, attack groups, SIEM settings)",
+    "Property Manager (PAPI) — READ-ONLY (properties, versions, activations, rule trees)",
+    "Certificate Provisioning System — READ-ONLY (enrollments, deployments, changes)",
+    "API Definitions — READ-ONLY (registered endpoints and resources)",
+  ],
+  controlCenterPath: "Control Center → Identity & Access → API clients → Create API client (read-only)",
+  hostHint:
+    'The "host" line from the API client .edgerc block, e.g. akab-xxxx.luna.akamaiapis.net — it is unique per credential, not a shared Akamai hostname.',
+  steps: [
+    "In Control Center open Identity & Access → API clients and click Create API client.",
+    "Set the client to read-only and grant the four READ-ONLY scopes listed below (grant nothing broader).",
+    "Set the client's group/account access to the groups whose properties and security configs are in scope.",
+    "Create credentials and download the .edgerc block — it has host, client_token, client_secret and access_token.",
+    "Paste those four values below. Add the account switch key only if this is a partner-managed account.",
+  ],
+};
+
+router.get("/akamai/setup-info", authenticate, requireReadOnly(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
+  res.json(AKAMAI_SETUP);
+}));
+
 router.get("/:id/github/setup-info", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
   const connectionId = parseInt(req.params.id);
   const result = await query(

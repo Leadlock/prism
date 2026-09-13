@@ -6,6 +6,8 @@ import TopBar from "../components/TopBar.jsx";
 import QuestionCard from "../components/QuestionCard.jsx";
 import Toast from "../components/Toast.jsx";
 import RetryBanner from "../components/RetryBanner.jsx";
+import { carriesForwardTo, assessmentCompletedAt } from "../utils/carryForward.js";
+import { isApprovedStatus } from "../utils/reviewStatus.js";
 
 export default function Tracker({ token, onLogout, user, company, branding, theme, onThemeToggle, isVerified, onProfileUpdate }) {
   const [modules, setModules] = useState([]);
@@ -122,16 +124,15 @@ export default function Tracker({ token, onLogout, user, company, branding, them
     const quest = questions.find(q => q.questId === questId);
     if (!quest) return null;
 
-    // Only carry forward if recurrence is set and next_due_date is in the future (or not yet passed the selected month)
-    const nextDue = quest.nextDueDate ? quest.nextDueDate.slice(0, 7) : null;
     const recurrence = quest.recurrenceInterval;
     if (!recurrence || recurrence === "none") return null;
 
-    // Find the most recent FINISHED assessment for this quest before or equal to selected month
+    // Find the most recent approved (FINISHED/AUDITED) assessment for this quest
+    // before or equal to the selected month
     const prior = allAssessments
       .filter(a =>
         (a.questId === questId || a.quest_id === questId) &&
-        (a.reviewStatus === "FINISHED" || a.review_status === "FINISHED") &&
+        isApprovedStatus(a.reviewStatus || a.review_status) &&
         (a.month || "") <= month
       )
       .sort((a, b) => (b.month || "").localeCompare(a.month || ""));
@@ -139,20 +140,12 @@ export default function Tracker({ token, onLogout, user, company, branding, them
     if (prior.length === 0) return null;
 
     const latestAssessment = prior[0];
-    // If next_due_date exists and is after the selected month, carry forward
-    if (nextDue && nextDue >= month) {
-      return { ...latestAssessment, _carriedForward: true };
-    }
 
-    // If no next_due_date set, still carry forward within the recurrence window
-    // Calculate months since assessment based on recurrence
-    const intervalMonths = { weekly: 0, fortnightly: 0, monthly: 1, quarterly: 3, "semi-annual": 6, annual: 12 };
-    const maxMonths = intervalMonths[recurrence] || 1;
-    const assessMonth = latestAssessment.month || "";
-    const monthDiff = (parseInt(month.slice(0, 4)) - parseInt(assessMonth.slice(0, 4))) * 12 +
-                      (parseInt(month.slice(5, 7)) - parseInt(assessMonth.slice(5, 7)));
-
-    if (monthDiff >= 0 && monthDiff < maxMonths) {
+    // Day-precise carry-forward window: keep the assessment marked until its
+    // recurrence interval actually elapses from the completion date (the same
+    // math behind the "Due in Nd" label on the linked evidence), rather than
+    // dropping it the instant the calendar month rolls over.
+    if (carriesForwardTo(assessmentCompletedAt(latestAssessment), recurrence, month, quest.nextDueDate)) {
       return { ...latestAssessment, _carriedForward: true };
     }
 
@@ -434,12 +427,12 @@ export default function Tracker({ token, onLogout, user, company, branding, them
     total: filteredQuestions.length,
     assessed: filteredQuestions.filter(q => {
       const assessment = getEffectiveAssessment(q.questId);
-      return assessment && (assessment.reviewStatus === "FINISHED" || assessment.review_status === "FINISHED");
+      return assessment && isApprovedStatus(assessment.reviewStatus || assessment.review_status);
     }).length,
     yesEligible: filteredQuestions.filter(q => {
       const assessment = getEffectiveAssessment(q.questId);
-      return assessment && 
-        (assessment.reviewStatus === "FINISHED" || assessment.review_status === "FINISHED") &&
+      return assessment &&
+        isApprovedStatus(assessment.reviewStatus || assessment.review_status) &&
         (assessment.answer === "IMPLEMENTED" || assessment.answer === "YES") &&
         (assessment.currentLevel || assessment.current_level) >= 3 &&
         (assessment.scoreEligible === true || assessment.score_eligible === true);

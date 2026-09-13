@@ -7,7 +7,7 @@ import { longRequestTimeout } from "../middleware/timeout.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { writeAuditLog } from "../utils/auditLog.js";
 import { analyzeEvidence } from "../utils/aiProvider.js";
-import { runEvidenceAnalysis, resolveVaultIdForEvidence } from "../utils/evidenceAnalysis.js";
+import { runEvidenceAnalysis, resolveVaultIdForEvidence, queueEvidenceAnalysis } from "../utils/evidenceAnalysis.js";
 import { notifyReviewers } from "../utils/notifyReviewers.js";
 import { scanBuffer } from "../utils/scanFile.js";
 import { saveObject, openObjectStream, withLocalCopy } from "../utils/evidenceStorage.js";
@@ -38,6 +38,15 @@ const evidenceFileFilter = (req, file, cb) => {
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: evidenceFileFilter });
 
+function publicEvidence(record) {
+  if (!record) return record;
+  const { filePath, ...safeRecord } = record;
+  return {
+    ...safeRecord,
+    hasFile: safeRecord.hasFile ?? Boolean(filePath),
+  };
+}
+
 router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "VIEWER", "AUDITOR"]), asyncHandler(async (req, res) => {
   if (req.user.role === "AUDITOR") {
     await writeAuditLog({ userId: req.user.userId, companyId: req.user.companyId, email: req.user.email, action: "READ", resource: "evidence", ip: req.ip });
@@ -65,7 +74,8 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
   // legacy per-row columns for evidence uploaded/analysed before the move.
   const result = await query(
     `SELECT e.id, e.evidence_id, e.month, e.module_id, e.quest_id, e.company_id,
-            e.evidence_type, e.evidence_name, e.evidence_link, e.file_path,
+            e.evidence_type, e.evidence_name, e.evidence_link,
+            (e.file_path IS NOT NULL) AS has_file,
             e.uploaded_by, e.upload_date, e.reviewer, e.approval_status, e.notes,
             COALESCE(ev.ai_contributor_comments, e.ai_contributor_comments) AS ai_contributor_comments,
             COALESCE(ev.ai_reviewer_comments,    e.ai_reviewer_comments)    AS ai_reviewer_comments,
@@ -73,20 +83,31 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
             COALESCE(ev.ai_suggestions,          e.ai_suggestions)          AS ai_suggestions,
             COALESCE(ev.ai_analyzed_at,          e.ai_analyzed_at)          AS ai_analyzed_at,
             COALESCE(ev.ai_date_warning,         e.ai_date_warning)         AS ai_date_warning,
+            ev.ai_analysis_status, ev.ai_analyzed_version, ev.current_version,
             e.created_at, e.updated_at
        FROM evidence e
        LEFT JOIN LATERAL (
-         SELECT ai_contributor_comments, ai_reviewer_comments, ai_gaps,
-                ai_suggestions, ai_analyzed_at, ai_date_warning
-           FROM evidence_vault
-          WHERE legacy_evidence_id = e.id AND company_id = e.company_id
-          ORDER BY updated_at DESC LIMIT 1
+         SELECT vv.ai_contributor_comments, vv.ai_reviewer_comments, vv.ai_gaps,
+                vv.ai_suggestions, vv.ai_analyzed_at, vv.ai_date_warning,
+                vv.ai_analysis_status, vv.ai_analyzed_version,
+                (SELECT COALESCE(MAX(version_number), 1) FROM evidence_versions WHERE evidence_id = vv.id) AS current_version
+           FROM evidence_vault vv
+          WHERE vv.company_id = e.company_id
+            AND (
+              vv.legacy_evidence_id = e.id
+              OR (e.quest_id IS NOT NULL AND vv.id IN (
+                    SELECT qe.vault_id FROM question_evidence qe
+                     WHERE qe.company_id = e.company_id AND qe.quest_id = e.quest_id
+                  ))
+            )
+          ORDER BY (vv.legacy_evidence_id = e.id) DESC, vv.updated_at DESC
+          LIMIT 1
        ) ev ON TRUE
       WHERE ${conditions.join(" AND ")}
       ORDER BY e.created_at DESC`,
     values
   );
-  res.json(mapRows(result));
+  res.json(mapRows(result).map(publicEvidence));
 }));
 
 router.get("/:id/download", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR"]), asyncHandler(async (req, res) => {
@@ -129,6 +150,11 @@ router.get("/:id/view", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIB
 }));
 
 router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), upload.single("file"), asyncHandler(async (req, res) => {
+  if (Object.prototype.hasOwnProperty.call(req.body, "filePath") ||
+      Object.prototype.hasOwnProperty.call(req.body, "file_path")) {
+    return res.status(400).json({ error: "filePath cannot be supplied; upload the file instead" });
+  }
+
   const uploadedBy = req.user?.email || req.body.uploadedBy || null;
   const uploadDate = req.body.uploadDate || new Date();
   const evidenceType = req.body.evidenceType || (req.file ? "FILE" : "LINK");
@@ -142,7 +168,7 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), up
     evidence_type: evidenceType,
     evidence_name: req.body.evidenceName || null,
     evidence_link: req.body.evidenceLink || null,
-    file_path: req.body.filePath || null,
+    file_path: null,
     uploaded_by: uploadedBy,
     upload_date: uploadDate,
     reviewer: req.body.reviewer || null,
@@ -290,31 +316,15 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), up
         }
       }
     }
+
+    // Auto-run AI analysis on the (new or re-versioned) vault item so reviewers
+    // and auditors always have a cached, up-to-date result. Fire-and-forget.
+    if (req.file && vaultItemId) {
+      queueEvidenceAnalysis({ vaultId: vaultItemId, companyId: data.company_id });
+    }
   }
 
-  res.status(201).json(evidenceRecord);
-}));
-
-router.post("/:id/reassign", authenticate, requireRole(["ADMIN"]), asyncHandler(async (req, res) => {
-  const evidenceId = parseInt(req.params.id);
-  const { targetAdminEmail, uploadedBy } = req.body;
-  if (!targetAdminEmail) return res.status(400).json({ error: "targetAdminEmail required" });
-
-  const companyResult = await query(
-    "SELECT id FROM companies WHERE admin_email = $1",
-    [targetAdminEmail]
-  );
-  const company = mapRow(companyResult);
-  if (!company) return res.status(404).json({ error: "Target company not found" });
-
-  const updateResult = await query(
-    "UPDATE evidence SET company_id = $1, uploaded_by = $2, updated_at = NOW() WHERE id = $3 RETURNING *",
-    [company.id, uploadedBy || req.user.email || null, evidenceId]
-  );
-
-  if (updateResult.rows.length === 0) return res.status(404).json({ error: "Evidence not found" });
-
-  res.json(mapRow(updateResult));
+  res.status(201).json(publicEvidence(evidenceRecord));
 }));
 
 router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), asyncHandler(async (req, res) => {
@@ -350,7 +360,7 @@ router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), 
     return res.status(404).json({ error: "Evidence not found" });
   }
 
-  res.json(mapRow(evidenceResult));
+  res.json(publicEvidence(mapRow(evidenceResult)));
 }));
 
 router.delete("/:id", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler(async (req, res) => {
@@ -366,7 +376,7 @@ router.delete("/:id", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandler
 
   if (ev.questId) {
     const lockCheck = await query(
-      "SELECT 1 FROM assessments WHERE quest_id = $1 AND company_id = $2 AND review_status = 'FINISHED' LIMIT 1",
+      "SELECT 1 FROM assessments WHERE quest_id = $1 AND company_id = $2 AND review_status IN ('FINISHED', 'AUDITED') LIMIT 1",
       [ev.questId, req.user.companyId]
     );
     if (lockCheck.rows.length > 0) {
@@ -392,7 +402,7 @@ router.post("/:id/analyze", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIB
     [req.user.companyId]
   );
   const settings = mapRow(settingsResult);
-  if (settings && settings.aiEnabled === false) {
+  if (!settings?.aiEnabled) {
     return res.status(403).json({ error: "AI features are disabled for your company" });
   }
 
@@ -460,7 +470,7 @@ router.post("/:id/analyze", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIB
     ]
   );
 
-  res.json(mapRow(updateResult));
+  res.json(publicEvidence(mapRow(updateResult)));
 }));
 
 export default router;

@@ -267,7 +267,7 @@ router.get("/mine", authenticate, asyncHandler(async (req, res) => {
         WHERE qfc.company_id = $1 AND qfc.framework_key = f.key) AS question_count,
        (SELECT COUNT(DISTINCT a.quest_id)
         FROM question_framework_controls qfc
-        JOIN assessments a ON a.quest_id = qfc.quest_id AND a.company_id = $1 AND a.review_status = 'FINISHED'
+        JOIN assessments a ON a.quest_id = qfc.quest_id AND a.company_id = $1 AND a.review_status IN ('FINISHED', 'AUDITED')
         WHERE qfc.company_id = $1 AND qfc.framework_key = f.key) AS answered_count
      FROM company_frameworks cf
      JOIN frameworks f ON f.key = cf.framework_key
@@ -385,7 +385,7 @@ router.get("/:key/questions", authenticate, asyncHandler(async (req, res) => {
        qfc.control_reference,
        CASE WHEN q.next_due_date IS NOT NULL AND q.next_due_date < NOW() THEN true ELSE false END AS is_overdue,
        (SELECT answer FROM assessments
-        WHERE quest_id = q.quest_id AND company_id = $1 AND review_status = 'FINISHED'
+        WHERE quest_id = q.quest_id AND company_id = $1 AND review_status IN ('FINISHED', 'AUDITED')
         ORDER BY created_at DESC LIMIT 1) AS latest_answer,
        EXISTS (
          SELECT 1 FROM question_evidence qe WHERE qe.quest_id = q.quest_id AND qe.company_id = $1
@@ -422,7 +422,7 @@ router.get("/:key/dashboard", authenticate, asyncHandler(async (req, res) => {
          COALESCE(q.control_area, 'Uncategorised') AS control_area,
          qfc.control_reference,
          COUNT(DISTINCT q.quest_id) AS total,
-         COUNT(DISTINCT a.quest_id) FILTER (WHERE a.review_status = 'FINISHED') AS finished,
+         COUNT(DISTINCT a.quest_id) FILTER (WHERE a.review_status IN ('FINISHED', 'AUDITED')) AS finished,
          COUNT(DISTINCT a.quest_id) AS assessed
        FROM question_framework_controls qfc
        JOIN questions q ON q.quest_id = qfc.quest_id AND q.company_id = $1
@@ -461,7 +461,7 @@ router.get("/:key/dashboard", authenticate, asyncHandler(async (req, res) => {
     query(
       `SELECT
          COUNT(DISTINCT q.quest_id) AS total,
-         COUNT(DISTINCT a.quest_id) FILTER (WHERE a.review_status = 'FINISHED') AS finished
+         COUNT(DISTINCT a.quest_id) FILTER (WHERE a.review_status IN ('FINISHED', 'AUDITED')) AS finished
        FROM question_framework_controls qfc
        JOIN questions q ON q.quest_id = qfc.quest_id AND q.company_id = $1
        LEFT JOIN assessments a ON a.quest_id = q.quest_id AND a.company_id = $1

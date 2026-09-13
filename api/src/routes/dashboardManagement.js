@@ -18,7 +18,7 @@ const implCase = (col) => `CASE ${col}
   ELSE 0 END`;
 
 // Readiness is measured across the WHOLE control set, counting only approved
-// (review_status = 'FINISHED') assessments — an un-reviewed or un-assessed control
+// (review_status IN ('FINISHED', 'AUDITED')) assessments — an un-reviewed or un-assessed control
 // contributes nothing. This is deliberately a full-framework audit-readiness figure,
 // not a "quality of the work done so far" figure.
 //
@@ -80,7 +80,7 @@ router.get(
                SELECT DISTINCT ON (a.quest_id) a.quest_id, a.answer, a.current_level
                FROM assessments a
                WHERE a.company_id = $1
-                 AND a.review_status = 'FINISHED'
+                 AND a.review_status IN ('FINISHED', 'AUDITED')
                  AND a.month <= m.ym
                ORDER BY a.quest_id, a.month DESC, a.updated_at DESC, a.id DESC
              ) s
@@ -102,7 +102,7 @@ router.get(
           `WITH latest AS (
              SELECT DISTINCT ON (quest_id) quest_id, answer
              FROM assessments
-             WHERE company_id = $1 AND review_status = 'FINISHED'
+             WHERE company_id = $1 AND review_status IN ('FINISHED', 'AUDITED')
              ORDER BY quest_id, month DESC NULLS LAST, updated_at DESC
            )
            SELECT
@@ -154,7 +154,7 @@ router.get(
           `WITH latest AS (
              SELECT DISTINCT ON (quest_id) quest_id, answer AS a_answer, current_level
              FROM assessments
-             WHERE company_id = $1 AND review_status = 'FINISHED'
+             WHERE company_id = $1 AND review_status IN ('FINISHED', 'AUDITED')
              ORDER BY quest_id, month DESC NULLS LAST, updated_at DESC, id DESC
            ),
            q AS (

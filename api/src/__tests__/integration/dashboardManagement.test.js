@@ -148,24 +148,27 @@ describe("GET /api/dashboard/management", () => {
     expect(byMonth[m]).toBe(100);
   });
 
-  test("readiness and controlStatus count only approved (FINISHED) assessments", async () => {
+  test("readiness and controlStatus count approved (FINISHED + AUDITED) assessments", async () => {
     const company = await createCompany({ domain: "mgmt-approved.com" });
     const admin = await createUser(company.id, "ADMIN");
 
     await addQuestion(company.id, "Q1");
     await addQuestion(company.id, "Q2");
+    await addQuestion(company.id, "Q3");
     const m = monthsAgo(0);
-    // Q1 fully implemented but still in review; Q2 implemented and approved
+    // Q1 fully implemented but still in review; Q2 approved (FINISHED); Q3 auditor-signed-off (AUDITED)
     await addAssessment(company.id, "Q1", { month: m, answer: "IMPLEMENTED", level: 5, reviewStatus: "WIP" });
     await addAssessment(company.id, "Q2", { month: m, answer: "IMPLEMENTED", level: 5, reviewStatus: "FINISHED" });
+    await addAssessment(company.id, "Q3", { month: m, answer: "IMPLEMENTED", level: 5, reviewStatus: "AUDITED" });
 
     const res = await request(app).get("/api/dashboard/management").set(...AUTH(admin.token));
 
-    // Only Q2 counts: implSum 1, levelSum 5 of total 2 -> impl .5, maturity 5/10=.5 -> 50
+    // Q2 + Q3 count (AUDITED behaves as FINISHED): implSum 2, levelSum 10 of total 3
+    // -> impl 2/3, maturity 10/15 -> both .667 -> 67
     const byMonth = Object.fromEntries(res.body.readinessTrend.map((p) => [p.month, p.value]));
-    expect(byMonth[m]).toBe(50);
+    expect(byMonth[m]).toBe(67);
     expect(res.body.controlStatus).toEqual({
-      total: 2, compliant: 1, partial: 0, nonCompliant: 0, notAssessed: 1,
+      total: 3, compliant: 2, partial: 0, nonCompliant: 0, notAssessed: 1,
     });
   });
 

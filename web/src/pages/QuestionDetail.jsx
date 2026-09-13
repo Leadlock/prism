@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { apiFetch, apiUpload, apiDownload } from "../api/client.js";
-import TopBar from "../components/TopBar.jsx";
+import UserMenu from "../components/UserMenu.jsx";
+import EvidenceAiPanel from "../components/EvidenceAiPanel.jsx";
+import { isApprovedStatus } from "../utils/reviewStatus.js";
 
 function formatDueDate(dateStr) {
   if (!dateStr) return null;
@@ -45,7 +47,7 @@ function addInterval(date, interval) {
   return d;
 }
 
-export default function QuestionDetail({ token, user, onLogout, isVerified }) {
+export default function QuestionDetail({ token, user, company, theme, onThemeToggle, onLogout, isVerified }) {
   const { questId } = useParams();
   const navigate = useNavigate();
   const [question, setQuestion] = useState(null);
@@ -235,45 +237,61 @@ export default function QuestionDetail({ token, user, onLogout, isVerified }) {
     }
   };
 
+  const goBack = () => (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate("/tracker");
+
   if (loading) {
     return (
-      <div className="app-shell">
-        <TopBar title="Loading..." onLogout={onLogout} />
-        <div className="loading">Loading question details...</div>
+      <div className="review-shell fade-in" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div className="loading-spinner" />
       </div>
     );
   }
 
   if (error || !question) {
     return (
-      <div className="app-shell">
-        <TopBar title="Error" onLogout={onLogout} />
-        <div className="error-text">{error || "Question not found"}</div>
-        <button onClick={() => (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate("/tracker")} className="btn-secondary">
-          Back to Dashboard
-        </button>
+      <div className="review-shell fade-in" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div className="card" style={{ maxWidth: 420, width: "100%", padding: 32, textAlign: "center" }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--red)", marginBottom: 16 }}>
+            {error || "Question not found"}
+          </div>
+          <button onClick={goBack} className="btn btn-primary">Back to Tracker</button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="app-shell fade-in">
-      <TopBar
-        title={`${question.questId} — ${question.moduleName}`}
-        subtitle={question.controlArea}
-        tags={[question.isoReference, question.frequency]}
-        onLogout={onLogout}
-        onBack={() => (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate("/tracker")}
-      />
-      <div style={{ padding: '0 28px 28px 28px' }}>
-        <button className="btn btn-ghost" onClick={async () => {
-          try {
-            const q = await apiFetch(`/api/questions/${questId}`, { token });
-            setQuestion(q);
-          } catch (e) { setError(e.message); }
-        }}>Refresh</button>
+    <div className="review-shell fade-in">
+      <div className="review-header">
+        <div>
+          <div className="logo" style={{ cursor: "pointer" }} onClick={() => navigate("/tracker")}>PRISM</div>
+          <div className="review-title">{question.questId} — {question.moduleName}</div>
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            {question.controlArea && <span className="tag-badge">{question.controlArea}</span>}
+            {question.isoReference && <span className="tag-badge">{question.isoReference}</span>}
+            {question.frequency && <span className="tag-badge">{question.frequency}</span>}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button className="btn btn-ghost" onClick={goBack}>← Back</button>
+          <button className="btn btn-ghost" onClick={async () => {
+            try {
+              const q = await apiFetch(`/api/questions/${questId}`, { token });
+              setQuestion(q);
+            } catch (e) { setError(e.message); }
+          }}>Refresh</button>
+          <UserMenu
+            user={user}
+            company={company}
+            theme={theme}
+            onThemeToggle={onThemeToggle}
+            onLogout={onLogout}
+            isVerified={isVerified}
+          />
+        </div>
       </div>
-      <div className="grid">
+
+      <div className="review-content" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <section className="card">
           <div className="section-title">Question Details</div>
           <div className="detail-row">
@@ -350,8 +368,8 @@ export default function QuestionDetail({ token, user, onLogout, isVerified }) {
           {question.dependencies && question.dependencies.length > 0 ? (
             <div className="list">
               {question.dependencies.map(dep => {
-                const implemented = dep.latestReviewStatus === "FINISHED" && dep.latestAnswer === "IMPLEMENTED";
-                const assessed = dep.latestReviewStatus === "FINISHED";
+                const implemented = isApprovedStatus(dep.latestReviewStatus) && dep.latestAnswer === "IMPLEMENTED";
+                const assessed = isApprovedStatus(dep.latestReviewStatus);
                 return (
                   <div key={dep.questId} className="list-item" style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ fontSize: 16, flexShrink: 0 }}>{assessed ? (implemented ? "✅" : "❌") : "⬜"}</span>
@@ -500,7 +518,7 @@ export default function QuestionDetail({ token, user, onLogout, isVerified }) {
                       style={{ fontSize: 12, padding: "4px 10px" }}
                       onClick={() => navigate("/vault")}
                     >View in Vault</button>
-                    {canWriteVault && isVerified !== false && !question.assessments?.some(a => a.reviewStatus === "FINISHED") && (
+                    {canWriteVault && isVerified !== false && !question.assessments?.some(a => isApprovedStatus(a.reviewStatus || a.review_status)) && (
                       <button
                         className="btn btn-ghost"
                         style={{ fontSize: 12, padding: "4px 10px", color: "var(--text3)" }}
@@ -721,7 +739,7 @@ export default function QuestionDetail({ token, user, onLogout, isVerified }) {
                           View Evidence
                         </a>
                       )}
-                      {evidence.filePath && (
+                      {evidence.hasFile && (
                         <button className="btn btn-compact" onClick={() => downloadEvidence(evidence.id, evidence.evidenceName)}>
                           Download
                         </button>
@@ -748,39 +766,7 @@ export default function QuestionDetail({ token, user, onLogout, isVerified }) {
                       )}
                     </div>
                   </div>
-                  {evidence.aiContributorComments && (
-                    <div style={{ marginTop: 12, padding: 12, background: 'var(--bg)', borderRadius: 14, boxShadow: '4px 4px 10px rgba(163,177,198,0.6), -4px -4px 10px rgba(255,255,255,0.8)' }}>
-                      <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--accent)' }}>📝 Contributor Feedback</div>
-                      <div style={{ whiteSpace: 'pre-wrap', fontSize: 14 }}>{evidence.aiContributorComments}</div>
-                      {evidence.aiGaps && JSON.parse(evidence.aiGaps).length > 0 && (
-                        <div style={{ marginTop: 8 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--red)', marginBottom: 4 }}>⚠️ Gaps Identified:</div>
-                          <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
-                            {JSON.parse(evidence.aiGaps).map((gap, i) => <li key={i}>{gap}</li>)}
-                          </ul>
-                        </div>
-                      )}
-                      {evidence.aiSuggestions && JSON.parse(evidence.aiSuggestions).length > 0 && (
-                        <div style={{ marginTop: 8 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--green)', marginBottom: 4 }}>💡 Suggestions:</div>
-                          <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
-                            {JSON.parse(evidence.aiSuggestions).map((sug, i) => <li key={i}>{sug}</li>)}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {evidence.aiReviewerComments && (
-                    <div style={{ marginTop: 8, padding: 12, background: 'var(--bg)', borderRadius: 14, boxShadow: '4px 4px 10px rgba(163,177,198,0.6), -4px -4px 10px rgba(255,255,255,0.8)' }}>
-                      <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--amber)' }}>👤 Reviewer Summary</div>
-                      <div style={{ fontSize: 14 }}>{evidence.aiReviewerComments}</div>
-                      {evidence.aiAnalyzedAt && (
-                        <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
-                          Analyzed: {new Date(evidence.aiAnalyzedAt).toLocaleString()}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <EvidenceAiPanel evidence={evidence} />
                 </div>
               ))}
             </div>

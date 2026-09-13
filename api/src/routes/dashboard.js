@@ -15,6 +15,10 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
   const { month, priority, tag, owner, status, framework } = req.query;
   const hasFilter = !!(priority || tag || owner || status || framework);
 
+  if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    return res.status(400).json({ error: "Invalid month — expected YYYY-MM" });
+  }
+
   // Step 1: Get filtered quest IDs when filters are active.
   // The ?framework= param scopes to questions mapped to that framework via
   // question_framework_controls; all other filters narrow by question attributes.
@@ -88,6 +92,41 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
 
   const monthCondition = month ? "AND month = $2" : "";
 
+  // Carry-forward: the set of "effective" assessments as-of `month`, mirroring the
+  // web tracker (getEffectiveAssessment / carriesForwardTo in web/src/utils/
+  // carryForward.js). For each quest: the assessment dated `month` if one exists,
+  // otherwise the most recent prior FINISHED assessment whose recurrence window
+  // — the question's next_due_date, or the completion date plus the recurrence
+  // interval — has not elapsed by the first day of `month`. Used only for the
+  // month-scoped views; the all-time view keeps its existing semantics.
+  const effCte = `eff AS (
+      SELECT DISTINCT ON (a.quest_id) a.*
+      FROM assessments a
+      JOIN questions q ON q.company_id = a.company_id AND q.quest_id = a.quest_id
+      WHERE a.company_id = $1
+        AND a.month IS NOT NULL AND a.month <= $2
+        AND (
+          a.month = $2
+          OR (
+            a.review_status IN ('FINISHED', 'AUDITED')
+            AND COALESCE(LOWER(NULLIF(q.recurrence_interval, '')), 'none') <> 'none'
+            AND COALESCE(
+                  q.next_due_date,
+                  COALESCE(a.reviewed_at, a.updated_at, a.created_at, (a.month || '-01')::timestamptz)
+                    + CASE LOWER(COALESCE(NULLIF(q.recurrence_interval, ''), 'monthly'))
+                        WHEN 'weekly'      THEN INTERVAL '7 days'
+                        WHEN 'fortnightly' THEN INTERVAL '14 days'
+                        WHEN 'quarterly'   THEN INTERVAL '3 months'
+                        WHEN 'semi-annual' THEN INTERVAL '6 months'
+                        WHEN 'annual'      THEN INTERVAL '1 year'
+                        ELSE INTERVAL '1 month'
+                      END
+                ) >= ($2 || '-01')::timestamptz
+          )
+        )
+      ORDER BY a.quest_id, (a.month = $2) DESC, a.month DESC, a.updated_at DESC, a.id DESC
+    )`;
+
   const [totalQ, assessed, finished, answerDist, moduleCompletion, evidenceCoverage, actionStatus, maturityDist, overdueQuestions, notesCount, reviewerNotesCount, noNotesCount, openRequests, overdueRequests, completedRequests, requestsByUser, vaultTotalVersions, vaultUpdatedThisMonth, vaultLatestModified, scoreEligible, automatedCoverage] = await Promise.all([
     // Total questions (filtered by priority/tag)
     hasFilter
@@ -96,21 +135,25 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
 
     // Assessed count
     query(
-      `SELECT COUNT(DISTINCT quest_id) AS n FROM assessments WHERE company_id = $1 ${monthCondition} ${questFilter}`,
+      month
+        ? `WITH ${effCte} SELECT COUNT(DISTINCT quest_id) AS n FROM eff WHERE TRUE ${questFilter}`
+        : `SELECT COUNT(DISTINCT quest_id) AS n FROM assessments WHERE company_id = $1 ${questFilter}`,
       assessParams
     ),
 
-    // Finished count (simplified: skip carry-forward for filtered view to keep it reliable)
+    // Finished count (carry-forward applied for the month view)
     query(
       month
-        ? `SELECT COUNT(DISTINCT quest_id) AS n FROM assessments WHERE company_id = $1 AND review_status = 'FINISHED' AND month = $2 ${questFilter}`
-        : `SELECT COUNT(DISTINCT quest_id) AS n FROM assessments WHERE company_id = $1 AND review_status = 'FINISHED' ${hasFilter ? "AND quest_id = ANY($2)" : ""}`,
+        ? `WITH ${effCte} SELECT COUNT(DISTINCT quest_id) AS n FROM eff WHERE review_status IN ('FINISHED', 'AUDITED') ${questFilter}`
+        : `SELECT COUNT(DISTINCT quest_id) AS n FROM assessments WHERE company_id = $1 AND review_status IN ('FINISHED', 'AUDITED') ${hasFilter ? "AND quest_id = ANY($2)" : ""}`,
       assessParams
     ),
 
     // Answer distribution
     query(
-      `SELECT answer, COUNT(*) AS n FROM assessments WHERE company_id = $1 ${monthCondition} ${questFilter} GROUP BY answer`,
+      month
+        ? `WITH ${effCte} SELECT answer, COUNT(*) AS n FROM eff WHERE TRUE ${questFilter} GROUP BY answer`
+        : `SELECT answer, COUNT(*) AS n FROM assessments WHERE company_id = $1 ${questFilter} GROUP BY answer`,
       assessParams
     ),
 
@@ -118,19 +161,19 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
     hasFilter
       ? query(
           month
-            ? `SELECT m.module_id, m.name,
+            ? `WITH ${effCte} SELECT m.module_id, m.name,
                 (SELECT COUNT(*) FROM questions WHERE company_id = $1 AND module_id = m.module_id AND quest_id = ANY($3)) AS total_quests,
-                COUNT(DISTINCT a.quest_id) FILTER (WHERE a.review_status = 'FINISHED') AS finished,
+                COUNT(DISTINCT a.quest_id) FILTER (WHERE a.review_status IN ('FINISHED', 'AUDITED')) AS finished,
                 COUNT(DISTINCT a.quest_id) AS assessed
               FROM modules m
-              LEFT JOIN assessments a ON a.module_id = m.module_id AND a.company_id = $1 AND a.month = $2 AND a.quest_id = ANY($3)
+              LEFT JOIN eff a ON a.module_id = m.module_id AND a.quest_id = ANY($3)
               WHERE (m.company_id = $1 OR m.company_id IS NULL)
               GROUP BY m.module_id, m.name, m.sort_order
               HAVING (SELECT COUNT(*) FROM questions WHERE company_id = $1 AND module_id = m.module_id AND quest_id = ANY($3)) > 0
               ORDER BY m.sort_order ASC, m.module_id ASC`
             : `SELECT m.module_id, m.name,
                 (SELECT COUNT(*) FROM questions WHERE company_id = $1 AND module_id = m.module_id AND quest_id = ANY($2)) AS total_quests,
-                COUNT(DISTINCT a.quest_id) FILTER (WHERE a.review_status = 'FINISHED') AS finished,
+                COUNT(DISTINCT a.quest_id) FILTER (WHERE a.review_status IN ('FINISHED', 'AUDITED')) AS finished,
                 COUNT(DISTINCT a.quest_id) AS assessed
               FROM modules m
               LEFT JOIN assessments a ON a.module_id = m.module_id AND a.company_id = $1 AND a.quest_id = ANY($2)
@@ -142,16 +185,16 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
         )
       : query(
           month
-            ? `SELECT m.module_id, m.name, m.total_quests,
-                COUNT(DISTINCT a.quest_id) FILTER (WHERE a.review_status = 'FINISHED') AS finished,
+            ? `WITH ${effCte} SELECT m.module_id, m.name, m.total_quests,
+                COUNT(DISTINCT a.quest_id) FILTER (WHERE a.review_status IN ('FINISHED', 'AUDITED')) AS finished,
                 COUNT(DISTINCT a.quest_id) AS assessed
               FROM modules m
-              LEFT JOIN assessments a ON a.module_id = m.module_id AND a.company_id = $1 AND a.month = $2
+              LEFT JOIN eff a ON a.module_id = m.module_id
               WHERE (m.company_id = $1 OR m.company_id IS NULL)
               GROUP BY m.module_id, m.name, m.total_quests, m.sort_order
               ORDER BY m.sort_order ASC, m.module_id ASC`
             : `SELECT m.module_id, m.name, m.total_quests,
-                COUNT(DISTINCT a.quest_id) FILTER (WHERE a.review_status = 'FINISHED') AS finished,
+                COUNT(DISTINCT a.quest_id) FILTER (WHERE a.review_status IN ('FINISHED', 'AUDITED')) AS finished,
                 COUNT(DISTINCT a.quest_id) AS assessed
               FROM modules m
               LEFT JOIN assessments a ON a.module_id = m.module_id AND a.company_id = $1
@@ -220,14 +263,14 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
 
     // Maturity distribution
     query(
-      `SELECT
+      `${month ? `WITH ${effCte} ` : ""}SELECT
         COUNT(*) FILTER (WHERE current_level = 1) AS l1,
         COUNT(*) FILTER (WHERE current_level = 2) AS l2,
         COUNT(*) FILTER (WHERE current_level = 3) AS l3,
         COUNT(*) FILTER (WHERE current_level = 4) AS l4,
         COUNT(*) FILTER (WHERE current_level = 5) AS l5
-      FROM assessments
-      WHERE company_id = $1 ${monthCondition} ${questFilter}`,
+      FROM ${month ? "eff" : "assessments"}
+      WHERE ${month ? "TRUE" : "company_id = $1"} ${questFilter}`,
       assessParams
     ),
 
@@ -330,23 +373,62 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
 
     // Score-eligible controls (IMPLEMENTED, maturity >= 3, score_eligible = true)
     query(
-      `SELECT COUNT(DISTINCT quest_id)::INT AS n FROM assessments WHERE company_id = $1 ${monthCondition} ${questFilter} AND score_eligible = TRUE`,
+      month
+        ? `WITH ${effCte} SELECT COUNT(DISTINCT quest_id)::INT AS n FROM eff WHERE score_eligible = TRUE ${questFilter}`
+        : `SELECT COUNT(DISTINCT quest_id)::INT AS n FROM assessments WHERE company_id = $1 ${questFilter} AND score_eligible = TRUE`,
       assessParams
     ),
 
-    // Automated coverage: controls satisfied by at least one fresh automated evidence item
+    // Automated coverage: controls satisfied by at least one fresh automated evidence item.
+    // A question is matched to a test_control_mappings row (test_key, framework,
+    // iso_reference) two ways, unioned in the LATERAL subquery `m`:
+    //   1. legacy columns — the question's own iso_reference (ISO27001 clause rows) or
+    //      control_area (DPDPA rows, whose iso_reference is a whole subsection shared by
+    //      many control areas; see testDefinitionSync.js) equals the mapping ref.
+    //   2. canonical crosswalk — question_framework_controls(framework_key,
+    //      control_reference) equals the mapping's (framework, iso_reference), so a
+    //      GDPR / SOC 2 / … question from a framework import is covered by a connector's
+    //      evidence even when its legacy columns don't carry the ISO clause.
+    // Returns one row per covered question (not just a count) so the dashboard widget can
+    // drill down into exactly which questions were satisfied and by which connector/test.
     query(
       hasFilter
-        ? `SELECT COUNT(DISTINCT q.quest_id)::INT AS n
+        ? `SELECT q.quest_id, q.module_id, q.module_name, q.control_area, q.baseline_question,
+                  array_agg(DISTINCT aei.test_key ORDER BY aei.test_key) AS test_keys,
+                  array_agg(DISTINCT at.integration_key ORDER BY at.integration_key) AS integration_keys
            FROM questions q
-           JOIN test_control_mappings tcm ON tcm.iso_reference = q.iso_reference
-           JOIN automated_evidence_items aei ON aei.test_key = tcm.test_key AND aei.company_id = q.company_id AND aei.status = 'fresh'
-           WHERE q.company_id = $1 AND q.quest_id = ANY($2)`
-        : `SELECT COUNT(DISTINCT q.quest_id)::INT AS n
+           JOIN LATERAL (
+             SELECT tcm.test_key FROM test_control_mappings tcm
+              WHERE tcm.iso_reference IN (q.iso_reference, q.control_area)
+             UNION
+             SELECT tcm.test_key FROM test_control_mappings tcm
+               JOIN question_framework_controls qfc
+                 ON qfc.company_id = q.company_id AND qfc.quest_id = q.quest_id
+                AND qfc.framework_key = tcm.framework AND qfc.control_reference = tcm.iso_reference
+           ) m ON TRUE
+           JOIN automated_evidence_items aei ON aei.test_key = m.test_key AND aei.company_id = q.company_id AND aei.status = 'fresh'
+           JOIN automated_tests at ON at.test_key = m.test_key
+           WHERE q.company_id = $1 AND q.quest_id = ANY($2)
+           GROUP BY q.quest_id, q.module_id, q.module_name, q.control_area, q.baseline_question
+           ORDER BY q.module_id, q.quest_id`
+        : `SELECT q.quest_id, q.module_id, q.module_name, q.control_area, q.baseline_question,
+                  array_agg(DISTINCT aei.test_key ORDER BY aei.test_key) AS test_keys,
+                  array_agg(DISTINCT at.integration_key ORDER BY at.integration_key) AS integration_keys
            FROM questions q
-           JOIN test_control_mappings tcm ON tcm.iso_reference = q.iso_reference
-           JOIN automated_evidence_items aei ON aei.test_key = tcm.test_key AND aei.company_id = q.company_id AND aei.status = 'fresh'
-           WHERE q.company_id = $1`,
+           JOIN LATERAL (
+             SELECT tcm.test_key FROM test_control_mappings tcm
+              WHERE tcm.iso_reference IN (q.iso_reference, q.control_area)
+             UNION
+             SELECT tcm.test_key FROM test_control_mappings tcm
+               JOIN question_framework_controls qfc
+                 ON qfc.company_id = q.company_id AND qfc.quest_id = q.quest_id
+                AND qfc.framework_key = tcm.framework AND qfc.control_reference = tcm.iso_reference
+           ) m ON TRUE
+           JOIN automated_evidence_items aei ON aei.test_key = m.test_key AND aei.company_id = q.company_id AND aei.status = 'fresh'
+           JOIN automated_tests at ON at.test_key = m.test_key
+           WHERE q.company_id = $1
+           GROUP BY q.quest_id, q.module_id, q.module_name, q.control_area, q.baseline_question
+           ORDER BY q.module_id, q.quest_id`,
       hasFilter ? [cid, filteredQuestIds] : [cid]
     )
   ]);
@@ -360,9 +442,12 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
        FROM assessments a
        LEFT JOIN questions q ON q.quest_id = a.quest_id AND q.company_id = a.company_id
        WHERE a.company_id = $1
-         AND a.review_status IN ('FINISHED', 'WIP')
-         AND a.reviewed_at IS NOT NULL
-       ORDER BY a.reviewed_at DESC
+         AND a.review_status IN ('FINISHED', 'AUDITED', 'WIP')
+         AND (a.reviewed_at IS NOT NULL OR a.audited_at IS NOT NULL)
+       ORDER BY GREATEST(
+         COALESCE(a.reviewed_at, '2000-01-01'::timestamptz),
+         COALESCE(a.audited_at, '2000-01-01'::timestamptz)
+       ) DESC
        LIMIT 10`,
       [cid]
     ),
@@ -439,22 +524,38 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
       total: hasFilter ? filteredQuestIds.length : parseInt(totalQ.rows[0].n)
     },
     automatedCoverage: {
-      count: parseInt(automatedCoverage.rows[0]?.n) || 0,
-      total: hasFilter ? filteredQuestIds.length : parseInt(totalQ.rows[0].n)
+      count: automatedCoverage.rows.length,
+      total: hasFilter ? filteredQuestIds.length : parseInt(totalQ.rows[0].n),
+      questions: automatedCoverage.rows.map(r => ({
+        questId: r.quest_id,
+        moduleId: r.module_id,
+        moduleName: r.module_name,
+        controlArea: r.control_area,
+        baselineQuestion: r.baseline_question,
+        testKeys: r.test_keys,
+        integrationKeys: r.integration_keys
+      }))
     },
-    recentlyReviewed: recentlyReviewed.rows.map(r => ({
-      id: r.id,
-      questId: r.quest_id,
-      moduleId: r.module_id,
-      reviewStatus: r.review_status,
-      controlArea: r.control_area,
-      reviewedBy: r.reviewed_by,
-      reviewedAt: r.reviewed_at,
-      reviewerNotes: r.reviewer_notes,
-      auditedBy: r.audited_by,
-      auditedAt: r.audited_at,
-      auditorNotes: r.auditor_notes,
-    })),
+    recentlyReviewed: recentlyReviewed.rows.map(r => {
+      const audited = r.review_status === "AUDITED";
+      return {
+        id: r.id,
+        questId: r.quest_id,
+        moduleId: r.module_id,
+        reviewStatus: r.review_status,
+        controlArea: r.control_area,
+        reviewedBy: r.reviewed_by,
+        reviewedAt: r.reviewed_at,
+        reviewerNotes: r.reviewer_notes,
+        auditedBy: r.audited_by,
+        auditedAt: r.audited_at,
+        auditorNotes: r.auditor_notes,
+        // Who/when for the most recent action on this row, and its kind.
+        activityBy: audited ? (r.audited_by || r.reviewed_by) : r.reviewed_by,
+        activityAt: audited ? (r.audited_at || r.reviewed_at) : r.reviewed_at,
+        activityKind: audited ? "audit" : "review",
+      };
+    }),
     rejectedControls: rejectedControls.rows.map(r => ({
       id: r.id,
       questId: r.quest_id,

@@ -28,7 +28,7 @@ function getTransporter() {
 }
 
 export async function sendEmail({ to, subject, text, html, replyTo }) {
-  const from = process.env.EMAIL_FROM || process.env.SMTP_FROM || "noreply@auditready.local";
+  const from = process.env.EMAIL_FROM || process.env.SMTP_FROM || "team@prismgrc.co";
 
   const transport = getTransporter();
 

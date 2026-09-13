@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, apiUpload, clearCooldown, getCooldownInfo } from "../api/client.js";
 import NotificationBell from "../components/NotificationBell.jsx";
+import EvidenceAiPanel from "../components/EvidenceAiPanel.jsx";
 import UserMenu from "../components/UserMenu.jsx";
 
 function formatBytes(n) {
@@ -831,7 +832,7 @@ export default function EvidenceVault({ token, user, company, onLogout, theme, o
 
           {/* Detail panel */}
           {selected && (
-            <div className="card" style={{ width: 360, flexShrink: 0, padding: 22, position: "sticky", top: 20 }}>
+            <div className="card vault-detail-panel" style={{ width: 360, flexShrink: 0, padding: 22, position: "sticky", top: 20 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
                 <div style={{
                   fontSize: 26, width: 46, height: 46, borderRadius: 12,
@@ -917,6 +918,8 @@ export default function EvidenceVault({ token, user, company, onLogout, theme, o
                       Upload New Version
                     </button>
                   )}
+
+                  <EvidenceAiPanel evidence={selectedDetail} />
 
                   {/* Version history */}
                   <div style={{ borderTop: "1px solid var(--border2)", paddingTop: 14, marginBottom: 16 }}>

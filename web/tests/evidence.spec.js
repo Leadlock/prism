@@ -143,4 +143,49 @@ test.describe("Evidence workflows", () => {
     await expect(page.getByText("Automated Match")).toBeVisible();
     await expect(page.getByText("Stale All Match")).not.toBeVisible();
   });
+
+  test("scrolling follows the hovered vault region when the info panel is open", async ({ page }) => {
+    await setAuth(page, "ADMIN");
+
+    const vaultItems = Array.from({ length: 18 }, (_, index) => ({
+      ...VAULT_ITEM,
+      id: index + 1,
+      title: `Vault document ${index + 1}`,
+    }));
+    const linkedQuestions = Array.from({ length: 30 }, (_, index) => ({
+      questId: `CTRL-${index + 1}`,
+      controlArea: "Access control",
+      recurrenceInterval: "monthly",
+      isReviewed: false,
+    }));
+
+    await page.route("**/api/vault/1", r => r.fulfill({
+      json: { ...vaultItems[0], linkedQuestions },
+    }));
+    await page.route("**/api/vault", r => r.fulfill({ json: vaultItems }));
+
+    await page.goto("/vault");
+    await page.getByText("Vault document 1", { exact: true }).click();
+
+    const panel = page.locator(".vault-detail-panel");
+    await expect(panel).toBeVisible();
+    await expect.poll(() => panel.evaluate(el => ({
+      overflowY: getComputedStyle(el).overflowY,
+      hasOverflow: el.scrollHeight > el.clientHeight,
+    }))).toEqual({ overflowY: "auto", hasOverflow: true });
+
+    await panel.hover();
+    const pageScrollBeforePanelWheel = await page.evaluate(() => window.scrollY);
+    await page.mouse.wheel(0, 500);
+    await expect.poll(() => panel.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(pageScrollBeforePanelWheel);
+
+    await panel.evaluate(el => { el.scrollTop = 0; });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.getByText("Vault document 1", { exact: true }).first().hover();
+    const pageScrollBeforeDocumentWheel = await page.evaluate(() => window.scrollY);
+    await page.mouse.wheel(0, 500);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(pageScrollBeforeDocumentWheel);
+    expect(await panel.evaluate(el => el.scrollTop)).toBe(0);
+  });
 });

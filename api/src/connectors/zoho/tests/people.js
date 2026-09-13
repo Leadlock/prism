@@ -144,6 +144,7 @@ export const peopleTests = [
     failTitle: "People form allows access to all employees rather than HR-admin roles only",
     severityDefault: "high",
     isoReferences: ["A.9.1.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkDataAccessReview(clients),
   },
   {
@@ -152,6 +153,7 @@ export const peopleTests = [
     failTitle: "Sensitive People form does not have field-level role-based permissions",
     severityDefault: "high",
     isoReferences: ["A.8.2.3"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkSensitiveFieldEncryption(clients),
   },
   {
@@ -160,6 +162,7 @@ export const peopleTests = [
     failTitle: "People Admin role is assigned to more users than acceptable",
     severityDefault: "medium",
     isoReferences: ["A.9.2.3"],
+    dpdpaControlAreas: ["Privileged Access Management"],
     run: (clients) => checkAdminRoleReview(clients),
   },
 ];

@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiFetch, apiUpload } from "../api/client.js";
 import DependencySelect from "../components/DependencySelect.jsx";
-import GlassSelect from "../components/GlassSelect.jsx";
-import UserMenu from "../components/UserMenu.jsx";
 
 const TAB_STORAGE_KEY = "superadmin_active_tab";
 
@@ -71,6 +69,15 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
   const [companyImportPreview, setCompanyImportPreview] = useState(null);
   const [companyPreviewLoading, setCompanyPreviewLoading] = useState(false);
   const [deleteModulesConfirm, setDeleteModulesConfirm] = useState(false);
+
+  // --- Company detail: self-assessment ---
+  const [companySelfAssessment, setCompanySelfAssessment] = useState(null);
+  const [loadingSelfAssessment, setLoadingSelfAssessment] = useState(false);
+  const [expandedSubmission, setExpandedSubmission] = useState(null);
+  const [gapReportBusy, setGapReportBusy] = useState(false);
+  const [gapReportError, setGapReportError] = useState("");
+  const [gapReportHtml, setGapReportHtml] = useState(null);
+  const [gapReportEmailedTo, setGapReportEmailedTo] = useState(null);
 
   // --- Add Module form state ---
   const [newModuleId, setNewModuleId] = useState("");
@@ -399,7 +406,13 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
     setDeleteModuleConfirm(null);
     setDeleteQuestionConfirm(null);
     setQuestionError(null);
+    setCompanySelfAssessment(null);
+    setExpandedSubmission(null);
+    setGapReportError("");
+    setGapReportHtml(null);
+    setGapReportEmailedTo(null);
     setLoadingModules(true);
+    setLoadingSelfAssessment(true);
     try {
       const [modulesData, questionsData, usersData] = await Promise.all([
         apiFetch(`/api/superadmin/companies/${company.id}/modules`, { token }),
@@ -415,7 +428,117 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
       setCompanyUsers([]);
     }
     setLoadingModules(false);
+
+    try {
+      const sa = await apiFetch(`/api/superadmin/companies/${company.id}/self-assessment/submissions`, { token });
+      setCompanySelfAssessment(sa || null);
+    } catch {
+      setCompanySelfAssessment(null);
+    }
+    setLoadingSelfAssessment(false);
   }, [token]);
+
+  // Opens the server-built Big-4 readiness document (report.document) in a new
+  // tab. It is already a complete paginated HTML document (Paged.js polyfill
+  // inlined, its own "Download / Print PDF" button). `print` also fires the
+  // browser print dialog once Paged.js has laid the pages out.
+  const openGapReportWindow = (reportDoc, { print = false } = {}) => {
+    const url = URL.createObjectURL(new Blob([reportDoc], { type: "text/html" }));
+    const w = window.open(url, "_blank");
+    if (print && w) {
+      const fire = () => {
+        try {
+          w.focus();
+          if (w.__pagedDone) w.print();
+          else { const t = setInterval(() => { if (w.closed) return clearInterval(t); if (w.__pagedDone) { clearInterval(t); w.print(); } }, 400); setTimeout(() => clearInterval(t), 15000); }
+        } catch { /* popup blocked */ }
+      };
+      w.addEventListener?.("load", () => setTimeout(fire, 400));
+      setTimeout(fire, 2000);
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 300000);
+  };
+
+  // Fetch + (server-side) email the report, cache the HTML, and open it.
+  const generateGapReport = async (refresh) => {
+    if (!selectedCompany) return;
+    setGapReportBusy(true);
+    setGapReportError("");
+    try {
+      const qs = new URLSearchParams({ email: "1" });
+      if (refresh) qs.set("refresh", "1");
+      const data = await apiFetch(
+        `/api/superadmin/companies/${selectedCompany.id}/self-assessment?${qs}`,
+        { token, timeout: 120000 }
+      );
+      const doc = data?.report?.document;
+      if (!doc) {
+        setGapReportError("No submissions yet — nothing to report on.");
+        return;
+      }
+      setGapReportHtml(doc);
+      setGapReportEmailedTo(data.emailedTo || null);
+      openGapReportWindow(doc);
+    } catch (err) {
+      setGapReportError(err.message || "Failed to generate the report.");
+    } finally {
+      setGapReportBusy(false);
+    }
+  };
+
+  // Download as PDF — reuse the cached report if we have one, otherwise fetch it
+  // (without re-sending the email), then open the print dialog.
+  const downloadGapReportPdf = async () => {
+    if (!selectedCompany) return;
+    if (gapReportHtml) { openGapReportWindow(gapReportHtml, { print: true }); return; }
+    setGapReportBusy(true);
+    setGapReportError("");
+    try {
+      const data = await apiFetch(
+        `/api/superadmin/companies/${selectedCompany.id}/self-assessment`,
+        { token, timeout: 120000 }
+      );
+      const doc = data?.report?.document;
+      if (!doc) { setGapReportError("No submissions yet — nothing to report on."); return; }
+      setGapReportHtml(doc);
+      openGapReportWindow(doc, { print: true });
+    } catch (err) {
+      setGapReportError(err.message || "Failed to generate the report.");
+    } finally {
+      setGapReportBusy(false);
+    }
+  };
+
+  // Download as Word — the server builds the .docx from the same report; stream
+  // it straight to a file (no email, no cache reuse — it is a fresh conversion).
+  const downloadGapReportDocx = async () => {
+    if (!selectedCompany) return;
+    setGapReportBusy(true);
+    setGapReportError("");
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL || ""}/api/superadmin/companies/${selectedCompany.id}/self-assessment?format=docx`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Download failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(selectedCompany.name || "Company").replace(/[^\w.-]+/g, "_")}_DPDPA_Readiness_Assessment.docx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setGapReportError(err.message || "Failed to build the Word document.");
+    } finally {
+      setGapReportBusy(false);
+    }
+  };
 
   // Drive selectedCompany from location.state so back AND forward both work.
   // Back clears companyId from state → closes detail.
@@ -625,9 +748,10 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
 
       <div style={{ marginBottom: 20 }}>
         <label style={{ fontSize: 12, color: "var(--text3)", display: "block", marginBottom: 6 }}>Select Company</label>
-        <GlassSelect
+        <select
           value={brandCompanyId}
-          onChange={async (id) => {
+          onChange={async (e) => {
+            const id = e.target.value;
             setBrandCompanyId(id);
             setBrandColor("");
             setBrandLogoPreview(null);
@@ -642,12 +766,11 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
             } catch { /* ignore */ }
             finally { setBrandLoading(false); }
           }}
-          options={[
-            { value: "", label: "— Choose a company —" },
-            ...companies.map(c => ({ value: String(c.id), label: `${c.name} (${c.slug})` }))
-          ]}
-          style={{ width: "100%" }}
-        />
+          style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13, width: "100%" }}
+        >
+          <option value="">— choose a company —</option>
+          {companies.map(c => <option key={c.id} value={c.id}>{c.name} ({c.domain})</option>)}
+        </select>
       </div>
 
       {brandCompanyId && (
@@ -967,7 +1090,22 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
               const sc = getStatusColor(c.status);
               return (
                 <tr key={c.id} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={() => openCompanyDetail(c)}>
-                  <td style={tdStyle}><strong style={{ color: "var(--accent2)" }}>{c.name}</strong></td>
+                  <td style={tdStyle}>
+                    <strong style={{ color: "var(--accent2)" }}>{c.name}</strong>
+                    {c.self_assessment_completed_at && (
+                      c.self_assessment_all_departments_at ? (
+                        <span title={`All departments in ${new Date(c.self_assessment_all_departments_at).toLocaleDateString()}`}
+                          style={{ marginLeft: "6px", fontSize: "10px", fontWeight: 600, padding: "1px 6px", borderRadius: "10px", background: "rgba(34,197,94,0.12)", color: "var(--green,#22c55e)" }}>
+                          ✓ Self-assessed
+                        </span>
+                      ) : (
+                        <span title={`Admin submitted ${new Date(c.self_assessment_completed_at).toLocaleDateString()} — some departments still pending`}
+                          style={{ marginLeft: "6px", fontSize: "10px", fontWeight: 600, padding: "1px 6px", borderRadius: "10px", background: "rgba(245,158,11,0.12)", color: "var(--amber,#f59e0b)" }}>
+                          ◑ Self-assess: partial
+                        </span>
+                      )
+                    )}
+                  </td>
                   <td style={tdStyle}><span style={{ fontFamily: "var(--mono)", fontSize: "11px" }}>{c.domain}</span></td>
                   <td style={tdStyle}><span style={{ fontSize: "12px" }}>{c.admin_email}</span></td>
                   <td style={tdStyle}>
@@ -1048,6 +1186,146 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
             })}
           </tbody>
         </table>
+      </div>
+    );
+  };
+
+  // --- Render Self-Assessment Panel (inside Company Detail) ---
+  const renderSelfAssessmentPanel = () => {
+    const sa = companySelfAssessment;
+    const submissions = sa?.submissions || [];
+    const dstatus = sa?.departmentStatus || null;
+    const reportReady = submissions.length > 0 && (!dstatus || dstatus.complete);
+    const ANSWER_COLORS = {
+      Yes:     { bg: "rgba(34,197,94,0.12)",  color: "var(--green,#22c55e)" },
+      Partial: { bg: "rgba(245,158,11,0.12)", color: "var(--amber,#f59e0b)" },
+      No:      { bg: "rgba(239,68,68,0.12)",  color: "var(--red,#ef4444)" },
+      "N/A":   { bg: "rgba(107,114,128,0.12)", color: "var(--text3)" },
+    };
+
+    return (
+      <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px", marginBottom: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "14px" }}>
+          <h4 style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)", margin: 0 }}>
+            Self-Assessment
+            {sa && <span style={{ color: "var(--text3)", fontWeight: 400 }}> · {sa.respondentCount} respondent{sa.respondentCount !== 1 ? "s" : ""}</span>}
+          </h4>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => generateGapReport(false)} disabled={gapReportBusy || !reportReady}
+              title={reportReady ? "Builds the report, emails a copy out, and opens it" : "Every selected department must submit before the report can be generated"}
+              style={{ padding: "5px 12px", fontSize: "11px", background: reportReady ? "var(--accent)" : "var(--bg4)", color: reportReady ? "#fff" : "var(--text3)", border: `1px solid ${reportReady ? "var(--accent)" : "var(--border)"}`, cursor: reportReady ? "pointer" : "not-allowed" }}>
+              {gapReportBusy ? "Working…" : "Generate & email report"}
+            </button>
+            <button className="btn" onClick={downloadGapReportPdf} disabled={gapReportBusy || !reportReady}
+              title="Open the report and print / save as PDF"
+              style={{ padding: "5px 12px", fontSize: "11px", background: "var(--bg4)", color: "var(--text2)", border: "1px solid var(--border)", cursor: reportReady ? "pointer" : "not-allowed" }}>
+              ⬇ Download PDF
+            </button>
+            <button className="btn" onClick={downloadGapReportDocx} disabled={gapReportBusy || !reportReady}
+              title="Download the report as an editable Word document"
+              style={{ padding: "5px 12px", fontSize: "11px", background: "var(--bg4)", color: "var(--text2)", border: "1px solid var(--border)", cursor: reportReady ? "pointer" : "not-allowed" }}>
+              ⬇ Download Word
+            </button>
+            <button className="btn" onClick={() => generateGapReport(true)} disabled={gapReportBusy || !reportReady}
+              style={{ padding: "5px 12px", fontSize: "11px", background: "var(--bg4)", color: "var(--text3)", border: "1px solid var(--border)", cursor: reportReady ? "pointer" : "not-allowed" }}>
+              Regenerate (fresh AI)
+            </button>
+          </div>
+        </div>
+
+        <div style={{ fontSize: "12px", color: "var(--text3)", marginBottom: "12px" }}>
+          {sa?.completedAt
+            ? `Admin submitted ${new Date(sa.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+            : "Not yet marked complete"}
+          {dstatus && dstatus.expected.length > 0 && (
+            <> · {dstatus.submitted.length}/{dstatus.expected.length} departments in</>
+          )}
+        </div>
+
+        {gapReportEmailedTo && (
+          <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: "6px", padding: "8px 12px", fontSize: "12px", color: "var(--text2)", marginBottom: "12px" }}>
+            ✓ Report generated and emailed to <strong>{gapReportEmailedTo}</strong>.
+          </div>
+        )}
+
+        {dstatus && !dstatus.complete && dstatus.expected.length > 0 && (
+          <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "6px", padding: "10px 14px", fontSize: "12px", color: "var(--text2)", marginBottom: "12px" }}>
+            <div style={{ fontWeight: 700, color: "var(--amber,#f59e0b)", marginBottom: "6px" }}>
+              Report locked — {dstatus.missing.length} department{dstatus.missing.length !== 1 ? "s" : ""} still to submit
+            </div>
+            <ul style={{ margin: 0, paddingLeft: "16px", lineHeight: 1.7 }}>
+              {(sa?.pendingDepartments?.length ? sa.pendingDepartments : dstatus.missing.map(d => ({ department: d, assignees: [] }))).map(p => (
+                <li key={p.department}>
+                  <strong>{p.department}</strong>
+                  {p.assignees.length === 0 ? (
+                    <span style={{ color: "var(--text3)" }}> — not delegated to anyone (the admin needs to invite someone or answer it)</span>
+                  ) : (
+                    <span style={{ color: "var(--text3)" }}>
+                      {" "}— invited{" "}
+                      {p.assignees.map((a, i) => (
+                        <span key={a.email}>
+                          {i > 0 ? ", " : ""}{a.email}{a.acceptedAt ? " (accepted, not submitted)" : " (invite not accepted)"}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {gapReportError && <p style={{ color: "var(--red,#ef4444)", fontSize: "12px", margin: "0 0 12px" }}>{gapReportError}</p>}
+
+        {loadingSelfAssessment ? (
+          <p style={{ fontSize: "13px", color: "var(--text3)" }}>Loading responses…</p>
+        ) : submissions.length === 0 ? (
+          <p style={{ fontSize: "13px", color: "var(--text3)" }}>No self-assessment responses submitted yet.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {submissions.map((s) => {
+              const key = `${s.userEmail}|${s.department}`;
+              const open = expandedSubmission === key;
+              return (
+                <div key={key} style={{ border: "1px solid var(--border)", borderRadius: "6px", overflow: "hidden" }}>
+                  <button
+                    onClick={() => setExpandedSubmission(open ? null : key)}
+                    style={{ width: "100%", textAlign: "left", background: "var(--bg4)", border: "none", cursor: "pointer", padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}
+                  >
+                    <span style={{ fontSize: "12px", color: "var(--text)" }}>
+                      <strong>{s.department}</strong> · {s.userName}
+                      <span style={{ color: "var(--text3)", fontFamily: "var(--mono)" }}> ({s.userEmail})</span>
+                    </span>
+                    <span style={{ fontSize: "11px", color: "var(--text3)", flexShrink: 0 }}>
+                      {s.answeredCount}/{s.totalCount} answered · {open ? "▲" : "▼"}
+                    </span>
+                  </button>
+                  {open && (
+                    <div style={{ padding: "8px 12px", maxHeight: "340px", overflowY: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                        <tbody>
+                          {s.items.map(item => {
+                            const ac = ANSWER_COLORS[item.answerLabel] || ANSWER_COLORS["N/A"];
+                            return (
+                              <tr key={item.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                                <td style={{ padding: "6px 8px", color: "var(--text2)", verticalAlign: "top" }}>{item.text}</td>
+                                <td style={{ padding: "6px 8px", textAlign: "right", whiteSpace: "nowrap", verticalAlign: "top" }}>
+                                  <span style={{ fontSize: "10px", fontWeight: 600, padding: "2px 8px", borderRadius: "10px", background: ac.bg, color: ac.color }}>
+                                    {item.answerLabel}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   };
@@ -1146,6 +1424,9 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
             );
           })()}
         </div>
+
+        {/* Self-Assessment */}
+        {renderSelfAssessmentPanel()}
 
         {/* Billing */}
         <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px", marginBottom: "20px" }}>
@@ -1778,14 +2059,14 @@ export default function SuperAdminDashboard({ token, user, onLogout, theme, onTh
           <div style={{ fontFamily: "var(--mono)", fontSize: "11px", color: "var(--accent2)", letterSpacing: "0.1em", textTransform: "uppercase" }}>PLATFORM ADMIN</div>
           <h1 style={{ fontSize: "20px", fontWeight: 600, marginTop: "4px", color: "var(--text)" }}>Super Admin Dashboard</h1>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <UserMenu
-            user={user}
-            company={{ name: "Platform Super Admin" }}
-            theme={theme}
-            onThemeToggle={onThemeToggle}
-            onLogout={onLogout}
-          />
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "12px", color: "var(--text3)" }}>{user?.email}</span>
+          <button onClick={onThemeToggle} className="btn btn-ghost" style={{ padding: "6px 10px" }}>
+            {theme === "dark" ? "☀️" : "🌙"}
+          </button>
+          <button onClick={onLogout} className="btn" style={{ padding: "6px 14px", fontSize: "12px", background: "rgba(239,68,68,0.12)", color: "var(--red)", border: "1px solid rgba(239,68,68,0.3)" }}>
+            Logout
+          </button>
         </div>
       </header>
 

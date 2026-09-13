@@ -37,6 +37,6 @@ export async function checkLimitedOwnerAssignments(authorization, subscriptionId
 }
 
 export const subscriptionTests = [
-  { key: "azure.subscription.no_classic_administrators", title: "Subscription has no classic (co-)administrators", failTitle: "Subscription has classic (co-)administrators still assigned", severityDefault: "high", isoReferences: ["A.9.2.3"], run: (clients) => checkNoClassicAdministrators(clients.authorization) },
+  { key: "azure.subscription.no_classic_administrators", title: "Subscription has no classic (co-)administrators", failTitle: "Subscription has classic (co-)administrators still assigned", severityDefault: "high", isoReferences: ["A.9.2.3"], dpdpaControlAreas: ["Access Control & Least Privilege"], run: (clients) => checkNoClassicAdministrators(clients.authorization) },
   { key: "azure.subscription.limited_owner_assignments", title: "Subscription-scope Owner role assignments are limited", failTitle: "Too many principals hold the Owner role at subscription scope", severityDefault: "medium", isoReferences: ["A.9.1.2"], run: (clients) => checkLimitedOwnerAssignments(clients.authorization, clients.subscriptionId) },
 ];

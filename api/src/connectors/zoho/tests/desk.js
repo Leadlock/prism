@@ -131,6 +131,7 @@ export const deskTests = [
     failTitle: "Desk agent is assigned the Administrator profile without documented justification",
     severityDefault: "medium",
     isoReferences: ["A.9.2.3"],
+    dpdpaControlAreas: ["Privileged Access Management"],
     run: (clients) => checkAgentRoleAudit(clients),
   },
   {
@@ -139,6 +140,7 @@ export const deskTests = [
     failTitle: "Desk field containing customer PII is not profile-restricted",
     severityDefault: "high",
     isoReferences: ["A.9.4.1"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkCustomerDataFieldRestricted(clients),
   },
   {
@@ -147,6 +149,7 @@ export const deskTests = [
     failTitle: "Desk has no active departments — tickets may be visible org-wide to every agent",
     severityDefault: "medium",
     isoReferences: ["A.9.1.2"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkTicketAccessControlEnabled(clients),
   },
 ];

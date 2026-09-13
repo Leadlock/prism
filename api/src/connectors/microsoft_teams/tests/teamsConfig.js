@@ -247,6 +247,7 @@ export const externalAccessTests = [
     failTitle: "External federation allows all domains — no domain allowlist is configured",
     severityDefault: "critical",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkFederationDomainsRestricted(clients.getToken, clients.tenantId),
   },
   {
@@ -255,6 +256,7 @@ export const externalAccessTests = [
     failTitle: "Communication with unmanaged consumer Teams/Skype accounts is allowed",
     severityDefault: "high",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkConsumerTeamsBlocked(clients.getToken, clients.tenantId),
   },
 ];
@@ -266,6 +268,7 @@ export const clientConfigTests = [
     failTitle: "The Teams client's tenant-wide guest access toggle has not been reviewed",
     severityDefault: "high",
     isoReferences: ["A.9.2.6"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkGuestAccessReviewed(clients.getToken, clients.tenantId),
   },
   {
@@ -274,6 +277,7 @@ export const clientConfigTests = [
     failTitle: "Unsanctioned third-party cloud storage providers are enabled in the Teams client",
     severityDefault: "medium",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkUnsanctionedStorageDisabled(clients.getToken, clients.tenantId),
   },
   {
@@ -282,6 +286,7 @@ export const clientConfigTests = [
     failTitle: "Guest meeting capabilities are not limited to what's required",
     severityDefault: "medium",
     isoReferences: ["A.9.4.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkGuestMeetingCapabilitiesRestricted(clients.getToken, clients.tenantId),
   },
 ];
@@ -293,6 +298,7 @@ export const meetingPolicyTests = [
     failTitle: "The global meeting policy auto-admits anonymous or unknown external participants",
     severityDefault: "critical",
     isoReferences: ["A.9.4.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkMeetingAnonymousJoinRestricted(clients.getToken, clients.tenantId),
   },
   {
@@ -301,6 +307,7 @@ export const meetingPolicyTests = [
     failTitle: "Meeting recording is enabled with no expiry set",
     severityDefault: "medium",
     isoReferences: ["A.18.1.3"],
+    dpdpaControlAreas: ["Retention Schedule"],
     run: (clients) => checkMeetingRecordingRetentionBounded(clients.getToken, clients.tenantId),
   },
 ];
@@ -312,6 +319,7 @@ export const appPolicyTests = [
     failTitle: "Global app permission policy allows all third-party apps without an allowlist",
     severityDefault: "medium",
     isoReferences: ["A.12.5.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkThirdPartyAppInstallationRestricted(clients.getToken, clients.tenantId),
   },
 ];

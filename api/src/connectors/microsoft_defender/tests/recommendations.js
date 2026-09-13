@@ -42,6 +42,7 @@ export const recommendationsTests = [
     failTitle: "High-impact recommendation is open with no documented exception",
     severityDefault: "high",
     isoReferences: ["A.12.6.1"],
+    dpdpaControlAreas: ["Vulnerability & Patch Management"],
     run: (clients) => checkHighImpactOpenReviewed(clients.getToken, clients.baseUrl),
   },
 ];

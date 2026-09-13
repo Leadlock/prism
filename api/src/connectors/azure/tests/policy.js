@@ -19,5 +19,5 @@ export async function checkAssignmentsCompliant(policyInsights, subscriptionId) 
 }
 
 export const policyTests = [
-  { key: "azure.policy.assignments_compliant", title: "Assigned Azure Policy definitions report a compliant state", failTitle: "Resources are non-compliant with assigned Azure Policy definitions", severityDefault: "medium", isoReferences: ["A.18.2.2"], run: (clients) => checkAssignmentsCompliant(clients.policyInsights, clients.subscriptionId) },
+  { key: "azure.policy.assignments_compliant", title: "Assigned Azure Policy definitions report a compliant state", failTitle: "Resources are non-compliant with assigned Azure Policy definitions", severityDefault: "medium", isoReferences: ["A.18.2.2"], dpdpaControlAreas: ["Security Safeguards Program"], run: (clients) => checkAssignmentsCompliant(clients.policyInsights, clients.subscriptionId) },
 ];

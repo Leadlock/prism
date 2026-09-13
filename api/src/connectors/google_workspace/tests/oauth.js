@@ -71,6 +71,7 @@ export const oauthTests = [
     failTitle: "Third-party app is authorized with a high-risk OAuth scope",
     severityDefault: "high",
     isoReferences: ["A.9.4.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkThirdPartyAppRiskReviewed(clients.directory, clients.customerId),
   },
 ];

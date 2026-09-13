@@ -445,7 +445,7 @@ export function renderFindingEvidencePdf({
       controlTable();
       doc.moveDown(0.35);
       paragraph(
-        "ISO/IEC 27001:2022 references follow the official ISO/IEC 27002:2022 correspondence table. GDPR and DPDPA references indicate the provision most directly engaged. These are indicative mappings to support triage and routing, not a certified crosswalk.",
+        "ISO/IEC 27001:2022 references follow the official ISO/IEC 27002:2022 correspondence table. GDPR, DPDPA and other framework references (SOC 2, HIPAA, CIS, PCI DSS, CERT-In) indicate the control most directly engaged, derived from published informative mappings. These are indicative mappings to support triage and routing, not a certified crosswalk.",
         { italic: true, size: 7.5, color: MUTED, tight: true }
       );
     }

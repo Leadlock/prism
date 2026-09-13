@@ -34,7 +34,7 @@ function escapeHtml(str) {
  * @param {string}   [opts.note]       - Small note at bottom of card
  */
 export function buildEmailHtml({ heading, preheader = "", body, details = [], highlight, cta, note }) {
-  const webUrl  = (process.env.WEB_URL || "https://prism.askthechamp.com").replace(/\/$/, "");
+  const webUrl  = (process.env.WEB_URL || "https://prismgrc.co").replace(/\/$/, "");
   const logoUrl = `${webUrl}/prism-logo-dark.png`;
   const year    = new Date().getFullYear();
   const appUrl  = webUrl;
@@ -124,7 +124,7 @@ export function buildEmailHtml({ heading, preheader = "", body, details = [], hi
                 This is an automated message from PRISM. Please do not reply directly to this email.
               </p>
               <p style="margin:8px 0 0;font-size:12px;color:#5a6f82;">
-                &copy; ${year} PRISM &mdash; <a href="${appUrl}" style="color:#5a6f82;text-decoration:underline;">prism.askthechamp.com</a>
+                &copy; ${year} PRISM &mdash; <a href="${appUrl}" style="color:#5a6f82;text-decoration:underline;">prismgrc.co</a>
               </p>
             </td>
           </tr>

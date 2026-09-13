@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import Logo from "../components/Logo";
 import { apiFetch } from "../api/client.js";
@@ -50,70 +50,31 @@ function getDeptAnswers(dept, answers) {
   return scoped;
 }
 
-function calcScore(answers, depts) {
-  const byDept = {};
-  for (const dept of depts) {
-    const qs = expandQuestions(deptQuestionBase(dept), answers);
-    let total = 0, scored = 0;
-    for (const q of qs) {
-      const a = answers[q.id];
-      const opt = ANSWER_OPTIONS.find(o => o.value === a);
-      if (!opt || opt.score === null) continue;
-      total++;
-      scored += opt.score;
-    }
-    byDept[dept] = total > 0 ? Math.round((scored / total) * 100) : null;
-  }
-  const vals = Object.values(byDept).filter(v => v !== null);
-  const overall = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
-  return { byDept, overall };
-}
-
-function scoreLabel(pct) {
-  if (pct === null) return { label: "Not assessed", color: "var(--text3)" };
-  if (pct >= 80) return { label: "Strong", color: "#22c55e" };
-  if (pct >= 60) return { label: "Moderate", color: "#f59e0b" };
-  if (pct >= 40) return { label: "Developing", color: "#f97316" };
-  return { label: "Needs work", color: "#ef4444" };
-}
-
 // ── Step components ────────────────────────────────────────────────────────────
 
 function WelcomeStep({ onStart }) {
   return (
-    <div className="self-assess-card" style={{ maxWidth: 640, textAlign: "center", margin: "40px auto" }}>
-      <div className="self-assess-hero-icon">
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-        </svg>
-      </div>
-      <h1 className="self-assess-title">Compliance Self-Assessment</h1>
-      <p className="self-assess-desc">
+    <div style={{ textAlign: "center", maxWidth: 560, margin: "0 auto", padding: "48px 24px" }}>
+      <div style={{ fontSize: 56, marginBottom: 20 }}>🛡️</div>
+      <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 12, color: "var(--text)" }}>Compliance Self-Assessment</h1>
+      <p style={{ fontSize: 15, color: "var(--text2)", lineHeight: 1.7, marginBottom: 12 }}>
         This tool helps you understand your organisation's current data protection posture across key departments.
       </p>
-      <p className="self-assess-desc" style={{ marginBottom: 28 }}>
-        Select the departments you want to assess and answer a short set of questions. You'll receive a compliance score with a summary of gaps to address.
+      <p style={{ fontSize: 14, color: "var(--text2)", lineHeight: 1.7, marginBottom: 32 }}>
+        Select the departments you want to assess and answer a short set of questions. Once you're done, our team reviews your responses and prepares your gap-analysis report.
       </p>
-      <div className="self-assess-alert">
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: "#D97706", marginBottom: 6, display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--dp-font-mono, monospace)" }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 22h14"></path>
-            <path d="M5 2h14"></path>
-            <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"></path>
-            <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path>
-          </svg>
-          Pending Verification
-        </div>
-        <div style={{ fontSize: 13, color: "var(--dp-ink)", lineHeight: 1.6 }}>
+      <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: "14px 20px", marginBottom: 32, textAlign: "left" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#f59e0b", marginBottom: 4 }}>⏳ Pending Verification</div>
+        <div style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.5 }}>
           Your account is awaiting approval. This self-assessment gives you a head start on understanding your compliance posture. Once verified, you'll get access to the full PRISM platform with detailed assessments and remediation workflows.
         </div>
       </div>
       <button
         className="btn btn-primary"
-        style={{ padding: "12px 36px", fontSize: 15, borderRadius: 12 }}
+        style={{ padding: "12px 36px", fontSize: 15, borderRadius: 10 }}
         onClick={onStart}
       >
-        <span>Start Assessment →</span>
+        Start Assessment →
       </button>
     </div>
   );
@@ -121,12 +82,12 @@ function WelcomeStep({ onStart }) {
 
 function DeptSelectStep({ selected, onToggle, onCustomAdd, customDept, setCustomDept, onNext, onBack }) {
   return (
-    <div className="self-assess-card" style={{ maxWidth: 760, margin: "32px auto" }}>
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 className="self-assess-title" style={{ fontSize: 22, marginBottom: 6 }}>Select Departments</h2>
-        <p className="self-assess-desc">Choose the departments you want to assess. You can select multiple.</p>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Select Departments</h2>
+        <p style={{ fontSize: 14, color: "var(--text2)" }}>Choose the departments you want to assess. You can select multiple.</p>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 14, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
         {DEFAULT_DEPTS.map(dept => {
           const meta = DEPT_META[dept];
           const active = selected.includes(dept);
@@ -134,51 +95,56 @@ function DeptSelectStep({ selected, onToggle, onCustomAdd, customDept, setCustom
             <button
               key={dept}
               onClick={() => onToggle(dept)}
-              className={`self-assess-dept-card ${active ? "selected" : ""}`}
+              style={{
+                padding: "16px 14px", borderRadius: 10, border: `2px solid ${active ? "var(--accent)" : "var(--border2)"}`,
+                background: active ? "rgba(99,102,241,0.08)" : "var(--bg2)",
+                textAlign: "left", cursor: "pointer", transition: "all 0.15s",
+              }}
             >
-              <div style={{ fontSize: 26, marginBottom: 8 }}>{meta.icon}</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: active ? "var(--dp-accent, #4F46E5)" : "var(--dp-ink)", marginBottom: 4 }}>{meta.label}</div>
-              <div style={{ fontSize: 12, color: "var(--dp-quiet)", lineHeight: 1.45 }}>{meta.description}</div>
+              <div style={{ fontSize: 24, marginBottom: 6 }}>{meta.icon}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: active ? "var(--accent)" : "var(--text)", marginBottom: 4 }}>{meta.label}</div>
+              <div style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.4 }}>{meta.description}</div>
             </button>
           );
         })}
       </div>
-      <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 28 }}>
         <input
           type="text"
           value={customDept}
           onChange={e => setCustomDept(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && customDept.trim()) { onCustomAdd(); } }}
           placeholder="Add custom department…"
-          className="link-input"
-          style={{ padding: "10px 14px" }}
+          style={{ flex: 1, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: 13 }}
         />
         <button
           className="btn btn-ghost"
           disabled={!customDept.trim()}
           onClick={onCustomAdd}
-          style={{ height: 40 }}
         >
           Add
         </button>
       </div>
       {selected.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
           {selected.map(dept => {
             const isCustom = !DEFAULT_DEPTS.includes(dept);
             const meta = DEPT_META[dept];
             return (
               <div
                 key={dept}
-                className="pill pill-module"
-                style={{ fontSize: 12.5 }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  background: "var(--bg3)", border: "1px solid var(--border2)",
+                  borderRadius: 20, padding: "5px 10px 5px 12px", fontSize: 12, color: "var(--text)",
+                }}
               >
                 <span>{meta ? `${meta.icon} ${meta.label}` : dept}</span>
                 {isCustom && (
                   <button
                     onClick={() => onToggle(dept)}
                     aria-label={`Remove ${dept}`}
-                    style={{ background: "none", border: "none", color: "var(--dp-quiet)", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: 0, marginLeft: 4 }}
+                    style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: 0 }}
                   >×</button>
                 )}
               </div>
@@ -189,7 +155,7 @@ function DeptSelectStep({ selected, onToggle, onCustomAdd, customDept, setCustom
       <div style={{ display: "flex", gap: 12 }}>
         <button className="btn btn-ghost" onClick={onBack}>← Back</button>
         <button className="btn btn-primary" disabled={selected.length === 0} onClick={onNext}>
-          <span>Continue →</span>
+          Continue →
         </button>
       </div>
     </div>
@@ -303,10 +269,10 @@ function CollaboratorInput({ dept, collaborators, onChange, orgDomain, token, us
 
 function CollabsStep({ depts, collaborators, onChange, orgDomain, token, userRole, onNext, onBack }) {
   return (
-    <div className="self-assess-card" style={{ maxWidth: 760, margin: "32px auto" }}>
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 className="self-assess-title" style={{ fontSize: 22, marginBottom: 6 }}>Add Collaborators</h2>
-        <p className="self-assess-desc">
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Add Collaborators</h2>
+        <p style={{ fontSize: 14, color: "var(--text2)" }}>
           Optionally invite colleagues to help answer questions for each department before you begin. You can skip this and continue on your own.
         </p>
       </div>
@@ -315,9 +281,9 @@ function CollabsStep({ depts, collaborators, onChange, orgDomain, token, userRol
           const meta = DEPT_META[dept] || { label: dept, icon: "🏢" };
           return (
             <div key={dept}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 20 }}>{meta.icon}</span>
-                <span style={{ fontSize: 14.5, fontWeight: 700, color: "var(--dp-ink)" }}>{meta.label}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 18 }}>{meta.icon}</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{meta.label}</span>
               </div>
               <CollaboratorInput
                 dept={dept}
@@ -334,7 +300,7 @@ function CollabsStep({ depts, collaborators, onChange, orgDomain, token, userRol
       <div style={{ display: "flex", gap: 12 }}>
         <button className="btn btn-ghost" onClick={onBack}>← Back</button>
         <button className="btn btn-primary" onClick={onNext}>
-          <span>Start Questions →</span>
+          Start Questions →
         </button>
       </div>
     </div>
@@ -350,45 +316,39 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
   const isDelegated = delegatedTo.length > 0 && !answerMyself;
 
   return (
-    <div className="self-assess-card" style={{ maxWidth: 760, margin: "32px auto" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
-        <span style={{ fontSize: 32 }}>{meta.icon}</span>
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
+        <span style={{ fontSize: 28 }}>{meta.icon}</span>
         <div>
-          <div style={{ fontSize: 11.5, fontFamily: "var(--dp-font-mono, monospace)", color: "var(--dp-quiet)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.06em", marginBottom: 2 }}>
+          <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 2 }}>
             Department {deptIndex + 1} of {totalDepts}
           </div>
-          <h2 className="self-assess-title" style={{ fontSize: 20, marginBottom: 0 }}>{meta.label}</h2>
-        </div>
-        <div style={{ marginLeft: "auto", textAlign: "right" }}>
-          <span className="pill" style={{ fontSize: 12, fontWeight: 700 }}>
-            {answered} / {questions.length} answered
-          </span>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)" }}>{meta.label}</h2>
         </div>
       </div>
 
       {isDelegated ? (
-        <div className="self-assess-alert" style={{ marginBottom: 28 }}>
+        <div style={{ background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 12, padding: "20px 24px", marginBottom: 28 }}>
           <div style={{ fontSize: 28, marginBottom: 10 }}>🔗</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--dp-ink)", marginBottom: 6 }}>Delegated to the department head</div>
-          <p style={{ fontSize: 13.5, color: "var(--dp-quiet)", lineHeight: 1.6, marginBottom: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Delegated to the department head</div>
+          <p style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.6, marginBottom: 16 }}>
             Copy the link below and send it to the department head. Once they fill it in, results will appear here automatically — you don't need to answer these questions yourself.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
             {delegatedTo.map(c => (
               <div key={c.email}>
-                <div style={{ fontSize: 12, color: "var(--dp-quiet)", marginBottom: 4, fontFamily: "var(--dp-font-mono)" }}>{c.email}</div>
+                <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 4 }}>{c.email}</div>
                 {c.inviteLink && (
                   <div style={{ display: "flex", gap: 6 }}>
                     <input
                       readOnly
                       value={c.inviteLink}
-                      className="link-input"
-                      style={{ padding: "8px 12px", fontSize: 12 }}
+                      style={{ flex: 1, padding: "7px 10px", borderRadius: 6, fontSize: 12, border: "1px solid var(--border2)", background: "var(--bg)", color: "var(--text2)", fontFamily: "monospace" }}
                       onFocus={e => e.target.select()}
                     />
                     <button
                       className="btn btn-ghost"
-                      style={{ fontSize: 12, padding: "6px 14px", whiteSpace: "nowrap" }}
+                      style={{ fontSize: 12, padding: "6px 12px", whiteSpace: "nowrap" }}
                       onClick={() => navigator.clipboard.writeText(c.inviteLink)}
                     >
                       Copy link
@@ -405,15 +365,15 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
       ) : (
         <>
           {delegatedTo.length > 0 && (
-            <div style={{ fontSize: 12.5, color: "var(--dp-quiet)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
               <span>Answering on behalf of this department (also delegated to {delegatedTo.map(c => c.email).join(", ")})</span>
               <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 8px" }} onClick={() => setAnswerMyself(false)}>
                 Undo
               </button>
             </div>
           )}
-          <div style={{ height: 6, background: "var(--dp-surface-2)", borderRadius: 999, boxShadow: "var(--neu-inset-sm)", marginBottom: 24, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${progress}%`, background: "linear-gradient(90deg, #4F46E5 0%, #6366F1 100%)", borderRadius: 999, transition: "width 0.3s" }} />
+          <div style={{ height: 4, background: "var(--bg4)", borderRadius: 2, marginBottom: 24 }}>
+            <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent)", borderRadius: 2, transition: "width 0.3s" }} />
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
@@ -425,44 +385,41 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
             if (!isFollowUp) mainCount++;
             const showSection = !isFollowUp && q.section && (i === 0 || questions[i - 1]?.section !== q.section);
             return (
-              <div key={q.id} style={isFollowUp ? { marginLeft: 20, borderLeft: "2px solid var(--dp-line)", paddingLeft: 14 } : undefined}>
+              <div key={q.id} style={isFollowUp ? { marginLeft: 20, borderLeft: "2px solid var(--border2)", paddingLeft: 12 } : undefined}>
                 {showSection && (
                   <div style={{
-                    fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
-                    color: "var(--dp-accent, #4F46E5)", padding: "16px 0 8px", borderBottom: "1px solid var(--dp-line)",
-                    marginBottom: 10, fontFamily: "var(--dp-font-mono, monospace)"
+                    fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
+                    color: "var(--accent)", padding: "16px 0 6px", borderBottom: "1px solid var(--border2)",
+                    marginBottom: 8,
                   }}>
                     {q.section}
                   </div>
                 )}
-                <div className="self-assess-q-card">
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-ink)", marginBottom: 12, lineHeight: 1.55 }}>
+                <div style={{ background: "var(--bg2)", borderRadius: 10, padding: "14px 16px", border: "1px solid var(--border2)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", marginBottom: 10, lineHeight: 1.5 }}>
                     {isFollowUp ? (
-                      <span style={{ color: "var(--dp-accent, #4F46E5)", marginRight: 8, fontWeight: 700 }}>↳</span>
+                      <span style={{ color: "var(--accent)", marginRight: 8, fontWeight: 700 }}>↳</span>
                     ) : (
-                      <span style={{ color: "var(--dp-quiet)", marginRight: 8, fontWeight: 700, fontFamily: "var(--dp-font-mono)" }}>{mainCount}.</span>
+                      <span style={{ color: "var(--text3)", marginRight: 8, fontWeight: 700 }}>{mainCount}.</span>
                     )}
                     {q.text}
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {ANSWER_OPTIONS.map(opt => {
-                    let activeClass = "";
-                    if (selected === opt.value) {
-                      if (opt.value === "YES") activeClass = "selected-yes";
-                      else if (opt.value === "PARTIAL") activeClass = "selected-partial";
-                      else if (opt.value === "NO") activeClass = "selected-no";
-                      else activeClass = "selected-na";
-                    }
-                    return (
-                      <button
-                        key={opt.value}
-                        onClick={() => onAnswer(q.id, opt.value)}
-                        className={`self-assess-ans-btn ${activeClass}`}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
+                  {ANSWER_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => onAnswer(q.id, opt.value)}
+                      style={{
+                        padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                        border: `1px solid ${selected === opt.value ? opt.color : "var(--border2)"}`,
+                        background: selected === opt.value ? opt.bg : "var(--bg3)",
+                        color: selected === opt.value ? opt.color : "var(--text2)",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -476,216 +433,152 @@ function QuestionStep({ dept, questions, answers, onAnswer, onNext, onBack, dept
       <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
         {onBack && <button className="btn btn-ghost" onClick={onBack}>← Back</button>}
         <button className="btn btn-primary" onClick={onNext}>
-          <span>{deptIndex < totalDepts - 1 ? "Next Department →" : "View Results →"}</span>
+          {deptIndex < totalDepts - 1 ? "Next Department →" : "Review answers →"}
         </button>
       </div>
     </div>
   );
 }
 
-function ResultsStep({ selectedDepts, answers, onRetake, onLogout, onViewReport, submitting }) {
-  const { byDept, overall } = useMemo(() => calcScore(answers, selectedDepts), [answers, selectedDepts]);
-  const overallLabel = scoreLabel(overall);
+const ANSWER_STYLE = (value) => {
+  const opt = ANSWER_OPTIONS.find(o => o.value === value);
+  if (opt) return { label: opt.label, color: opt.color, bg: opt.bg };
+  return { label: "Not answered", color: "var(--text3)", bg: "var(--bg4)" };
+};
+
+// Read-only summary of everything the user answered, shown right before the
+// assessment is finalised. They get exactly one trip back into the questions
+// to change things (the "Edit my answers" button disappears once used).
+function ReviewAnswersStep({ selectedDepts, answers, collaborators, editUsed, onEdit, onConfirm, submitting, error }) {
+  const answeredDepts = selectedDepts.filter(
+    d => Object.keys(getDeptAnswers(d, answers)).length > 0
+  );
+  const pendingDepts = selectedDepts.filter(
+    d => Object.keys(getDeptAnswers(d, answers)).length === 0
+  );
 
   return (
-    <div className="self-assess-card" style={{ maxWidth: 760, margin: "32px auto" }}>
-      <h2 className="self-assess-title" style={{ fontSize: 24, marginBottom: 6 }}>Your Compliance Assessment</h2>
-      <p className="self-assess-desc" style={{ marginBottom: 28 }}>
-        Based on your responses across {selectedDepts.length} department{selectedDepts.length !== 1 ? "s" : ""}.
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 24px" }}>
+      <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Review your answers</h2>
+      <p style={{ fontSize: 14, color: "var(--text2)", lineHeight: 1.6, marginBottom: 20 }}>
+        Check your responses below. You can make changes{" "}
+        <strong>once</strong> before submitting — after that, contact our team if anything needs updating.
       </p>
 
-      {/* Overall score */}
-      <div style={{ background: "var(--dp-surface-gradient)", border: "1px solid var(--dp-line)", borderRadius: 16, padding: "28px 32px", marginBottom: 24, display: "flex", alignItems: "center", gap: 24, boxShadow: "var(--neu-raised-sm)" }}>
-        <div style={{
-          width: 88, height: 88, borderRadius: "50%", flexShrink: 0,
-          border: `4px solid ${overallLabel.color}`,
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          boxShadow: "var(--neu-raised-sm)",
-          background: "var(--dp-surface-2)",
-        }}>
-          <div style={{ fontSize: 24, fontWeight: 800, color: overallLabel.color, fontFamily: "var(--dp-font-mono, monospace)" }}>{overall ?? "—"}%</div>
+      {editUsed && (
+        <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "10px 14px", fontSize: 12.5, color: "var(--text2)", marginBottom: 20 }}>
+          You've used your one round of edits. Submit when you're ready.
         </div>
-        <div>
-          <div style={{ fontSize: 19, fontWeight: 700, color: "var(--dp-ink)", marginBottom: 6 }}>
-            Overall: <span style={{ color: overallLabel.color }}>{overallLabel.label}</span>
-          </div>
-          <div style={{ fontSize: 13.5, color: "var(--dp-quiet)", lineHeight: 1.6 }}>
-            This score reflects your self-reported compliance posture. Once your account is verified, PRISM will help you remediate gaps with structured workflows and evidence management.
-          </div>
-        </div>
-      </div>
+      )}
 
-      {/* Per-dept breakdown */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
-        {selectedDepts.map(dept => {
-          const meta = DEPT_META[dept] || { label: dept, icon: "🏢" };
-          const pct = byDept[dept];
-          const { label, color } = scoreLabel(pct);
-          const qs = expandQuestions(deptQuestionBase(dept), answers);
-          const answeredCount = qs.filter(q => answers[q.id] && answers[q.id] !== "NA").length;
-          const noCount = qs.filter(q => answers[q.id] === "NO").length;
-          const partialCount = qs.filter(q => answers[q.id] === "PARTIAL").length;
-          return (
-            <div key={dept} className="self-assess-q-card" style={{ padding: "16px 20px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                <span style={{ fontSize: 24 }}>{meta.icon}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--dp-ink)" }}>{meta.label}</div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color, fontFamily: "var(--dp-font-mono)" }}>{pct !== null ? `${pct}%` : "—"}</div>
-                  <div style={{ fontSize: 11.5, color, fontWeight: 600 }}>{label}</div>
-                </div>
-              </div>
-              <div style={{ height: 6, background: "var(--dp-surface-2)", borderRadius: 999, boxShadow: "var(--neu-inset-sm)", overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${pct ?? 0}%`, background: color, borderRadius: 999, transition: "width 0.5s" }} />
-              </div>
-              {(noCount > 0 || partialCount > 0) && (
-                <div style={{ marginTop: 10, fontSize: 12, color: "var(--dp-quiet)" }}>
-                  {noCount > 0 && <span style={{ color: "var(--red, #EF4444)", marginRight: 12, fontWeight: 600 }}>✗ {noCount} gap{noCount !== 1 ? "s" : ""}</span>}
-                  {partialCount > 0 && <span style={{ color: "var(--amber, #F59E0B)", fontWeight: 600 }}>⚠ {partialCount} partial</span>}
-                </div>
-              )}
+      {pendingDepts.length > 0 && (
+        <div style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", borderRadius: 8, padding: "12px 16px", marginBottom: 20 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent)", marginBottom: 6 }}>Awaiting other departments</div>
+          <div style={{ fontSize: 12.5, color: "var(--text2)", lineHeight: 1.6 }}>
+            These departments haven't responded yet. You can still submit your part now — your
+            gap-analysis report will be prepared once every department is in.
+          </div>
+          <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: "var(--text2)" }}>
+            {pendingDepts.map(d => {
+              const meta = DEPT_META[d] || { label: d, icon: "🏢" };
+              const to = (collaborators?.[d] || []).map(c => c.email).filter(Boolean);
+              return (
+                <li key={d} style={{ marginBottom: 2 }}>
+                  {meta.icon} {meta.label}
+                  {to.length > 0 && <span style={{ color: "var(--text3)" }}> — assigned to {to.join(", ")}</span>}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {answeredDepts.map(dept => {
+        const meta = DEPT_META[dept] || { label: dept, icon: "🏢" };
+        const qs = expandQuestions(deptQuestionBase(dept), answers);
+        return (
+          <div key={dept} style={{ marginBottom: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 18 }}>{meta.icon}</span>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{meta.label}</h3>
             </div>
-          );
-        })}
-      </div>
+            <div style={{ border: "1px solid var(--border2)", borderRadius: 10, overflow: "hidden" }}>
+              {qs.map((q, i) => {
+                const a = ANSWER_STYLE(answers[q.id]);
+                return (
+                  <div key={q.id} style={{
+                    display: "flex", gap: 12, alignItems: "flex-start", justifyContent: "space-between",
+                    padding: "10px 14px",
+                    borderTop: i === 0 ? "none" : "1px solid var(--border2)",
+                    background: q.parentId ? "var(--bg2)" : "transparent",
+                  }}>
+                    <span style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.5 }}>
+                      {q.parentId && <span style={{ color: "var(--accent)", marginRight: 6, fontWeight: 700 }}>↳</span>}
+                      {q.text}
+                    </span>
+                    <span style={{
+                      flexShrink: 0, fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20,
+                      color: a.color, background: a.bg, border: `1px solid ${a.color}`,
+                    }}>
+                      {a.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
 
-      {/* Pending verification callout */}
-      <div style={{ background: "var(--dp-accent-light, rgba(79,70,229,0.08))", border: "1px solid rgba(79,70,229,0.25)", borderRadius: 14, padding: "18px 22px", marginBottom: 28, boxShadow: "var(--neu-raised-sm)" }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-accent, #4F46E5)", marginBottom: 6 }}>What happens next?</div>
-        <div style={{ fontSize: 13.5, color: "var(--dp-ink)", lineHeight: 1.65 }}>
-          Once a PRISM administrator verifies your account, you'll receive access to the full platform — including the DPDPA compliance tracker, evidence vault, AI-assisted gap analysis, and remediation workflows tailored to your organisation.
-        </div>
-      </div>
+      {error && <p style={{ fontSize: 12, color: "var(--red, #ef4444)", marginBottom: 12 }}>{error}</p>}
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-        {onRetake && <button className="btn btn-ghost" onClick={onRetake}>↺ Retake</button>}
-        {onViewReport && (
-          <button className="btn btn-primary" onClick={onViewReport} disabled={submitting}>
-            <span>{submitting ? "Saving…" : "📊 Team Report"}</span>
-          </button>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+        {!editUsed && (
+          <button className="btn btn-ghost" onClick={onEdit} disabled={submitting}>✏️ Edit my answers</button>
         )}
-        <button className="btn btn-ghost" onClick={onLogout}>Sign out</button>
+        <button className="btn btn-primary" onClick={onConfirm} disabled={submitting}>
+          {submitting ? "Submitting…" : "Confirm & submit →"}
+        </button>
       </div>
     </div>
   );
 }
 
-// Wraps the server-built report HTML in a minimal document for the iframe /
-// new-tab view. The report body already carries all its own inline styles.
-function wrapReportDoc(inner) {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8">` +
-    `<meta name="viewport" content="width=device-width, initial-scale=1">` +
-    `<title>Team Self-Assessment Report</title>` +
-    `<link rel="preconnect" href="https://fonts.googleapis.com">` +
-    `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>` +
-    `<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">` +
-    `<style>
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: #E8EEF6;
-        font-family: 'Sora', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        -webkit-font-smoothing: antialiased;
-        color: #1E293B;
-      }
-      a { color: #4F46E5; }
-    </style>` +
-    `</head><body>${inner}</body></html>`;
-}
-
-// The in-app "Team Report". Renders the exact HTML document the server builds
-// (and emails) inside an auto-sized iframe, so the in-app view, the emailed
-// report, and the printable/PDF version are always identical — there is no
-// second React re-implementation to drift.
-function ReportStep({ token, onBack }) {
-  const [state, setState] = useState({ status: "loading" });
-  const iframeRef = useRef(null);
-
-  useEffect(() => {
-    apiFetch("/api/self-assessment", { token })
-      .then(data => {
-        if (!data?.submissions?.length) return setState({ status: "empty" });
-        const html = data?.report?.html;
-        if (!html) return setState({ status: "stale" });
-        setState({ status: "ready", html });
-      })
-      .catch(err => setState({ status: "error", message: err.message || "Failed to load report" }));
-  }, [token]);
-
-  const fitIframe = () => {
-    const f = iframeRef.current;
-    try {
-      const h = f?.contentWindow?.document?.documentElement?.scrollHeight;
-      if (h) f.style.height = (h + 40) + "px";
-    } catch { /* cross-origin guard */ }
-  };
-
-  function openInNewTab() {
-    if (state.status !== "ready") return;
-    const url = URL.createObjectURL(new Blob([wrapReportDoc(state.html)], { type: "text/html" }));
-    window.open(url, "_blank");
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  }
-
+// Terminal screen shown once the assessment has been submitted. The gap-analysis
+// report is produced by the PRISM team out-of-band, so the user just gets an
+// acknowledgement here — no score, no report.
+function PendingReviewStep({ onLogout, error, pendingDepartments = [] }) {
   return (
-    <div style={{ maxWidth: 940, margin: "0 auto", padding: "28px 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, gap: 12 }}>
-        <button className="btn btn-ghost" onClick={onBack}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12"></line>
-            <polyline points="12 19 5 12 12 5"></polyline>
-          </svg>
-          <span>Back to Results</span>
-        </button>
-        {state.status === "ready" && (
-          <button className="btn btn-primary" onClick={openInNewTab}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 6 2 18 2 18 9"></polyline>
-              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-              <rect x="6" y="14" width="12" height="8"></rect>
-            </svg>
-            <span>Open / Print Report</span>
-          </button>
-        )}
+    <div style={{ maxWidth: 620, margin: "0 auto", padding: "48px 24px", textAlign: "center" }}>
+      <div style={{ fontSize: 44, marginBottom: 16 }}>✅</div>
+      <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>
+        Thanks — your responses are in
+      </h2>
+      <p style={{ fontSize: 15, color: "var(--text2)", lineHeight: 1.65, marginBottom: 8 }}>
+        Our team is working on your gap-analysis report and will contact you soon with
+        the results and next steps.
+      </p>
+      <p style={{ fontSize: 13, color: "var(--text3)", lineHeight: 1.6, marginBottom: 28 }}>
+        We've also sent a confirmation to your email. You don't need to do anything else right now.
+      </p>
+
+      {pendingDepartments.length > 0 && (
+        <div style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", borderRadius: 8, padding: "12px 16px", marginBottom: 24, textAlign: "left" }}>
+          <div style={{ fontSize: 12.5, color: "var(--text2)", lineHeight: 1.6 }}>
+            We're still waiting on responses from:{" "}
+            <strong>{pendingDepartments.map(d => (DEPT_META[d]?.label || d)).join(", ")}</strong>.
+            Your report will be prepared once every department has completed the assessment.
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <p style={{ fontSize: 12, color: "var(--red, #ef4444)", marginBottom: 16 }}>{error}</p>
+      )}
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", justifyContent: "center" }}>
+        <button className="btn btn-ghost" onClick={onLogout}>Sign out</button>
       </div>
-
-      {state.status === "loading" && (
-        <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--dp-quiet)" }}>
-          <div className="loading-spinner" style={{ margin: "0 auto 12px" }} />
-          Generating team report…
-        </div>
-      )}
-
-      {state.status === "error" && (
-        <p style={{ color: "var(--red, #ef4444)", fontSize: 14 }}>{state.message}</p>
-      )}
-
-      {state.status === "empty" && (
-        <p style={{ color: "var(--dp-quiet)", fontSize: 14 }}>
-          No submissions yet. Invite colleagues and ask them to complete their department assessment.
-        </p>
-      )}
-
-      {state.status === "stale" && (
-        <div style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 12, padding: "14px 18px", fontSize: 13.5, color: "var(--dp-ink)", lineHeight: 1.6 }}>
-          The API is serving an older build that doesn't generate this report. Restart it —{" "}
-          <code>docker compose up -d &amp;&amp; docker compose restart api</code> — then reopen this page.
-        </div>
-      )}
-
-      {state.status === "ready" && (
-        <div style={{ border: "1px solid var(--dp-line)", borderRadius: 18, overflow: "hidden", background: "#FFFFFF", boxShadow: "var(--neu-raised)" }}>
-          <iframe
-            ref={iframeRef}
-            title="Team Self-Assessment Report"
-            srcDoc={wrapReportDoc(state.html)}
-            onLoad={fitIframe}
-            style={{ width: "100%", border: "none", display: "block", minHeight: 650 }}
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -702,8 +595,12 @@ export default function SelfAssessment({ user, token, onLogout }) {
 
   const [step, setStep] = useState(() => {
     if (lockedDept) return "questions";
+    // "results"/"report" are retired steps that may live in an old saved blob.
+    if (saved?.step === "results" || saved?.step === "report") return "pending";
     return saved?.step ?? "welcome";
   });
+  const [editUsed, setEditUsed] = useState(saved?.editUsed ?? false);
+  const [editing, setEditing] = useState(saved?.editing ?? false);
   const [selectedDepts, setSelectedDepts] = useState(() => {
     if (lockedDept) return [lockedDept];
     return saved?.selectedDepts ?? [];
@@ -714,17 +611,18 @@ export default function SelfAssessment({ user, token, onLogout }) {
   const [collaborators, setCollaborators] = useState(saved?.collaborators ?? {});
   const [savedFeedback, setSavedFeedback] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [completeError, setCompleteError] = useState("");
 
-  const submitAnswersToBackend = async (depts, answers) => {
+  // Persist every answered department. Delegated departments the user never
+  // filled in are skipped so we don't clobber the department head's own row.
+  const saveAllAnswers = async (depts, answers) => {
     if (!token) return;
     setSubmitting(true);
+    setCompleteError("");
     try {
       await Promise.all(
         depts.map(dept => {
           const scoped = getDeptAnswers(dept, answers);
-          // Nothing answered — most likely a delegated department the admin
-          // never filled in themselves. Skip it rather than overwriting
-          // whatever the department head already submitted with an empty row.
           if (Object.keys(scoped).length === 0) return Promise.resolve();
           return apiFetch("/api/self-assessment", {
             token,
@@ -738,10 +636,30 @@ export default function SelfAssessment({ user, token, onLogout }) {
     }
   };
 
+  // Final "Confirm & submit" — records the expected department set and fires the
+  // thank-you + internal team notification. Only the main (non-delegated) run
+  // does this; a delegated collaborator just saves their one department above.
+  const finalizeAssessment = async (depts) => {
+    if (lockedDept || !token) return;
+    setSubmitting(true);
+    setCompleteError("");
+    try {
+      await apiFetch("/api/self-assessment/complete", {
+        token,
+        method: "POST",
+        body: JSON.stringify({ departments: depts }),
+      });
+    } catch (err) {
+      setCompleteError("Your answers were saved, but we couldn't send the confirmation. Our team will still receive your submission.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const orgDomain = user?.email ? user.email.split("@")[1] : null;
 
   const persist = (patch) => {
-    const next = { step, selectedDepts, deptIndex, answers, collaborators, ...patch };
+    const next = { step, selectedDepts, deptIndex, answers, collaborators, editUsed, editing, ...patch };
     saveToDisk(user?.id, next);
     return next;
   };
@@ -753,8 +671,16 @@ export default function SelfAssessment({ user, token, onLogout }) {
   };
 
   const goToPreviousStep = useCallback(() => {
+    // "review" and "pending" are terminal-ish — browser Back must not smuggle the
+    // user back into the questions (that would bypass the one-edit limit).
+    if (step === "review" || step === "pending") return;
     if (step === "questions") {
-      if (deptIndex === 0) {
+      if (editing) {
+        // Mid-edit: Back returns to the review screen, edit already spent.
+        setEditing(false);
+        setStep("review");
+        persist({ step: "review", editing: false });
+      } else if (deptIndex === 0) {
         setStep("collabs");
         persist({ step: "collabs" });
       } else {
@@ -762,9 +688,6 @@ export default function SelfAssessment({ user, token, onLogout }) {
         setDeptIndex(prev);
         persist({ deptIndex: prev });
       }
-    } else if (step === "results") {
-      setStep("questions");
-      persist({ step: "questions" });
     } else if (step === "collabs") {
       setStep("depts");
       persist({ step: "depts" });
@@ -772,7 +695,7 @@ export default function SelfAssessment({ user, token, onLogout }) {
       setStep("welcome");
       persist({ step: "welcome" });
     }
-  }, [step, deptIndex]);
+  }, [step, deptIndex, editing]);
 
   // Keep a ref to the latest goToPreviousStep and step so the popstate handler
   // doesn't go stale when step changes. A single handler registered once on mount
@@ -834,63 +757,57 @@ export default function SelfAssessment({ user, token, onLogout }) {
   };
 
   return (
-    <div className="self-assess-shell">
+    <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)" }}>
       {/* Pending banner */}
-      <div className="self-assess-top-banner">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M5 22h14"></path>
-          <path d="M5 2h14"></path>
-          <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"></path>
-          <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path>
-        </svg>
+      <div style={{
+        position: "fixed", top: 0, left: 0, right: 0, zIndex: 8000,
+        background: "#f59e0b", color: "#fff",
+        padding: "8px 20px",
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+        fontSize: 13, fontWeight: 500,
+      }}>
+        <span>⏳</span>
         <span>Your account is pending admin verification. Complete this self-assessment while you wait.</span>
       </div>
 
       {/* Header */}
-      <div className="self-assess-header">
+      <div style={{
+        marginTop: 36, padding: "16px 28px",
+        borderBottom: "1px solid var(--border2)",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <Logo style={{ height: 32 }} />
-          <span className="self-assess-header-title">
+          <Logo style={{ height: 28 }} />
+          <span style={{ fontSize: 13, color: "var(--text3)", borderLeft: "1px solid var(--border2)", paddingLeft: 14 }}>
             Compliance Self-Assessment
           </span>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span className="pill" style={{ fontSize: 12.5, fontWeight: 600 }}>{user?.email}</span>
-          {step !== "welcome" && step !== "results" && (
+          <span style={{ fontSize: 13, color: "var(--text3)" }}>{user?.email}</span>
+          {step !== "welcome" && step !== "pending" && (
             <button
               className="btn btn-ghost"
-              style={{ color: savedFeedback ? "var(--green, #10B981)" : undefined, borderColor: savedFeedback ? "var(--green, #10B981)" : undefined }}
+              style={{ fontSize: 12, color: savedFeedback ? "var(--green, #22c55e)" : undefined, borderColor: savedFeedback ? "var(--green, #22c55e)" : undefined }}
               onClick={handleSaveProgress}
             >
               {savedFeedback ? "✓ Saved" : "Save Progress"}
             </button>
           )}
-          <button className="btn btn-ghost" onClick={onLogout}>Sign out</button>
+          <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={onLogout}>Sign out</button>
         </div>
       </div>
 
       {/* Step progress bar */}
-      {step !== "welcome" && step !== "report" && (
+      {step !== "welcome" && (
         <div style={{ padding: "0 28px" }}>
-          <div style={{ display: "flex", gap: 6, padding: "16px 0 0", maxWidth: 760, margin: "0 auto" }}>
-            {["depts", "collabs", ...selectedDepts, "results"].map((s, i) => {
-              const stepOrder = ["welcome", "depts", "collabs", ...selectedDepts, "results"];
+          <div style={{ display: "flex", gap: 4, padding: "12px 0", maxWidth: 680, margin: "0 auto" }}>
+            {["depts", "collabs", ...selectedDepts, "review", "pending"].map((s, i) => {
+              const stepOrder = ["welcome", "depts", "collabs", ...selectedDepts, "review", "pending"];
               const current = stepOrder.indexOf(step);
               const done = i < current - 1;
               const active = s === step || (step === `q-${selectedDepts[deptIndex]}` && s === selectedDepts[deptIndex]);
               return (
-                <div
-                  key={s}
-                  style={{
-                    flex: 1,
-                    height: 5,
-                    borderRadius: 999,
-                    background: done || active ? "linear-gradient(90deg, #4F46E5 0%, #6366F1 100%)" : "var(--dp-surface-2)",
-                    boxShadow: done || active ? "0 1px 4px rgba(79, 70, 229, 0.4)" : "var(--neu-inset-sm)",
-                    opacity: done || active ? 1 : 0.6,
-                    transition: "all 0.3s ease"
-                  }}
-                />
+                <div key={s} style={{ flex: 1, height: 3, borderRadius: 2, background: done ? "var(--accent)" : active ? "var(--accent)" : "var(--bg4)", opacity: done || active ? 1 : 0.4, transition: "background 0.3s" }} />
               );
             })}
           </div>
@@ -949,39 +866,52 @@ export default function SelfAssessment({ user, token, onLogout }) {
             totalDepts={selectedDepts.length}
             collaborators={collaborators}
             onBack={lockedDept ? null : () => {
-              if (deptIndex === 0) { goToStep("collabs"); }
+              if (editing) { setEditing(false); goToStep("review", { editing: false }); }
+              else if (deptIndex === 0) { goToStep("collabs"); }
               else { const prev = deptIndex - 1; setDeptIndex(prev); persist({ deptIndex: prev }); }
             }}
-            onNext={() => {
+            onNext={async () => {
               if (deptIndex < selectedDepts.length - 1) {
                 const next = deptIndex + 1;
                 setDeptIndex(next);
                 persist({ deptIndex: next });
               } else {
-                submitAnswersToBackend(selectedDepts, answers);
-                goToStep("results");
+                await saveAllAnswers(selectedDepts, answers);
+                setEditing(false);
+                goToStep("review", { editing: false });
               }
             }}
           />
         )}
-        {step === "results" && (
-          <ResultsStep
+        {step === "review" && (
+          <ReviewAnswersStep
             selectedDepts={selectedDepts}
             answers={answers}
-            onRetake={lockedDept ? null : () => {
-              setStep("welcome");
-              setSelectedDepts([]);
-              setDeptIndex(0);
-              setAnswers({});
-              saveToDisk(user?.id, null);
-            }}
-            onLogout={onLogout}
-            onViewReport={user?.role === "ADMIN" || user?.role === "LEAD" ? () => setStep("report") : null}
+            collaborators={collaborators}
+            editUsed={editUsed}
             submitting={submitting}
+            error={completeError}
+            onEdit={() => {
+              setEditUsed(true);
+              setEditing(true);
+              setDeptIndex(0);
+              goToStep("questions", { deptIndex: 0, editUsed: true, editing: true });
+            }}
+            onConfirm={async () => {
+              await saveAllAnswers(selectedDepts, answers);
+              await finalizeAssessment(selectedDepts);
+              goToStep("pending");
+            }}
           />
         )}
-        {step === "report" && (
-          <ReportStep token={token} onBack={() => setStep("results")} />
+        {step === "pending" && (
+          <PendingReviewStep
+            error={completeError}
+            pendingDepartments={lockedDept ? [] : selectedDepts.filter(
+              d => Object.keys(getDeptAnswers(d, answers)).length === 0
+            )}
+            onLogout={onLogout}
+          />
         )}
       </div>
     </div>

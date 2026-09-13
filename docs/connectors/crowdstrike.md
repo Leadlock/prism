@@ -2,9 +2,10 @@
 
 ## 1. Overview
 
-- **Proposed `integrations.category`**: `security`
-- **Proposed `integrations.key`**: `crowdstrike`
-- **Proposed `integrations.auth_type`**: `oauth2`
+- **`integrations.category`**: `endpoint_security` (shipped as `endpoint_security` to sit alongside the Microsoft Defender EDR connector and reuse the existing category label, rather than the originally-proposed `security`)
+- **`integrations.key`**: `crowdstrike`
+- **`integrations.auth_type`**: `oauth2`
+- **Status**: shipped `beta` (endpoint paths follow the documented Falcon query/entity pattern; confirm against a live tenant before promoting to `active`)
 
 CrowdStrike Falcon is an endpoint detection and response (EDR) platform. This connector reads endpoint (host) inventory, sensor policy assignment, detections, and vulnerability exposure from a customer's Falcon tenant to evidence endpoint protection/malware controls (ISO 27001 Annex A.12.2), vulnerability management (A.12.6), and monitoring/logging (A.12.4).
 

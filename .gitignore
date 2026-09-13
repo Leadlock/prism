@@ -5,6 +5,7 @@ node_modules/
 web/dist/
 api/uploads/*
 !api/uploads/.gitkeep
+api/exports/*
 api/prisma/migrations/
 *.tar.gz
 defectdojo/.env
@@ -14,9 +15,7 @@ __pycache__/
 .claude/settings.local.json
 .superpowers/
 .worktrees/
-docs/*
-*.md
-.claude/*
-.remember/*
-.superpowers/*
-Prism Templates/
+.DS_Store
+.vite/
+test-results/
+.vscode/

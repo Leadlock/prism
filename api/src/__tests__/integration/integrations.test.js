@@ -25,6 +25,41 @@ const CONNECTOR_FIXTURES = {
       { testKey: "purview.audit.unified_logging_enabled", severity: "critical", resourceId: "tenant", status: "pass", message: "Unified audit logging is enabled", evidencePayload: {} },
     ])),
   },
+  acronis: {
+    key: "acronis",
+    testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "TENANT-123" })),
+    runTests: vi.fn(async () => ([
+      { testKey: "acronis.backup.protection_enabled", severity: "high", resourceId: "m1", status: "pass", message: "All workloads report a Protected status", evidencePayload: {} },
+    ])),
+  },
+  commvault: {
+    key: "commvault",
+    testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "commvault.example.com" })),
+    runTests: vi.fn(async () => ([
+      { testKey: "commvault.backup.sla_compliance", severity: "critical", resourceId: "commcell", status: "pass", message: "All 10 monitored entities meet their backup SLA", evidencePayload: {} },
+    ])),
+  },
+  "carbonite-server": {
+    key: "carbonite-server",
+    testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "backup.example.com" })),
+    runTests: vi.fn(async () => ([
+      { testKey: "carbonite-server.backup.recent_successful_safeset", severity: "critical", resourceId: "SQL nightly", status: "fail", message: "Safeset \"SQL nightly\" — most recent run did not succeed (status: Failed)", evidencePayload: {} },
+    ])),
+  },
+  carbonite: {
+    key: "carbonite",
+    testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "dashboard.carbonite.com" })),
+    runTests: vi.fn(async () => ([
+      { testKey: "carbonite.backup.recent_successful_backup", severity: "critical", resourceId: "d1", status: "fail", message: "Device \"laptop-1\" has never reported a completed backup", evidencePayload: {} },
+    ])),
+  },
+  sophos: {
+    key: "sophos",
+    testConnection: vi.fn(async () => ({ ok: true, externalAccountId: "tenant-sophos-1" })),
+    runTests: vi.fn(async () => ([
+      { testKey: "sophos.endpoint.protection_health", title: "All managed endpoints report good overall health", failTitle: "Some managed endpoints do not report good overall health", severity: "high", resourceId: "endpoint-1", status: "pass", message: "Endpoint health is good", evidencePayload: {} },
+    ])),
+  },
 };
 
 vi.mock("../../connectors/registry.js", () => ({
@@ -115,6 +150,141 @@ describe("GET /api/integrations/azure/setup-info", () => {
     const contributor = await createUser(company.id, "CONTRIBUTOR");
 
     const res = await request(app).get("/api/integrations/azure/setup-info").set("Authorization", `Bearer ${contributor.token}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/integrations/sophos/setup-info", () => {
+  test("returns tenant-only read-only setup guidance", async () => {
+    const company = await createCompany({ domain: "sophossetup1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const res = await request(app).get("/api/integrations/sophos/setup-info").set("Authorization", `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.steps).toHaveLength(4);
+    expect(res.body.roleHint).toMatch(/tenant-level/i);
+    expect(res.body.areas).toContain("DNS Protection");
+  });
+
+  test("is not accessible to CONTRIBUTOR", async () => {
+    const company = await createCompany({ domain: "sophossetup2.com" });
+    const contributor = await createUser(company.id, "CONTRIBUTOR");
+    const res = await request(app).get("/api/integrations/sophos/setup-info").set("Authorization", `Bearer ${contributor.token}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/integrations/acronis/setup-info", () => {
+  test("returns a static instructional walkthrough, no live Acronis call needed", async () => {
+    const company = await createCompany({ domain: "acronissetup1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+
+    const res = await request(app).get("/api/integrations/acronis/setup-info").set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.steps)).toBe(true);
+    expect(res.body.modules.map((m) => m.module)).toContain("Alert manager");
+    expect(res.body.datacenterUrlHint).toMatch(/acronis\.com/);
+  });
+
+  test("is not accessible to CONTRIBUTOR", async () => {
+    const company = await createCompany({ domain: "acronissetup2.com" });
+    const contributor = await createUser(company.id, "CONTRIBUTOR");
+
+    const res = await request(app).get("/api/integrations/acronis/setup-info").set("Authorization", `Bearer ${contributor.token}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/integrations/commvault/setup-info", () => {
+  test("returns the Custom-scope access token setup with its apiEndpoints allowlist, no live Commvault call needed", async () => {
+    const company = await createCompany({ domain: "commvaultsetup1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+
+    const res = await request(app).get("/api/integrations/commvault/setup-info").set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.accessTokenSetup.tokenType).toBe(3);
+    expect(res.body.accessTokenSetup.apiEndpoints).toEqual(
+      expect.arrayContaining(["/Alerts", "/dashboard", "/StoragePolicy", "/v2/StoragePolicy"])
+    );
+    expect(res.body.webconsoleUrlHint).toMatch(/WebConsole/i);
+  });
+
+  test("is not accessible to CONTRIBUTOR", async () => {
+    const company = await createCompany({ domain: "commvaultsetup2.com" });
+    const contributor = await createUser(company.id, "CONTRIBUTOR");
+
+    const res = await request(app).get("/api/integrations/commvault/setup-info").set("Authorization", `Bearer ${contributor.token}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/integrations/akamai/setup-info", () => {
+  test("returns the static scope + steps payload for ADMIN/LEAD", async () => {
+    const company = await createCompany({ domain: "akamaisetup1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+
+    const res = await request(app).get("/api/integrations/akamai/setup-info").set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.scopes)).toBe(true);
+    expect(res.body.scopes.length).toBe(4);
+    expect(res.body.hostHint).toMatch(/akamaiapis\.net/);
+    expect(Array.isArray(res.body.steps)).toBe(true);
+  });
+
+  test("is denied for a VIEWER", async () => {
+    const company = await createCompany({ domain: "akamaisetup2.com" });
+    const viewer = await createUser(company.id, "VIEWER");
+
+    const res = await request(app).get("/api/integrations/akamai/setup-info").set("Authorization", `Bearer ${viewer.token}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/integrations/carbonite/setup-info", () => {
+  test("returns the API-key walkthrough and the Dashboard Service operations, no live call needed", async () => {
+    const company = await createCompany({ domain: "carbonitesetup1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+
+    const res = await request(app).get("/api/integrations/carbonite/setup-info").set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.operations.map((o) => o.operation)).toEqual(
+      expect.arrayContaining(["GetDeviceList", "GetDashboardDeviceInfo"])
+    );
+    expect(res.body.dashboardHostHint).toMatch(/dashboard/i);
+    expect(res.body.betaNote).toMatch(/beta/i);
+  });
+
+  test("is not accessible to CONTRIBUTOR", async () => {
+    const company = await createCompany({ domain: "carbonitesetup2.com" });
+    const contributor = await createUser(company.id, "CONTRIBUTOR");
+
+    const res = await request(app).get("/api/integrations/carbonite/setup-info").set("Authorization", `Bearer ${contributor.token}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/integrations/carbonite-server/setup-info", () => {
+  test("returns the Keycloak access-level walkthrough recommending Reseller, no live call needed", async () => {
+    const company = await createCompany({ domain: "carboniteserversetup1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+
+    const res = await request(app).get("/api/integrations/carbonite-server/setup-info").set("Authorization", `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.recommendedAccessLevel).toBe("Reseller");
+    expect(res.body.accessLevels.map((a) => a.level)).toEqual(expect.arrayContaining(["Admin", "Partner", "Reseller"]));
+    expect(res.body.apiDomainHint).toMatch(/Swagger/i);
+    expect(res.body.keycloakRealmHint).toMatch(/realm/i);
+  });
+
+  test("is not accessible to CONTRIBUTOR", async () => {
+    const company = await createCompany({ domain: "carboniteserversetup2.com" });
+    const contributor = await createUser(company.id, "CONTRIBUTOR");
+
+    const res = await request(app).get("/api/integrations/carbonite-server/setup-info").set("Authorization", `Bearer ${contributor.token}`);
     expect(res.status).toBe(403);
   });
 });
@@ -506,6 +676,152 @@ describe("POST /api/integrations/:id/run", () => {
     expect(runRes.status).toBe(200);
     expect(runRes.body.testsPassed).toBe(1);
     expect(runRes.body.testsFailed).toBe(0);
+  });
+
+  // Full create -> credentials -> run flow for Acronis: a second oauth2-authType
+  // connector coexisting with Azure, config shaped as { datacenterUrl }. Confirms
+  // it flows through the same connector-agnostic pipe with no new logic.
+  test("Acronis: connects via oauth2 credentials and runs a collection", async () => {
+    const company = await createCompany({ domain: "acronisrun1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name, config) VALUES ($1, 'acronis', 'Prod Acronis', $2) RETURNING *`,
+      [company.id, JSON.stringify({ datacenterUrl: "https://us5-cloud.acronis.com" })]
+    );
+
+    const credsRes = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ authType: "oauth2", secret: { clientId: "client-abc", clientSecret: "shh" } });
+
+    expect(credsRes.status).toBe(200);
+    expect(credsRes.body.status).toBe("connected");
+    expect(credsRes.body.externalAccountId).toBe("TENANT-123");
+
+    const runRes = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/run`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(runRes.status).toBe(200);
+    expect(runRes.body.testsPassed).toBe(1);
+    expect(runRes.body.testsFailed).toBe(0);
+  });
+
+  test("Sophos: connects with tenant OAuth2 credentials and runs a collection", async () => {
+    const company = await createCompany({ domain: "sophosrun1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name, config) VALUES ($1, 'sophos', 'Prod Sophos', '{}') RETURNING *`,
+      [company.id]
+    );
+
+    const credsRes = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ authType: "oauth2", secret: { clientId: "client-abc", clientSecret: "shh" } });
+
+    expect(credsRes.status).toBe(200);
+    expect(credsRes.body.status).toBe("connected");
+    expect(credsRes.body.externalAccountId).toBe("tenant-sophos-1");
+
+    const runRes = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/run`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(runRes.status).toBe(200);
+    expect(runRes.body.testsPassed).toBe(1);
+    expect(runRes.body.testsFailed).toBe(0);
+  });
+
+  // Full create -> credentials -> run flow for Commvault: the first api_key-authType
+  // connector whose config carries a URL ({ webconsoleUrl }) and whose secret is an
+  // opaque access token ({ accessToken }). Confirms it flows through the same
+  // connector-agnostic pipe with no new logic.
+  test("Commvault: connects via api_key credentials and runs a collection", async () => {
+    const company = await createCompany({ domain: "commvaultrun1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name, config) VALUES ($1, 'commvault', 'Prod Commvault', $2) RETURNING *`,
+      [company.id, JSON.stringify({ webconsoleUrl: "https://commvault.example.com" })]
+    );
+
+    const credsRes = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ authType: "api_key", secret: { accessToken: "tok-abc123" } });
+
+    expect(credsRes.status).toBe(200);
+    expect(credsRes.body.status).toBe("connected");
+    expect(credsRes.body.externalAccountId).toBe("commvault.example.com");
+
+    const runRes = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/run`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(runRes.status).toBe(200);
+    expect(runRes.body.testsPassed).toBe(1);
+    expect(runRes.body.testsFailed).toBe(0);
+  });
+
+  // Full create -> credentials -> run flow for Carbonite Core Endpoint Backup:
+  // an api_key connector whose config is { dashboardHost } and whose secret is
+  // { email, apiKey } (two-field). Confirms the connector-agnostic pipe handles
+  // a SOAP-backed connector with no new logic.
+  test("Carbonite Core Endpoint Backup: connects via api_key credentials and runs a collection", async () => {
+    const company = await createCompany({ domain: "carboniterun1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name, config) VALUES ($1, 'carbonite', 'Prod Carbonite', $2) RETURNING *`,
+      [company.id, JSON.stringify({ dashboardHost: "dashboard.carbonite.com" })]
+    );
+
+    const credsRes = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ authType: "api_key", secret: { email: "admin@acme.com", apiKey: "key-abc123" } });
+
+    expect(credsRes.status).toBe(200);
+    expect(credsRes.body.status).toBe("connected");
+    expect(credsRes.body.externalAccountId).toBe("dashboard.carbonite.com");
+
+    const runRes = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/run`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(runRes.status).toBe(200);
+    expect(runRes.body.testsPassed).toBe(0);
+    expect(runRes.body.testsFailed).toBe(1);
+  });
+
+  // Full create -> credentials -> run flow for Carbonite Server Backup: an
+  // oauth2-authType connector whose config carries { apiDomain, keycloakRealm }
+  // and whose secret is a Keycloak client pair ({ clientId, clientSecret }) —
+  // a third distinct oauth2 config shape (after Azure's and Acronis's). Confirms
+  // it flows through the same connector-agnostic pipe with no new logic.
+  test("Carbonite Server Backup: connects via oauth2 credentials and runs a collection", async () => {
+    const company = await createCompany({ domain: "carboniteserverrun1.com" });
+    const admin = await createUser(company.id, "ADMIN");
+    const conn = await query(
+      `INSERT INTO integration_connections (company_id, integration_key, name, config) VALUES ($1, 'carbonite-server', 'Prod Carbonite Server', $2) RETURNING *`,
+      [company.id, JSON.stringify({ apiDomain: "backup.example.com", keycloakRealm: "carbonite" })]
+    );
+
+    const credsRes = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/credentials`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ authType: "oauth2", secret: { clientId: "prism-reader", clientSecret: "s3cr3t" } });
+
+    expect(credsRes.status).toBe(200);
+    expect(credsRes.body.status).toBe("connected");
+    expect(credsRes.body.externalAccountId).toBe("backup.example.com");
+
+    const runRes = await request(app)
+      .post(`/api/integrations/${conn.rows[0].id}/run`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(runRes.status).toBe(200);
+    expect(runRes.body.testsPassed).toBe(0);
+    expect(runRes.body.testsFailed).toBe(1);
   });
 
   // runCollection() (utils/collectionRunner.js) throws an Error with .status = 409

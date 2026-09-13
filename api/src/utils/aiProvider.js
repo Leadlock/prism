@@ -237,6 +237,92 @@ export async function mapRegulatoryExposure(args) {
 }
 
 /**
+ * Map a company's unresolved self-assessment questions to their formal tracker
+ * questions, for the pre-fill-on-approval seeder
+ * (utils/seedAssessmentsFromSelfAssessment.js). Only called for ids the static
+ * crosswalk (data/selfAssessmentControlMap.js) could not place. Every returned
+ * questId is validated against the supplied catalog before it is used — the
+ * model can only ever echo an id that is really in the company's catalog.
+ *
+ * @param {{ provider?:string, questions:Array<{id:string,text:string}>,
+ *   catalog:Array<{questId:string, baselineQuestion?:string, controlArea?:string}> }} args
+ * @returns {Promise<{ map: Record<string, string[]> }>}  selfAssessId -> [questId, …]
+ */
+export async function mapSelfAssessmentToQuestions(args) {
+  const { provider, rest } = splitProvider(args);
+  const questions = Array.isArray(rest.questions) ? rest.questions : [];
+  const catalog = Array.isArray(rest.catalog) ? rest.catalog : [];
+  if (!questions.length || !catalog.length) return { map: {} };
+
+  const { name, module: m } = await loadProvider(provider);
+  if (typeof m.mapSelfAssessmentToQuestions !== "function") return { map: {} };
+
+  const valid = new Set(catalog.map(c => String(c.questId)));
+  try {
+    const raw = await m.mapSelfAssessmentToQuestions({ questions, catalog });
+    const out = {};
+    for (const [id, qids] of Object.entries(raw?.map || {})) {
+      const clean = (Array.isArray(qids) ? qids : []).map(String).filter(q => valid.has(q));
+      if (clean.length) out[id] = clean.slice(0, 3);
+    }
+    return { map: out };
+  } catch (e) {
+    console.warn(`[AI] mapSelfAssessmentToQuestions failed (${name}), static mapping only:`, e.message); // nosemgrep
+    return { map: {} };
+  }
+}
+
+/**
+ * Generate the AI narrative layer for the Big-4 DPDPA readiness report
+ * (business context, role-map notes, SDF-designation factors, sector
+ * benchmarking, executive bullets). The deterministic engine
+ * (readinessAssessment.js) owns every score/finding/status; this is prose only.
+ * Returns null when the provider can't produce a usable narrative — the report
+ * then renders its templated fallback.
+ *
+ * @param {{ provider?:string, companyName:string, companyProfile?:object,
+ *   deptSummary?:string, maturitySummary?:string, findingsSummary?:string,
+ *   roleFlows?:string[] }} args
+ * @returns {Promise<object|null>}
+ */
+export async function generateReadinessNarrative(args) {
+  const { provider, rest } = splitProvider(args);
+  if (!rest.companyName) return null;
+  const { name, module: m } = await loadProvider(provider);
+  if (typeof m.generateReadinessNarrative !== "function") return null;
+  try {
+    return await m.generateReadinessNarrative(rest);
+  } catch (e) {
+    console.warn(`[AI] generateReadinessNarrative failed (${name}), using templated fallback:`, e.message); // nosemgrep
+    return null;
+  }
+}
+
+/**
+ * Generate the AI "gap context" layer for the Big-4 DPDPA readiness report:
+ * one optional context sentence per fired gap, apparent cross-department
+ * contradictions, and the placement of existing remediation steps into Phase
+ * 0–3. Deterministic scoring/findings are never touched (see
+ * utils/readinessGapContextPrompt.js). Returns null on any failure — every
+ * consumer has a deterministic fallback.
+ *
+ * @param {object} args  provider? + buildGapContextPrompt params + `ctx` for the normaliser
+ * @returns {Promise<object|null>}
+ */
+export async function analyzeGapContext(args) {
+  const { provider, rest } = splitProvider(args);
+  if (!rest.companyName || !Array.isArray(rest.gaps) || rest.gaps.length === 0) return null;
+  const { name, module: m } = await loadProvider(provider);
+  if (typeof m.analyzeGapContext !== "function") return null;
+  try {
+    return await m.analyzeGapContext(rest);
+  } catch (e) {
+    console.warn(`[AI] analyzeGapContext failed (${name}), using deterministic fallbacks:`, e.message); // nosemgrep
+    return null;
+  }
+}
+
+/**
  * Drop any model-returned mapping that isn't grounded: an unknown department,
  * a (framework, provisionId) pair that isn't in the checked-in index, or
  * relatedQuestionIds that aren't real open items for that department. Every

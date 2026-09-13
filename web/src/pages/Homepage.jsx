@@ -403,7 +403,7 @@ export default function Homepage() {
               <span className={`hp-toggle-knob ${dark ? "active" : ""}`} />
             </button>
             <Link to="/login" className="hp-nav-signin">Sign In</Link>
-            <button className="hp-cta-btn" onClick={() => openContact("Request a demo")}>Request a Demo</button>
+            <Link to="/register" className="hp-cta-btn">Assess your Readiness →</Link>
           </nav>
         </div>
       </header>
@@ -430,17 +430,18 @@ export default function Homepage() {
         <div className="hp-hero-inner">
           <div className="hp-hero-copy">
             <h1 className="hp-hero-title">
-              One platform.<br />
-              <span className="hp-hero-accent">Every control.</span><br />
-              Continuous compliance.
+              Continuous Compliance.<br />
+              <span className="hp-hero-accent">Connected to Your Technology.</span>
             </h1>
+            <h2 className="hp-hero-subhead">
+              13 Frameworks. Hundreds of Controls. One Compliance Control Plane.
+            </h2>
             <p className="hp-hero-sub">
-              PRISM unifies governance, risk, security and compliance so your organisation
-              stays secure, audit-ready and future-prepared.
+              PrismGRC connects policies, risks, controls, technology signals, evidence and remediation — helping enterprises continuously understand and improve their compliance posture.
             </p>
             <div className="hp-hero-ctas">
-              <button className="hp-btn hp-btn-primary" onClick={() => openContact("Request a demo")}>Request a Demo →</button>
-              <Link to="/register" className="hp-btn hp-btn-secondary">Start Your Compliance Assessment →</Link>
+              <Link to="/register" className="hp-btn hp-btn-primary">Assess your Readiness →</Link>
+              <button className="hp-btn hp-btn-secondary" onClick={() => openContact("Request a demo")}>Request a Demo →</button>
             </div>
             <div className="hp-chips">
               {HERO_CHIPS.map((c) => (
@@ -605,7 +606,7 @@ export default function Homepage() {
                   <li key={h}><span className="hp-check-tick">✓</span>{h}</li>
                 ))}
               </ul>
-              <button className="hp-btn hp-btn-primary" onClick={() => openContact("Request a demo")}>Request a Demo →</button>
+              <Link to="/register" className="hp-btn hp-btn-primary">Assess your Readiness →</Link>
             </div>
             <ManagementDashboardMock />
           </div>
@@ -767,11 +768,11 @@ export default function Homepage() {
       <section className="hp-final-cta-section">
         <div className="hp-final-cta-overlay" />
         <div className="hp-final-cta-content">
-          <h2>One platform. Every control. Continuous compliance.</h2>
+          <h2>Continuous Compliance. Connected to Your Technology.</h2>
           <p>Make compliance a strategic advantage.</p>
           <div className="hp-final-cta-btns">
-            <button className="hp-btn hp-btn-primary hp-final-btn" onClick={() => openContact("Request a demo")}>Request a Demo →</button>
-            <Link to="/register" className="hp-btn hp-btn-secondary hp-final-btn">Start Your Compliance Assessment →</Link>
+            <Link to="/register" className="hp-btn hp-btn-primary hp-final-btn">Assess your Readiness →</Link>
+            <button className="hp-btn hp-btn-secondary hp-final-btn" onClick={() => openContact("Request a demo")}>Request a Demo →</button>
           </div>
         </div>
       </section>

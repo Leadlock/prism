@@ -59,6 +59,7 @@ export const computeTests = [
     failTitle: "Compute Engine instance has a public IP address configured",
     severityDefault: "critical",
     isoReferences: ["A.13.1.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkInstancesNoPublicIp(clients.compute, clients.projectId),
   },
   {
@@ -67,6 +68,7 @@ export const computeTests = [
     failTitle: "Compute Engine instance does not have Shielded VM protections enabled",
     severityDefault: "high",
     isoReferences: ["A.8.2.3"],
+    dpdpaControlAreas: ["Security Safeguards Program"],
     run: (clients) => checkShieldedVmEnabled(clients.compute, clients.projectId),
   },
 ];

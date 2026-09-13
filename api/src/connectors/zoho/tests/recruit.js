@@ -110,6 +110,7 @@ export const recruitTests = [
     failTitle: "Recruit candidate data sharing rule allows org-wide access, not restricted to requisition assignment",
     severityDefault: "high",
     isoReferences: ["A.9.1.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkCandidateDataAccessReview(clients),
   },
   {
@@ -118,6 +119,7 @@ export const recruitTests = [
     failTitle: "Recruit does not have a candidate data retention/deletion policy configured",
     severityDefault: "medium",
     isoReferences: ["A.18.1.3"],
+    dpdpaControlAreas: ["Retention Schedule"],
     run: (clients) => checkDataRetentionPolicyConfigured(clients),
   },
   {
@@ -126,6 +128,7 @@ export const recruitTests = [
     failTitle: "Job opening is marked internal but published to external/public channels",
     severityDefault: "low",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkJobPostingVisibilityReview(clients),
   },
 ];

@@ -44,6 +44,7 @@ export const vulnerabilitiesTests = [
     failTitle: "Critical CVE with a public exploit has not been remediated within the 14-day SLA",
     severityDefault: "critical",
     isoReferences: ["A.12.6.1"],
+    dpdpaControlAreas: ["Vulnerability & Patch Management"],
     run: (clients) => checkCriticalCvesRemediated(clients.getToken, clients.baseUrl),
   },
 ];

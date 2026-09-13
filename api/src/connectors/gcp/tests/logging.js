@@ -31,6 +31,7 @@ export const loggingTests = [
     failTitle: "Data Access audit logs are not fully enabled for all services",
     severityDefault: "high",
     isoReferences: ["A.12.4.1"],
+    dpdpaControlAreas: ["Logging & Monitoring"],
     run: (clients) => checkDataAccessAuditLogsEnabled(clients.cloudresourcemanager, clients.projectId),
   },
 ];

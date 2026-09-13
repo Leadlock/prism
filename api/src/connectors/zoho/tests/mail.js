@@ -92,6 +92,7 @@ export const mailTests = [
     failTitle: "Mail org policy does not restrict auto-forwarding to external domains",
     severityDefault: "high",
     isoReferences: ["A.13.2.3"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkForwardingRestricted(clients),
   },
   {
@@ -100,6 +101,7 @@ export const mailTests = [
     failTitle: "Mail org security policy does not enforce two-factor authentication",
     severityDefault: "critical",
     isoReferences: ["A.9.4.2"],
+    dpdpaControlAreas: ["MFA for Sensitive Systems"],
     run: (clients) => checkTwoFactorAuthEnforced(clients),
   },
   {
@@ -108,6 +110,7 @@ export const mailTests = [
     failTitle: "Mail spam or phishing filters are not fully enabled",
     severityDefault: "medium",
     isoReferences: ["A.12.2.1"],
+    dpdpaControlAreas: ["Security Safeguards Program"],
     run: (clients) => checkSpamPhishingFiltersEnabled(clients),
   },
 ];

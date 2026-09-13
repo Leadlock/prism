@@ -6,22 +6,20 @@
 // linked privacy policy — then run the same policy-text checklist used for sites.
 
 import * as cheerio from 'cheerio';
+import { safeFetch } from './safeFetch.js';
 
 const UA =
   'Mozilla/5.0 (compatible; ComplianceScanner/1.0; +https://example.com/compliance-bot)';
 
+// F-05 follow-up: this used to call the raw global fetch() directly, bypassing
+// safeFetch() entirely (both the store-listing URL and the attacker-suppliable
+// `policy` URL were fetched with zero destination validation). Delegates to
+// safeFetch() — the single SSRF-safe boundary — exactly like scanner.js's
+// fetchWithTimeout(). detectStore()'s regex match is a content heuristic only,
+// never a security boundary; the resulting URL still goes through safeFetch().
 async function fetchText(url, timeoutMs = 20000) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en' },
-      signal: controller.signal,
-    });
-    return { ok: res.ok, status: res.status, url: res.url, html: await res.text() };
-  } finally {
-    clearTimeout(t);
-  }
+  const res = await safeFetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en' } }, timeoutMs);
+  return { ok: res.ok, status: res.status, url: res.url, html: await res.text() };
 }
 
 function detectStore(url) {

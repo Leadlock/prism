@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { query } from "../db/index.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { authenticate } from "../middleware/auth.js";
+import { requireRole } from "../middleware/roles.js";
 
 const router = Router();
 
@@ -365,22 +366,36 @@ router.post(
 router.post(
   "/activate",
   authenticate,
+  requireRole(["ADMIN"]),
   asyncHandler(async (req, res) => {
-    const { subscriptionId, planId, quantity, companyId } = req.body;
-    if (!subscriptionId) return res.status(400).json({ error: "subscriptionId is required" });
+    const rawSubscriptionId = req.body.subscriptionId;
+    const rawPlanId = req.body.planId;
+    const quantity = req.body.quantity ?? 1;
+    const companyId = req.user.companyId;
 
-    // Upsert subscription record, linking it to the company
-    await query(
-      `INSERT INTO marketplace_subscriptions
-         (subscription_id, plan_id, quantity, status, company_id, updated_at)
-       VALUES ($1,$2,$3,'PendingFulfillmentStart',$4,NOW())
-       ON CONFLICT (subscription_id) DO UPDATE SET
-         plan_id    = EXCLUDED.plan_id,
-         quantity   = EXCLUDED.quantity,
-         company_id = COALESCE(EXCLUDED.company_id, marketplace_subscriptions.company_id),
-         updated_at = NOW()`,
-      [subscriptionId, planId || null, quantity || 1, companyId || null]
+    if (typeof rawSubscriptionId !== "string" || !rawSubscriptionId.trim()) {
+      return res.status(400).json({ error: "subscriptionId is required" });
+    }
+    if (typeof rawPlanId !== "string" || !rawPlanId.trim()) {
+      return res.status(400).json({ error: "planId is required" });
+    }
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 2147483647) {
+      return res.status(400).json({ error: "quantity must be a positive integer" });
+    }
+
+    const subscriptionId = rawSubscriptionId.trim();
+    const planId = rawPlanId.trim();
+
+    // An unlinked subscription may be claimed during legitimate onboarding.
+    // Once linked, only an administrator from that company may activate it.
+    const existing = await query(
+      "SELECT company_id FROM marketplace_subscriptions WHERE subscription_id=$1",
+      [subscriptionId]
     );
+    const ownerCompanyId = existing.rows[0]?.company_id;
+    if (ownerCompanyId != null && Number(ownerCompanyId) !== Number(companyId)) {
+      return res.status(404).json({ error: "Subscription not found" });
+    }
 
     // Tell Microsoft the subscription is active
     const accessToken = await getAccessToken();
@@ -392,7 +407,7 @@ router.post(
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ planId, quantity: quantity || 1 }),
+        body: JSON.stringify({ planId, quantity }),
       }
     );
 
@@ -402,17 +417,32 @@ router.post(
       return res.status(resp.status).json({ error: "Failed to activate subscription" });
     }
 
-    // Mark as Subscribed and activate the linked company
-    await query(
-      "UPDATE marketplace_subscriptions SET status='Subscribed', updated_at=NOW() WHERE subscription_id=$1",
-      [subscriptionId]
+    // Persist authoritative local state only after Microsoft accepts activation.
+    // The conflict predicate prevents a concurrent request from rebinding a
+    // subscription that another company linked after the ownership check above.
+    const activated = await query(
+      `INSERT INTO marketplace_subscriptions
+         (subscription_id, plan_id, quantity, status, company_id, updated_at)
+       VALUES ($1,$2,$3,'Subscribed',$4,NOW())
+       ON CONFLICT (subscription_id) DO UPDATE SET
+         plan_id    = EXCLUDED.plan_id,
+         quantity   = EXCLUDED.quantity,
+         status     = 'Subscribed',
+         company_id = EXCLUDED.company_id,
+         updated_at = NOW()
+       WHERE marketplace_subscriptions.company_id IS NULL
+          OR marketplace_subscriptions.company_id = EXCLUDED.company_id
+       RETURNING id`,
+      [subscriptionId, planId, quantity, companyId]
     );
-    if (companyId) {
-      await query(
-        "UPDATE companies SET billing_status='active', plan=$2, updated_at=NOW() WHERE id=$3",
-        [toPrismPlan(planId), companyId]
-      );
+    if (activated.rows.length === 0) {
+      return res.status(409).json({ error: "Subscription ownership changed during activation" });
     }
+
+    await query(
+      "UPDATE companies SET billing_status='active', plan=$1, updated_at=NOW() WHERE id=$2",
+      [toPrismPlan(planId), companyId]
+    );
 
     res.json({ success: true });
   })
@@ -423,14 +453,24 @@ router.post(
 router.get(
   "/subscription/:subscriptionId",
   authenticate,
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req, res, next) => {
     const result = await query(
-      "SELECT * FROM marketplace_subscriptions WHERE subscription_id=$1",
-      [req.params.subscriptionId]
+      `SELECT id, subscription_id, company_id, plan_id, quantity, status,
+              purchaser_email, purchaser_tenant_id,
+              beneficiary_email, beneficiary_tenant_id,
+              offer_id, publisher_id,
+              term_start_date, term_end_date,
+              auto_renew, is_free_trial, created_at, updated_at
+       FROM marketplace_subscriptions
+       WHERE subscription_id=$1 AND company_id=$2`,
+      [req.params.subscriptionId, req.user.companyId]
     );
     if (!result.rows.length) return res.status(404).json({ error: "Not found" });
-    res.json(result.rows[0]);
-  })
+    res.locals.marketplaceSubscription = result.rows[0];
+    next();
+  }),
+  requireRole(["ADMIN"]),
+  (req, res) => res.json(res.locals.marketplaceSubscription)
 );
 
 export default router;

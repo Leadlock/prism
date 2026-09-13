@@ -118,6 +118,7 @@ export const sharepointTests = [
     failTitle: "SharePoint/OneDrive external sharing is fully open",
     severityDefault: "critical",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkExternalSharingRestricted(clients.getGraphToken, clients.tenantId),
   },
   {
@@ -126,6 +127,7 @@ export const sharepointTests = [
     failTitle: "No Data Loss Prevention policies are configured",
     severityDefault: "critical",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkDlpPolicyConfigured(clients.getGraphToken, clients.tenantId),
   },
   {
@@ -134,6 +136,7 @@ export const sharepointTests = [
     failTitle: "No sensitivity label policies are configured",
     severityDefault: "high",
     isoReferences: ["A.8.2.3"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkSensitivityLabelPolicyEnforced(clients.getGraphToken, clients.tenantId),
   },
 ];

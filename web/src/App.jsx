@@ -382,11 +382,11 @@ export default function App() {
           }
         />
 
-        {/* Review — ADMIN, LEAD, VIEWER */}
+        {/* Review — ADMIN, LEAD, VIEWER (reviewer queue); AUDITOR (audit queue) */}
         <Route
           path="/review"
           element={
-            isAuthenticated && (isLeadOrAdmin || isViewer) && isVerified
+            isAuthenticated && (isLeadOrAdmin || isViewer || isAuditor) && (isVerified || isAuditor)
               ? <Review {...authProps} />
               : <Navigate to={isAuthenticated ? defaultRoute() : "/login"} replace />
           }

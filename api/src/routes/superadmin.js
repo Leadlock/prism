@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../middleware/auth.js";
-import { query, getClient } from "../db/index.js";
+import { query, getClient, mapRow } from "../db/index.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { deriveSortOrder } from "../utils/prismOrder.js";
 import multer from "multer";
@@ -9,6 +9,15 @@ import path from "path";
 import { parseExcelImport } from "../utils/excelParser.js";
 import { importFrameworkQuestions, provisionTemplate } from "./frameworks.js";
 import { deleteCompanyFiles } from "../utils/deleteCompanyFiles.js";
+import { sendEmail } from "../utils/email.js";
+import { buildEmailHtml } from "../utils/emailTemplate.js";
+import { buildCompanyReport, departmentStatus } from "./selfAssessment.js";
+import { buildReadinessDocx, DOCX_MIME } from "../utils/selfAssessmentDocx.js";
+import { deptQuestionBase, expandQuestions } from "../utils/deptSelfAssessQuestions.js";
+import { seedAssessmentsFromSelfAssessment } from "../utils/seedAssessmentsFromSelfAssessment.js";
+
+// Where a superadmin-generated gap-assessment report is emailed.
+const GAP_REPORT_RECIPIENT = process.env.GAP_REPORT_RECIPIENT || "ab@neozaar.com";
 
 const router = Router();
 
@@ -25,7 +34,8 @@ router.get("/companies", authenticate, requireSuperAdmin, asyncHandler(async (re
   const result = await query(
     `SELECT c.id, c.name, c.domain, c.admin_email, c.industry, c.company_size, c.status, c.is_verified, c.created_at,
             c.plan, c.billing_status, c.trial_ends_at,
-            COALESCE(cs.ai_enabled, true) AS ai_enabled,
+            c.self_assessment_completed_at, c.self_assessment_all_departments_at,
+            COALESCE(cs.ai_enabled, false) AS ai_enabled,
             cs.ai_provider,
             c.template_id,
             mt.name AS template_name
@@ -92,7 +102,49 @@ router.patch("/companies/:id/status", authenticate, requireSuperAdmin, asyncHand
     }
   }
 
-  res.json({ ...company, templateProvisioned });
+  // Pre-fill the tracker from the company's self-assessment answers so an
+  // approved company starts from a realistic baseline. Draft (WIP) rows only —
+  // does not move the readiness score. Best-effort: approval still stands if it
+  // fails (mirrors the template-provisioning handling above).
+  let selfAssessmentSeeded = 0;
+  if (status === "approved") {
+    const seedClient = await getClient();
+    try {
+      await seedClient.query("BEGIN");
+      const r = await seedAssessmentsFromSelfAssessment(seedClient, company.id, { scope: "framework" });
+      await seedClient.query("COMMIT");
+      selfAssessmentSeeded = r.seeded;
+    } catch (err) {
+      await seedClient.query("ROLLBACK");
+      console.error("[superadmin] Self-assessment seeding failed:", err.message);
+    } finally {
+      seedClient.release();
+    }
+  }
+
+  res.json({ ...company, templateProvisioned, selfAssessmentSeeded });
+}));
+
+// PATCH /api/superadmin/companies/:id/seed-self-assessment — manually (re-)run the
+// self-assessment -> tracker pre-fill for a company. Idempotent: never overwrites
+// an existing assessment for the current month.
+router.patch("/companies/:id/seed-self-assessment", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const exists = await query("SELECT id FROM companies WHERE id = $1", [id]);
+  if (exists.rows.length === 0) return res.status(404).json({ error: "Company not found" });
+
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const result = await seedAssessmentsFromSelfAssessment(client, Number(id), { scope: "all" });
+    await client.query("COMMIT");
+    res.json(result);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }));
 
 // PATCH /api/superadmin/companies/:id/unapprove — revoke verification without changing status
@@ -919,6 +971,168 @@ router.get("/companies/:id/users", authenticate, requireSuperAdmin, asyncHandler
     role: r.role,
     createdAt: r.created_at,
   })));
+}));
+
+// GET /api/superadmin/companies/:id/self-assessment
+// Build (or regenerate, with ?refresh=1) the gap-analysis / Team Report for any
+// company — but only once EVERY selected department has submitted. While any
+// delegated department is still outstanding, returns 409 with the missing list.
+router.get("/companies/:id/self-assessment", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const data = await buildCompanyReport(req.params.id, {
+    requestedByEmail: req.user.email,
+    refresh: req.query.refresh === "1",
+  });
+  if (!data) return res.status(404).json({ error: "Company not found" });
+
+  if (data.submissions.length === 0) {
+    return res.status(409).json({
+      error: "This company has not submitted any self-assessment responses yet.",
+      status: "no-submissions",
+      departmentStatus: data.deptStatus,
+    });
+  }
+  if (!data.deptStatus.complete) {
+    return res.status(409).json({
+      error: `Waiting on ${data.deptStatus.missing.length} department(s) before the report can be generated: ${data.deptStatus.missing.join(", ")}.`,
+      status: "incomplete",
+      departmentStatus: data.deptStatus,
+    });
+  }
+
+  // ?format=docx — stream the report as a Word document instead of JSON.
+  // Reuses every gate above; never emails.
+  if (req.query.format === "docx") {
+    if (!data.report) {
+      return res.status(409).json({ error: "The report is not ready to download yet.", status: "not-ready" });
+    }
+    const docx = await buildReadinessDocx(data.report, { companyName: data.company.name });
+    const safeName = (data.company.name || "Company").replace(/[^\w.-]+/g, "_").replace(/^_+|_+$/g, "") || "Company";
+    res.setHeader("Content-Type", DOCX_MIME);
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}_DPDPA_Readiness_Assessment.docx"`);
+    return res.send(docx);
+  }
+
+  const emailed = req.query.email === "1" && data.report;
+  res.json({
+    company: { id: data.company.id, name: data.company.name },
+    submissions: data.submissions,
+    report: data.report,
+    departmentStatus: data.deptStatus,
+    emailedTo: emailed ? GAP_REPORT_RECIPIENT : null,
+  });
+
+  // Fire-and-forget: a concise NOTIFICATION (not the rendered report — the
+  // full document is view/download-only). Only when ?email=1, so one
+  // "Generate"/"Regenerate" click == one email.
+  if (emailed) {
+    const fc = data.report.findingCounts || { total: 0, critical: 0, high: 0 };
+    const webUrl = (process.env.WEB_URL || "https://prismgrc.co").replace(/\/$/, "");
+    sendEmail({
+      to: GAP_REPORT_RECIPIENT,
+      subject: `[PRISM] Gap Assessment Report — ${data.company.name || "Company"}`,
+      text: data.report.text,
+      html: buildEmailHtml({
+        heading: "DPDP Act 2023 Readiness Assessment ready",
+        preheader: `${data.company.name || "A company"} — ${fc.total} findings, ${fc.critical} Critical`,
+        body: `The DPDP Act 2023 Readiness Assessment for <strong>${data.company.name || "the company"}</strong> is ready.`,
+        details: [
+          { label: "Findings", value: `${fc.total} (${fc.critical} Critical, ${fc.high} High)` },
+          { label: "Weighted maturity", value: `${data.report.maturity?.weightedNow ?? "—"} / 5 (target ${data.report.maturity?.weightedTarget ?? "—"})` },
+          { label: "Assessment coverage", value: `${data.report.traceability?.coveragePct ?? "—"}% of assessable DPDP Act obligations` },
+        ],
+        cta: { text: "Open it in PRISM", url: `${webUrl}/superadmin?company=${data.company.id}` },
+      }),
+    }).catch(err => console.error("[superadmin/gap-report] sendEmail error:", err.message));
+  }
+}));
+
+// GET /api/superadmin/companies/:id/self-assessment/submissions
+// The raw responses each user in the company filled in, with question text resolved.
+router.get("/companies/:id/self-assessment/submissions", authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const companyResult = await query(
+    `SELECT id, name, self_assessment_completed_at, self_assessment_all_departments_at,
+            self_assessment_departments
+     FROM companies WHERE id = $1`,
+    [id]
+  );
+  const company = mapRow(companyResult);
+  if (!company) return res.status(404).json({ error: "Company not found" });
+
+  const result = await query(
+    `SELECT s.department, s.answers, s.submitted_at, s.user_email,
+            COALESCE(u.full_name, s.user_email) AS user_name, u.role AS user_role
+     FROM self_assessment_submissions s
+     LEFT JOIN users u ON u.id = s.user_id
+     WHERE s.company_id = $1
+     ORDER BY s.department, COALESCE(u.full_name, s.user_email)`,
+    [id]
+  );
+
+  const deptStatus = departmentStatus(
+    company.selfAssessmentDepartments,
+    result.rows.map(r => r.department)
+  );
+
+  // For each department still missing a submission, surface who (if anyone) it
+  // was delegated to via the self-assessment collaborator invites.
+  let pendingDepartments = [];
+  if (deptStatus.missing.length > 0) {
+    const inv = await query(
+      `SELECT department, email, accepted_at, created_at
+       FROM invitations
+       WHERE company_id = $1 AND department IS NOT NULL
+       ORDER BY created_at`,
+      [id]
+    );
+    const byDept = {};
+    for (const row of inv.rows) {
+      const key = String(row.department).trim().toLowerCase();
+      (byDept[key] ||= []).push({
+        email: row.email,
+        invitedAt: row.created_at,
+        acceptedAt: row.accepted_at,
+      });
+    }
+    pendingDepartments = deptStatus.missing.map(dept => ({
+      department: dept,
+      assignees: byDept[dept.trim().toLowerCase()] || [],
+    }));
+  }
+
+  const ANSWER_LABELS = { YES: "Yes", PARTIAL: "Partial", NO: "No", NA: "N/A" };
+  const submissions = result.rows.map(r => {
+    const answers = r.answers || {};
+    const items = expandQuestions(deptQuestionBase(r.department), answers).map(q => ({
+      id: q.id,
+      section: q.section || null,
+      text: q.text,
+      answer: answers[q.id] || null,
+      answerLabel: answers[q.id] ? (ANSWER_LABELS[answers[q.id]] || answers[q.id]) : "Not answered",
+    }));
+    const answered = items.filter(i => i.answer).length;
+    return {
+      department: r.department,
+      userName: r.user_name,
+      userEmail: r.user_email,
+      role: r.user_role || null,
+      submittedAt: r.submitted_at,
+      answeredCount: answered,
+      totalCount: items.length,
+      items,
+    };
+  });
+
+  res.json({
+    company: { id: company.id, name: company.name },
+    completedAt: company.selfAssessmentCompletedAt,
+    allDepartmentsAt: company.selfAssessmentAllDepartmentsAt,
+    departmentStatus: deptStatus,
+    pendingDepartments,
+    respondentCount: new Set(result.rows.map(r => r.user_email)).size,
+    submissions,
+  });
 }));
 
 export default router;

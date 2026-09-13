@@ -33,6 +33,7 @@ export const adminTests = [
     failTitle: "Too many users hold admin or delegated admin privileges",
     severityDefault: "high",
     isoReferences: ["A.9.2.3"],
+    dpdpaControlAreas: ["Privileged Access Management"],
     run: (clients) => checkSuperAdminRoleReviewed(clients.directory, clients.customerId),
   },
 ];

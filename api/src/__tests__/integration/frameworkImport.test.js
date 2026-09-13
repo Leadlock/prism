@@ -319,6 +319,12 @@ describe("evidence AI analysis on the shared vault item", () => {
   async function seedEvidence(domain) {
     const company = await createCompany({ domain });
     const admin = await createUser(company.id, "ADMIN");
+    // AI is opt-in per company — enable it for the analysis endpoints under test.
+    await query(
+      `INSERT INTO company_settings (company_id, ai_enabled) VALUES ($1, TRUE)
+       ON CONFLICT (company_id) DO UPDATE SET ai_enabled = TRUE`,
+      [company.id]
+    );
     await query(`INSERT INTO modules (module_id, company_id, name) VALUES ('M1', $1, 'Module 1')`, [company.id]);
     await query(
       `INSERT INTO questions (quest_id, company_id, module_id, control_area, baseline_question, required_evidence, priority)

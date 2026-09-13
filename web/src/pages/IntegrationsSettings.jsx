@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { FaAws, FaMicrosoft, FaGithub } from "react-icons/fa";
+import { FaAws, FaMicrosoft, FaGithub, FaUserShield, FaTicketAlt, FaShieldAlt, FaCrow, FaSalesforce, FaHdd, FaNetworkWired } from "react-icons/fa";
 import { SiZoho, SiGoogle, SiGooglecloud } from "react-icons/si";
 import { apiFetch } from "../api/client.js";
 import CredentialFields from "../components/CredentialFields.jsx";
@@ -25,19 +25,54 @@ const PROVIDER_ICON = {
   microsoft_defender: { Icon: FaMicrosoft, color: "#0D6EFD" },
   google_workspace: { Icon: SiGoogle, color: "#4285F4" },
   gcp: { Icon: SiGooglecloud, color: "#4285F4" },
+  onetrust: { Icon: FaUserShield, color: "#24B47E" },
+  servicenow: { Icon: FaTicketAlt, color: "#293E40" },
+  privy: { Icon: FaShieldAlt, color: "#2D6DF6" },
+  crowdstrike: { Icon: FaCrow, color: "#FC0000" },
+  salesforce: { Icon: FaSalesforce, color: "#00A1E0" },
+  acronis: { Icon: FaHdd, color: "#0068B7" },
+  commvault: { Icon: FaHdd, color: "#CC0000" },
+  carbonite: { Icon: FaHdd, color: "#8DC63F" },
+  "carbonite-server": { Icon: FaHdd, color: "#6DBE45" },
+  sophos: { Icon: FaShieldAlt, color: "#0A2E57" },
+  check_point_mgmt: { Icon: FaShieldAlt, color: "#E5261F" },
+  check_point: { Icon: FaShieldAlt, color: "#E5261F" },
+  check_point_cloudguard: { Icon: FaShieldAlt, color: "#E5261F" },
+  akamai: { Icon: FaNetworkWired, color: "#0099CC" },
+};
+
+// CrowdStrike Falcon regions are fully separate API hosts with no cross-region
+// routing — the region is captured explicitly and its base URL stored alongside
+// (rather than derived at call time) so a tenant's region is unambiguous.
+const CROWDSTRIKE_REGION_BASE_URLS = {
+  "us-1": "https://api.crowdstrike.com",
+  "us-2": "https://api.us-2.crowdstrike.com",
+  "eu-1": "https://api.eu-1.crowdstrike.com",
+  "us-gov-1": "https://api.laggar.gcw.crowdstrike.com",
+  "us-gov-2": "https://api.us-gov-2.crowdstrike.mil",
+};
+
+// Check Point Infinity Portal regional gateways — an API key only authenticates
+// against the gateway for its region, so the resolved URL is stored explicitly.
+const CHECK_POINT_REGION_GATEWAYS = {
+  eu: "https://cloudinfra-gw.portal.checkpoint.com",
+  us: "https://cloudinfra-gw-us.portal.checkpoint.com",
+  ap: "https://cloudinfra-gw-ap.portal.checkpoint.com",
 };
 
 // Display order for known categories; anything else falls back to
 // alphabetical after these, so a new connector's category never needs a
 // code change here to show up — it just lands at the end.
-const CATEGORY_ORDER = ["cloud", "devops", "identity", "collaboration", "endpoint_security", "data_governance", "business_apps"];
+const CATEGORY_ORDER = ["cloud", "devops", "identity", "collaboration", "endpoint_security", "network_security", "data_governance", "backup", "business_apps"];
 const CATEGORY_LABEL = {
   cloud: "Cloud",
   devops: "DevOps",
   identity: "Identity",
   collaboration: "Collaboration",
   endpoint_security: "Endpoint Security",
+  network_security: "Network Security",
   data_governance: "Data Governance",
+  backup: "Backup & Recovery",
   business_apps: "Business Apps",
 };
 
@@ -291,6 +326,877 @@ function ZohoWalkthrough({ token, dataCenter, setDataCenter, orgId, setOrgId }) 
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function OneTrustWalkthrough({ token, hostname, setHostname }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/onetrust/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const scopeString = (setupInfo?.scopes || []).map(s => s.scope).join(" ");
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        <li>In OneTrust, go to <strong>Global Settings → Access Management → Client Credentials</strong> and create a new Client Credential (as a OneTrust admin).</li>
+        <li>Grant it the read scopes below — one per module Prism audits. A module whose scope is missing is simply skipped (its checks report <em>not applicable</em>).</li>
+        <li>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong>.</li>
+        <li>Enter your OneTrust <strong>hostname</strong> (the tenant domain you sign in with) below, paste the Client ID and Client Secret, and click Connect.</li>
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <div className="form-group">
+        <label htmlFor="onetrust-hostname">OneTrust hostname</label>
+        <input
+          id="onetrust-hostname"
+          required
+          value={hostname}
+          onChange={e => setHostname(e.target.value)}
+          placeholder={setupInfo?.hostnameHint ? "acme.my.onetrust.com" : "acme.my.onetrust.com"}
+        />
+        {setupInfo?.hostnameHint && (
+          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.hostnameHint}</div>
+        )}
+      </div>
+
+      {setupInfo?.scopes && (
+        <div style={{ marginBottom: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>Read scopes to grant on the Client Credential</div>
+          <ul style={{ fontSize: 11, color: "var(--text2)", margin: "0 0 8px", paddingLeft: 16, lineHeight: 1.6 }}>
+            {setupInfo.scopes.map(s => (
+              <li key={s.scope}><code>{s.scope}</code> — {s.note}</li>
+            ))}
+          </ul>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <textarea
+              readOnly
+              value={scopeString}
+              rows={2}
+              style={{ flex: 1, fontSize: 11, fontFamily: "monospace", padding: 6, borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text1)", resize: "vertical" }}
+            />
+            <CopyButton text={scopeString} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ServiceNowWalkthrough({ token, instanceUrl, setInstanceUrl }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/servicenow/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const tableString = (setupInfo?.tables || []).map(t => t.table).join("\n");
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        <li>In ServiceNow, confirm the system property <code>glide.oauth.inbound.client.credential.grant_type.enabled</code> is <strong>true</strong>.</li>
+        <li>Under <strong>System OAuth → Application Registry</strong>, create <em>"an OAuth API endpoint for external clients"</em> (leave Client ID / Secret to auto-generate, do not enable Public Client).</li>
+        <li>Create a dedicated integration user with <strong>Web service access only</strong> checked, and set it as the <strong>OAuth Application User</strong> on the registry record.</li>
+        <li>Grant that user <code>snc_platform_rest_api_access</code> plus a read-only role covering the tables below. A table its roles can't read is skipped (those checks report <em>not applicable</em>).</li>
+        <li>Enter the instance base URL below, paste the Client ID and Client Secret, and click Connect.</li>
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <div className="form-group">
+        <label htmlFor="servicenow-instance-url">ServiceNow instance URL</label>
+        <input
+          id="servicenow-instance-url"
+          required
+          value={instanceUrl}
+          onChange={e => setInstanceUrl(e.target.value)}
+          placeholder="acme.service-now.com"
+        />
+        {setupInfo?.instanceUrlHint && (
+          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.instanceUrlHint}</div>
+        )}
+      </div>
+
+      {setupInfo?.roleHint && (
+        <div style={{ fontSize: 11, color: "var(--text2)", marginBottom: 10, lineHeight: 1.6 }}>{setupInfo.roleHint}</div>
+      )}
+
+      {setupInfo?.tables && (
+        <div style={{ marginBottom: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>Tables the integration user must be able to read</div>
+          <ul style={{ fontSize: 11, color: "var(--text2)", margin: "0 0 8px", paddingLeft: 16, lineHeight: 1.6 }}>
+            {setupInfo.tables.map(t => (
+              <li key={t.table}><code>{t.table}</code> — {t.note}</li>
+            ))}
+          </ul>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <textarea
+              readOnly
+              value={tableString}
+              rows={3}
+              style={{ flex: 1, fontSize: 11, fontFamily: "monospace", padding: 6, borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text1)", resize: "vertical" }}
+            />
+            <CopyButton text={tableString} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CrowdStrikeWalkthrough({ token, cloudRegion, setCloudRegion }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/crowdstrike/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const regions = setupInfo?.regions || [
+    { value: "us-1", label: "US-1 (falcon.crowdstrike.com)" },
+    { value: "us-2", label: "US-2 (falcon.us-2.crowdstrike.com)" },
+    { value: "eu-1", label: "EU-1 (falcon.eu-1.crowdstrike.com)" },
+    { value: "us-gov-1", label: "US-GOV-1 (falcon.laggar.gcw.crowdstrike.com)" },
+    { value: "us-gov-2", label: "US-GOV-2 (falcon.us-gov-2.crowdstrike.mil)" },
+  ];
+  const scopeString = (setupInfo?.scopes || []).map(s => s.scope).join("\n");
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        <li>In the Falcon console, go to <strong>Support and resources → API Clients and Keys</strong> and click <strong>Add new API client</strong> (e.g. name it "Prism Compliance Reader").</li>
+        <li>Grant only the <strong>read</strong> scopes below — nothing broader. A scope you leave off simply skips that check (it reports <em>not applicable</em>).</li>
+        <li>Save, then copy the <strong>Client ID</strong> and <strong>Client Secret</strong> — CrowdStrike shows the secret only once.</li>
+        <li>Select your Falcon <strong>region</strong> below, paste the Client ID and Client Secret, and click Connect.</li>
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <div className="form-group">
+        <label htmlFor="crowdstrike-region">Falcon cloud region</label>
+        <select
+          id="crowdstrike-region"
+          required
+          value={cloudRegion}
+          onChange={e => setCloudRegion(e.target.value)}
+        >
+          {regions.map(r => (
+            <option key={r.value} value={r.value}>{r.label}</option>
+          ))}
+        </select>
+        {setupInfo?.regionHint && (
+          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.regionHint}</div>
+        )}
+      </div>
+
+      {setupInfo?.scopes && (
+        <div style={{ marginBottom: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>Read scopes to grant on the API client</div>
+          <ul style={{ fontSize: 11, color: "var(--text2)", margin: "0 0 8px", paddingLeft: 16, lineHeight: 1.6 }}>
+            {setupInfo.scopes.map(s => (
+              <li key={s.scope}><code>{s.scope}</code> — {s.note}</li>
+            ))}
+          </ul>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <textarea
+              readOnly
+              value={scopeString}
+              rows={3}
+              style={{ flex: 1, fontSize: 11, fontFamily: "monospace", padding: 6, borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text1)", resize: "vertical" }}
+            />
+            <CopyButton text={scopeString} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SophosWalkthrough({ token }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/sophos/setup-info", { token })
+      .then(setSetupInfo)
+      .catch((error) => setSetupError(error.message));
+  }, [token]);
+
+  const steps = setupInfo?.steps || [
+    "In Sophos Central Admin, open Global Settings > API Credentials and add a credential.",
+    "Assign the narrowest read-only service-principal role covering the products to audit.",
+    "Copy the Client ID and Client Secret shown at creation time.",
+    "Paste both values below. Prism discovers the tenant and regional API host automatically.",
+  ];
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 10px", paddingLeft: 18, lineHeight: 1.6 }}>
+        {steps.map((step, index) => <li key={index}>{step}</li>)}
+      </ol>
+      {setupInfo?.roleHint && <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>{setupInfo.roleHint}</div>}
+      {setupInfo?.scopeNote && <div style={{ fontSize: 11, color: "var(--text3)" }}>{setupInfo.scopeNote}</div>}
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Could not load setup info: {setupError}</p>}
+    </div>
+  );
+}
+
+// Check Point Security Management — administrator API key, read-only session.
+function CheckPointMgmtWalkthrough({ token, mgmtUrl, setMgmtUrl, deployment, setDeployment, apiKey, setApiKey }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/check_point_mgmt/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const steps = setupInfo?.steps || [
+    "In SmartConsole, create a read-only administrator and generate an API key, then Publish.",
+    "Self-managed: allow the Management API to accept requests from Prism. Smart-1 Cloud: copy the tenant service URL from the Infinity Portal.",
+    "Paste the Management URL and the administrator API key below.",
+  ];
+  const deployments = setupInfo?.deployments || [
+    { value: "self_managed", label: "Self-managed Security Management server" },
+    { value: "smart1_cloud", label: "Smart-1 Cloud (Check Point hosted)" },
+  ];
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        {steps.map((s, i) => <li key={i}>{s}</li>)}
+      </ol>
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <div className="form-group">
+        <label htmlFor="cpm-deployment">Deployment</label>
+        <select id="cpm-deployment" value={deployment} onChange={e => setDeployment(e.target.value)}>
+          {deployments.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+        </select>
+      </div>
+      <div className="form-group">
+        <label htmlFor="cpm-url">Management URL</label>
+        <input id="cpm-url" required value={mgmtUrl} onChange={e => setMgmtUrl(e.target.value)} placeholder="https://mgmt.example.com" />
+        {setupInfo?.mgmtUrlHint && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.mgmtUrlHint}</div>}
+      </div>
+      <div className="form-group">
+        <label htmlFor="cpm-key">Administrator API key</label>
+        <input id="cpm-key" type="password" required value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Paste the generated API key" />
+        {setupInfo?.roleHint && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.roleHint}</div>}
+      </div>
+    </div>
+  );
+}
+
+// Check Point Infinity — one Infinity Portal API key pair (covers every service).
+function CheckPointWalkthrough({ token, region, setRegion, clientId, setClientId, accessKey, setAccessKey }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/check_point/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const steps = setupInfo?.steps || [
+    "In the Infinity Portal, open Global Settings > API Keys > New and create a key covering Logs/Events, XDR/XPR and Endpoint (a user key), or one key per service.",
+    "Copy the Client ID and Secret Key, and note your Infinity Portal region.",
+    "Select the region and paste the pair below.",
+  ];
+  const regions = setupInfo?.regions || [
+    { value: "eu", label: "EU (cloudinfra-gw.portal.checkpoint.com)" },
+    { value: "us", label: "US (cloudinfra-gw-us.portal.checkpoint.com)" },
+    { value: "ap", label: "AP (cloudinfra-gw-ap.portal.checkpoint.com)" },
+  ];
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        {steps.map((s, i) => <li key={i}>{s}</li>)}
+      </ol>
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <div className="form-group">
+        <label htmlFor="cp-region">Infinity Portal region</label>
+        <select id="cp-region" required value={region} onChange={e => setRegion(e.target.value)}>
+          {regions.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+        </select>
+        {setupInfo?.regionHint && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.regionHint}</div>}
+      </div>
+      <div className="form-group">
+        <label htmlFor="cp-client-id">Client ID</label>
+        <input id="cp-client-id" required value={clientId} onChange={e => setClientId(e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label htmlFor="cp-access-key">Secret Key</label>
+        <input id="cp-access-key" type="password" required value={accessKey} onChange={e => setAccessKey(e.target.value)} />
+      </div>
+      {setupInfo?.services && (
+        <ul style={{ fontSize: 11, color: "var(--text2)", margin: "4px 0 0", paddingLeft: 16, lineHeight: 1.6 }}>
+          {setupInfo.services.map(s => <li key={s.service}><strong>{s.label}</strong> — {s.note}</li>)}
+        </ul>
+      )}
+      {setupInfo?.scopeNote && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 6 }}>{setupInfo.scopeNote}</div>}
+    </div>
+  );
+}
+
+// Check Point CloudGuard (Dome9) — API key id + secret, HTTP Basic auth.
+function CheckPointCloudguardWalkthrough({ token, dataCenter, setDataCenter, keyId, setKeyId, keySecret, setKeySecret }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/check_point_cloudguard/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const steps = setupInfo?.steps || [
+    "In the CloudGuard console, open Settings > Credentials and create an API key with a read-only role.",
+    "Copy the API Key ID and Secret (shown once).",
+    "Select your data centre (Settings > Account Info) and paste the key id and secret below.",
+  ];
+  const dataCenters = setupInfo?.dataCenters || [
+    { value: "us", label: "US (api.dome9.com)" },
+    { value: "eu", label: "EU (api.eu1.dome9.com)" },
+    { value: "ap1", label: "AP1 – Sydney" },
+    { value: "ap2", label: "AP2 – Singapore" },
+    { value: "ap3", label: "AP3 – Mumbai" },
+    { value: "ca", label: "Canada" },
+  ];
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        {steps.map((s, i) => <li key={i}>{s}</li>)}
+      </ol>
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <div className="form-group">
+        <label htmlFor="cg-dc">Data centre</label>
+        <select id="cg-dc" required value={dataCenter} onChange={e => setDataCenter(e.target.value)}>
+          {dataCenters.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+        </select>
+        {setupInfo?.dataCenterHint && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.dataCenterHint}</div>}
+      </div>
+      <div className="form-group">
+        <label htmlFor="cg-key-id">API Key ID</label>
+        <input id="cg-key-id" required value={keyId} onChange={e => setKeyId(e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label htmlFor="cg-key-secret">API Key Secret</label>
+        <input id="cg-key-secret" type="password" required value={keySecret} onChange={e => setKeySecret(e.target.value)} />
+      </div>
+    </div>
+  );
+}
+
+function AcronisWalkthrough({ token, datacenterUrl, setDatacenterUrl }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/acronis/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const steps = setupInfo?.steps || [
+    "In the Cyber Protect Cloud management console, go to Settings → API clients and click Create API client.",
+    "Assign it a Read-only administrator role (Acronis has no per-endpoint scopes).",
+    "Save, then copy the Client ID and Client secret — the secret is shown only once.",
+    "Copy your data-center URL from the browser address bar (e.g. https://us5-cloud.acronis.com), then paste all three below.",
+  ];
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        {steps.map((s, i) => <li key={i}>{s}</li>)}
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      {setupInfo?.modules && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>Modules Prism reads</div>
+          <ul style={{ fontSize: 11, color: "var(--text2)", margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>
+            {setupInfo.modules.map(m => (
+              <li key={m.module}><strong>{m.module}</strong> — {m.note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="form-group">
+        <label htmlFor="conn-acronis-dc">Data center URL</label>
+        <input
+          id="conn-acronis-dc"
+          required
+          value={datacenterUrl}
+          onChange={e => setDatacenterUrl(e.target.value)}
+          placeholder="https://us5-cloud.acronis.com"
+        />
+        {setupInfo?.datacenterUrlHint && (
+          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.datacenterUrlHint}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Carbonite Server Backup (self-hosted) — its OData "API - Monitoring" component
+// authenticates via a Keycloak client the customer registers with the vendor's
+// setup script. Config is { apiDomain, keycloakRealm }; the Client ID / Client
+// secret are collected by the shared <CredentialFields> below this walkthrough.
+function CarboniteServerWalkthrough({ token, apiDomain, setApiDomain, keycloakRealm, setKeycloakRealm }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/carbonite-server/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const steps = setupInfo?.steps || [
+    "On the server running the Carbonite Server Backup \"API - Monitoring\" component, run the vendor-supplied Keycloak client-registration script.",
+    "Register the client at the \"Reseller\" access level, scoped to the single company you want Prism to monitor.",
+    "Copy the generated Client ID and Client secret — the secret is shown only once.",
+    "Open the API's Swagger UI (https://<your-api-host>/monitoring/swaggerui/index) once to confirm the host is reachable, and note the Keycloak realm name.",
+    "Paste the API host, the Keycloak realm, and the Client ID / Client secret below.",
+  ];
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        {steps.map((s, i) => <li key={i}>{s}</li>)}
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      {setupInfo?.accessLevels && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>
+            Access levels{setupInfo.recommendedAccessLevel ? ` — use ${setupInfo.recommendedAccessLevel}` : ""}
+          </div>
+          <ul style={{ fontSize: 11, color: "var(--text2)", margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>
+            {setupInfo.accessLevels.map(a => (
+              <li key={a.level}><strong>{a.level}</strong> — {a.note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="form-group">
+        <label htmlFor="conn-cs-apidomain">API host</label>
+        <input
+          id="conn-cs-apidomain"
+          required
+          value={apiDomain}
+          onChange={e => setApiDomain(e.target.value)}
+          placeholder="https://backup.example.com"
+        />
+        {setupInfo?.apiDomainHint && (
+          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.apiDomainHint}</div>
+        )}
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="conn-cs-realm">Keycloak realm</label>
+        <input
+          id="conn-cs-realm"
+          required
+          value={keycloakRealm}
+          onChange={e => setKeycloakRealm(e.target.value)}
+          placeholder="carbonite"
+        />
+        {setupInfo?.keycloakRealmHint && (
+          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.keycloakRealmHint}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SalesforceWalkthrough({
+  token,
+  loginUrl, setLoginUrl,
+  sfClientId, setSfClientId,
+  username, setUsername,
+  apiVersion, setApiVersion,
+  privateKey, setPrivateKey,
+}) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/salesforce/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const steps = setupInfo?.steps || [
+    "Generate an RSA keypair locally (openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 -keyout salesforce.key -out salesforce.crt).",
+    "In Salesforce Setup > App Manager, create a New Connected App: enable OAuth, set any callback URL, and upload salesforce.crt under \"Use digital signatures\".",
+    "Select the OAuth scopes \"api\" and \"refresh_token, offline_access\" — nothing broader.",
+    "Save, wait for propagation, then set Permitted Users to \"Admin approved users are pre-authorized\" and pre-authorize the integration user's profile/permission set.",
+    "Copy the Consumer Key (Client ID) and paste the contents of salesforce.key as the private key below.",
+  ];
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect (OAuth 2.0 JWT Bearer flow)</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        {steps.map((s, i) => <li key={i}>{s}</li>)}
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      {setupInfo?.permissions && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>Read-only permission set for the integration user</div>
+          <ul style={{ fontSize: 11, color: "var(--text2)", margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>
+            {setupInfo.permissions.map(p => (
+              <li key={p.permission}><code>{p.permission}</code> — {p.note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="form-group">
+        <label htmlFor="sf-login-url">My Domain login URL</label>
+        <input id="sf-login-url" required value={loginUrl} onChange={e => setLoginUrl(e.target.value)} placeholder="https://acme.my.salesforce.com" />
+        {setupInfo?.loginUrlHint && (
+          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.loginUrlHint}</div>
+        )}
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="sf-client-id">Consumer Key (Client ID)</label>
+        <input id="sf-client-id" required value={sfClientId} onChange={e => setSfClientId(e.target.value)} placeholder="3MVG9…" />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="sf-username">Integration user username</label>
+        <input id="sf-username" required value={username} onChange={e => setUsername(e.target.value)} placeholder="prism-integration@acme.com" />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="sf-api-version">API version <span style={{ color: "var(--text3)", fontWeight: 400 }}>(optional)</span></label>
+        <input id="sf-api-version" value={apiVersion} onChange={e => setApiVersion(e.target.value)} placeholder="v61.0" />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="sf-private-key">Private key (contents of salesforce.key)</label>
+        <textarea
+          id="sf-private-key"
+          required
+          value={privateKey}
+          onChange={e => setPrivateKey(e.target.value)}
+          rows={4}
+          placeholder={"-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----"}
+          style={{ fontSize: 11, fontFamily: "monospace", resize: "vertical" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PrivyWalkthrough({ token, baseUrl, setBaseUrl }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/privy/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        <li>In Privy, go to <strong>Settings → API Keys</strong> and issue a read-only API key (or ask your IDfy account team).</li>
+        <li>The key is scoped to the modules your tenant has licensed — a module Prism audits that the key can't reach is simply skipped (its checks report <em>not applicable</em>).</li>
+        <li>Enter your Privy <strong>tenant domain</strong> below, paste the API key, and click Connect.</li>
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <div className="form-group">
+        <label htmlFor="privy-base-url">Privy tenant domain</label>
+        <input
+          id="privy-base-url"
+          required
+          value={baseUrl}
+          onChange={e => setBaseUrl(e.target.value)}
+          placeholder="acme.privybyidfy.com"
+        />
+        {setupInfo?.baseUrlHint && (
+          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.baseUrlHint}</div>
+        )}
+      </div>
+
+      {setupInfo?.apiKeyHint && (
+        <div style={{ fontSize: 11, color: "var(--text2)", marginBottom: 10, lineHeight: 1.6 }}>{setupInfo.apiKeyHint}</div>
+      )}
+
+      {setupInfo?.modules && (
+        <div style={{ marginBottom: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>Modules Prism audits</div>
+          <ul style={{ fontSize: 11, color: "var(--text2)", margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>
+            {setupInfo.modules.map(m => (
+              <li key={m.module}><strong>{m.module}</strong> — {m.note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CommvaultWalkthrough({ token, webconsoleUrl, setWebconsoleUrl, accessToken, setAccessToken }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/commvault/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const steps = setupInfo?.steps || [
+    "In Command Center, open your user menu (top-right) → Access Tokens, and click Add.",
+    "Set the scope to \"Custom\" and add exactly the API endpoints listed below to the allowlist.",
+    "Generate the token and copy it — it is shown only once.",
+    "Copy your CommCell WebConsole base URL from the browser address bar, then paste both below.",
+  ];
+  const apiEndpoints = setupInfo?.accessTokenSetup?.apiEndpoints || ["/Alerts", "/dashboard", "/StoragePolicy", "/v2/StoragePolicy"];
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        {steps.map((s, i) => <li key={i}>{s}</li>)}
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>Custom-scope API endpoints (paste into the token's allowlist)</div>
+        <code style={{ fontSize: 11, color: "var(--text2)", display: "block", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
+          {apiEndpoints.join("\n")}
+        </code>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="conn-commvault-url">WebConsole base URL</label>
+        <input
+          id="conn-commvault-url"
+          required
+          value={webconsoleUrl}
+          onChange={e => setWebconsoleUrl(e.target.value)}
+          placeholder="https://commvault.example.com"
+        />
+        {setupInfo?.webconsoleUrlHint && (
+          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.webconsoleUrlHint}</div>
+        )}
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="conn-commvault-token">Custom-scope access token</label>
+        <input
+          id="conn-commvault-token"
+          type="password"
+          required
+          value={accessToken}
+          onChange={e => setAccessToken(e.target.value)}
+          placeholder="Paste the generated token"
+        />
+      </div>
+    </div>
+  );
+}
+
+// Akamai — connects with a read-only API client (.edgerc block: host,
+// client_token, client_secret, access_token) plus an optional account switch
+// key for partner-managed accounts. config = { host, accountSwitchKey? };
+// secret = { clientToken, clientSecret, accessToken }.
+function AkamaiWalkthrough({
+  token,
+  host, setHost,
+  clientToken, setClientToken,
+  clientSecret, setClientSecret,
+  accessToken, setAccessToken,
+  accountSwitchKey, setAccountSwitchKey,
+}) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/akamai/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const steps = setupInfo?.steps || [
+    "In Control Center open Identity & Access → API clients and click Create API client.",
+    "Set the client to read-only and grant the four READ-ONLY scopes listed below (grant nothing broader).",
+    "Create credentials and download the .edgerc block — it has host, client_token, client_secret and access_token.",
+    "Paste those four values below. Add the account switch key only if this is a partner-managed account.",
+  ];
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        {steps.map((s, i) => <li key={i}>{s}</li>)}
+      </ol>
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      {setupInfo?.scopes && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>Grant these READ-ONLY scopes</div>
+          <ul style={{ fontSize: 11, color: "var(--text2)", margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>
+            {setupInfo.scopes.map(s => <li key={s}>{s}</li>)}
+          </ul>
+        </div>
+      )}
+      {setupInfo?.controlCenterPath && (
+        <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 10 }}>{setupInfo.controlCenterPath}</div>
+      )}
+
+      <div className="form-group">
+        <label htmlFor="conn-akamai-host">API host</label>
+        <input id="conn-akamai-host" required value={host} onChange={e => setHost(e.target.value)} placeholder="akab-xxxx.luna.akamaiapis.net" />
+        {setupInfo?.hostHint && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.hostHint}</div>}
+      </div>
+      <div className="form-group">
+        <label htmlFor="conn-akamai-client-token">Client token</label>
+        <input id="conn-akamai-client-token" required value={clientToken} onChange={e => setClientToken(e.target.value)} placeholder="akab-…" />
+      </div>
+      <div className="form-group">
+        <label htmlFor="conn-akamai-client-secret">Client secret</label>
+        <input id="conn-akamai-client-secret" type="password" required value={clientSecret} onChange={e => setClientSecret(e.target.value)} placeholder="Paste the client_secret value" />
+      </div>
+      <div className="form-group">
+        <label htmlFor="conn-akamai-access-token">Access token</label>
+        <input id="conn-akamai-access-token" type="password" required value={accessToken} onChange={e => setAccessToken(e.target.value)} placeholder="akab-…" />
+      </div>
+      <div className="form-group">
+        <label htmlFor="conn-akamai-ask">Account switch key <span style={{ color: "var(--text3)" }}>(optional — partner-managed accounts only)</span></label>
+        <input id="conn-akamai-ask" value={accountSwitchKey} onChange={e => setAccountSwitchKey(e.target.value)} placeholder="1-ABCDEF:1-ABCDE" />
+      </div>
+    </div>
+  );
+}
+
+// OpenText Carbonite Core Endpoint Backup — connects with a dashboard-generated
+// API key (used as the SOAP CallingContext token) + the account email + the
+// dashboard host. Ships beta: the SOAP wire format is unverified.
+function CarboniteWalkthrough({ token, dashboardHost, setDashboardHost, email, setEmail, apiKey, setApiKey }) {
+  const [setupInfo, setSetupInfo] = useState(null);
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/integrations/carbonite/setup-info", { token })
+      .then(setSetupInfo)
+      .catch(e => setSetupError(e.message));
+  }, [token]);
+
+  const steps = setupInfo?.steps || [
+    "In the Core Endpoint Backup dashboard, open Key Management and generate an API key with read access to dashboard / device data.",
+    "Copy the API key (shown only once) and note the account email it belongs to.",
+    "Find your dashboard host from the browser address bar while signed in (e.g. https://dashboard.carbonite.com).",
+    "Paste the dashboard host, account email, and API key below.",
+  ];
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>How to connect</div>
+      <ol style={{ fontSize: 12, color: "var(--text2)", margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+        {steps.map((s, i) => <li key={i}>{s}</li>)}
+      </ol>
+
+      {setupError && <p className="error-text" style={{ fontSize: 12 }}>Couldn't load setup info: {setupError}</p>}
+
+      {setupInfo?.betaNote && (
+        <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 10, fontStyle: "italic" }}>{setupInfo.betaNote}</div>
+      )}
+
+      {setupInfo?.operations && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>Dashboard Service operations Prism reads</div>
+          <ul style={{ fontSize: 11, color: "var(--text2)", margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>
+            {setupInfo.operations.map(o => (
+              <li key={o.operation}><strong>{o.operation}</strong> — {o.note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="form-group">
+        <label htmlFor="conn-carbonite-host">Dashboard host</label>
+        <input
+          id="conn-carbonite-host"
+          required
+          value={dashboardHost}
+          onChange={e => setDashboardHost(e.target.value)}
+          placeholder="https://dashboard.carbonite.com"
+        />
+        {setupInfo?.dashboardHostHint && (
+          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{setupInfo.dashboardHostHint}</div>
+        )}
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="conn-carbonite-email">Account email</label>
+        <input
+          id="conn-carbonite-email"
+          type="email"
+          required
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          placeholder="admin@yourcompany.com"
+        />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="conn-carbonite-key">API key</label>
+        <input
+          id="conn-carbonite-key"
+          type="password"
+          required
+          value={apiKey}
+          onChange={e => setApiKey(e.target.value)}
+          placeholder="Paste the generated API key"
+        />
+      </div>
     </div>
   );
 }
@@ -602,6 +1508,53 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
   const [dataCenter, setDataCenter] = useState("com");
   const [orgId, setOrgId] = useState("");
   const [refreshToken, setRefreshToken] = useState("");
+  // OneTrust-specific state (tenant hostname; client id/secret reuse the generic fields)
+  const [hostname, setHostname] = useState("");
+  // ServiceNow-specific state (instance base URL; client id/secret reuse the generic fields)
+  const [instanceUrl, setInstanceUrl] = useState("");
+  // CrowdStrike-specific state (Falcon cloud region; client id/secret reuse the generic fields)
+  const [cloudRegion, setCloudRegion] = useState("us-1");
+  // Acronis-specific state (Cyber Protect Cloud data-center URL; client id/secret reuse the generic fields)
+  const [datacenterUrl, setDatacenterUrl] = useState("");
+  // Salesforce-specific state (JWT Bearer flow — consumer key + integration
+  // username live in config; the private key is the only secret)
+  const [sfLoginUrl, setSfLoginUrl] = useState("");
+  const [sfClientId, setSfClientId] = useState("");
+  const [sfUsername, setSfUsername] = useState("");
+  const [sfApiVersion, setSfApiVersion] = useState("v61.0");
+  // Privy-specific state (tenant domain + bearer API key)
+  const [privyBaseUrl, setPrivyBaseUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  // Commvault-specific state (CommCell WebConsole base URL + Custom-scope access token)
+  const [cvWebconsoleUrl, setCvWebconsoleUrl] = useState("");
+  const [cvAccessToken, setCvAccessToken] = useState("");
+  // Carbonite Server Backup-specific state (API - Monitoring host + Keycloak realm;
+  // Client ID / secret reuse the shared clientId/clientSecret state below)
+  const [csApiDomain, setCsApiDomain] = useState("");
+  const [csKeycloakRealm, setCsKeycloakRealm] = useState("");
+  // Carbonite Core Endpoint Backup-specific state (SOAP Dashboard host + account
+  // email; the API key reuses the shared apiKey state below)
+  const [cbDashboardHost, setCbDashboardHost] = useState("");
+  const [cbEmail, setCbEmail] = useState("");
+  // Check Point Security Management-specific state (Management URL + deployment;
+  // the administrator API key reuses the shared apiKey state below)
+  const [cpmMgmtUrl, setCpmMgmtUrl] = useState("");
+  const [cpmDeployment, setCpmDeployment] = useState("self_managed");
+  // Check Point Infinity-specific state (region + one Infinity Portal key pair)
+  const [cpRegion, setCpRegion] = useState("eu");
+  const [cpClientId, setCpClientId] = useState("");
+  const [cpAccessKey, setCpAccessKey] = useState("");
+  // Check Point CloudGuard-specific state (data centre + Dome9 key id/secret)
+  const [cgDataCenter, setCgDataCenter] = useState("us");
+  const [cgKeyId, setCgKeyId] = useState("");
+  const [cgKeySecret, setCgKeySecret] = useState("");
+  // Akamai-specific state (.edgerc host + client_token/client_secret/access_token,
+  // plus an optional account switch key for partner-managed accounts)
+  const [akHost, setAkHost] = useState("");
+  const [akClientToken, setAkClientToken] = useState("");
+  const [akClientSecret, setAkClientSecret] = useState("");
+  const [akAccessToken, setAkAccessToken] = useState("");
+  const [akAccountSwitchKey, setAkAccountSwitchKey] = useState("");
   // Google Workspace-specific state (domain-wide delegation service account)
   const [adminEmail, setAdminEmail] = useState("");
   const [customerId, setCustomerId] = useState("");
@@ -645,9 +1598,37 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
     setError("");
     setSubmitting(true);
     try {
-      const config = authType === "oauth2"
+      const config = authType === "api_key"
+        ? provider.key === "commvault"
+          ? { webconsoleUrl: cvWebconsoleUrl }
+          : provider.key === "carbonite"
+          ? { dashboardHost: cbDashboardHost }
+          : provider.key === "check_point_mgmt"
+          ? { mgmtUrl: cpmMgmtUrl, deployment: cpmDeployment }
+          : provider.key === "check_point"
+          ? { region: cpRegion, gatewayUrl: CHECK_POINT_REGION_GATEWAYS[cpRegion] }
+          : provider.key === "check_point_cloudguard"
+          ? { dataCenter: cgDataCenter }
+          : provider.key === "akamai"
+          ? { host: akHost, accountSwitchKey: akAccountSwitchKey || undefined }
+          : { baseUrl: privyBaseUrl }
+        : authType === "oauth2"
         ? provider.key === "zoho"
           ? { dataCenter, orgId }
+          : provider.key === "onetrust"
+          ? { hostname }
+          : provider.key === "servicenow"
+          ? { instanceUrl }
+          : provider.key === "crowdstrike"
+          ? { cloudRegion, baseUrl: CROWDSTRIKE_REGION_BASE_URLS[cloudRegion] }
+          : provider.key === "sophos"
+          ? {}
+          : provider.key === "acronis"
+          ? { datacenterUrl }
+          : provider.key === "carbonite-server"
+          ? { apiDomain: csApiDomain, keycloakRealm: csKeycloakRealm }
+          : provider.key === "salesforce"
+          ? { loginUrl: sfLoginUrl, clientId: sfClientId, username: sfUsername, apiVersion: sfApiVersion || undefined }
           : provider.key === "purview"
             ? { tenantId, purviewAccountName }
             : provider.key === "azure"
@@ -658,12 +1639,28 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                   ? { projectId }
                   : { tenantId }
         : authType === "iam_role" ? { region, roleArn } : { region };
-      const secret = authType === "oauth2"
+      const secret = authType === "api_key"
+        ? provider.key === "commvault"
+          ? { accessToken: cvAccessToken }
+          : provider.key === "carbonite"
+          ? { email: cbEmail, apiKey }
+          : provider.key === "check_point_mgmt"
+          ? { apiKey }
+          : provider.key === "check_point"
+          ? { clientId: cpClientId, accessKey: cpAccessKey }
+          : provider.key === "check_point_cloudguard"
+          ? { keyId: cgKeyId, keySecret: cgKeySecret }
+          : provider.key === "akamai"
+          ? { clientToken: akClientToken, clientSecret: akClientSecret, accessToken: akAccessToken }
+          : { apiKey }
+        : authType === "oauth2"
         ? provider.key === "zoho"
           ? { clientId, clientSecret, refreshToken }
           : provider.key === "google_workspace" || provider.key === "gcp"
             ? { clientEmail, privateKey }
-            : { clientId, clientSecret }
+            : provider.key === "salesforce"
+              ? { privateKey }
+              : { clientId, clientSecret }
         : authType === "iam_role" ? { externalId } : { accessKeyId, secretAccessKey, sessionToken: sessionToken || undefined };
 
       let connection = createdConnection;
@@ -728,7 +1725,8 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                 </div>
               ) : null}
 
-              {provider.key !== "azure" && provider.key !== "github" && provider.key !== "purview" && provider.key !== "zoho" && provider.key !== "google_workspace" && provider.key !== "gcp" &&
+              {provider.key !== "azure" && provider.key !== "github" && provider.key !== "purview" && provider.key !== "zoho" && provider.key !== "onetrust" && provider.key !== "servicenow" && provider.key !== "privy" && provider.key !== "crowdstrike" && provider.key !== "sophos" && provider.key !== "salesforce" && provider.key !== "acronis" && provider.key !== "commvault" && provider.key !== "carbonite" && provider.key !== "carbonite-server" && provider.key !== "google_workspace" && provider.key !== "gcp" &&
+               provider.key !== "check_point_mgmt" && provider.key !== "check_point" && provider.key !== "check_point_cloudguard" && provider.key !== "akamai" &&
                !["entra_id", "microsoft_365", "microsoft_teams", "microsoft_defender"].includes(provider.key) && (
                 <div className="form-group">
                   <label htmlFor="conn-region">Region</label>
@@ -745,6 +1743,59 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                     <input id="conn-role-arn" required value={roleArn} onChange={e => setRoleArn(e.target.value)} />
                   </div>
                 )
+              ) : authType === "api_key" ? (
+                provider.key === "commvault" ? (
+                  <CommvaultWalkthrough
+                    token={token}
+                    webconsoleUrl={cvWebconsoleUrl} setWebconsoleUrl={setCvWebconsoleUrl}
+                    accessToken={cvAccessToken} setAccessToken={setCvAccessToken}
+                  />
+                ) : provider.key === "carbonite" ? (
+                  <CarboniteWalkthrough
+                    token={token}
+                    dashboardHost={cbDashboardHost} setDashboardHost={setCbDashboardHost}
+                    email={cbEmail} setEmail={setCbEmail}
+                    apiKey={apiKey} setApiKey={setApiKey}
+                  />
+                ) : provider.key === "check_point_mgmt" ? (
+                  <CheckPointMgmtWalkthrough
+                    token={token}
+                    mgmtUrl={cpmMgmtUrl} setMgmtUrl={setCpmMgmtUrl}
+                    deployment={cpmDeployment} setDeployment={setCpmDeployment}
+                    apiKey={apiKey} setApiKey={setApiKey}
+                  />
+                ) : provider.key === "check_point" ? (
+                  <CheckPointWalkthrough
+                    token={token}
+                    region={cpRegion} setRegion={setCpRegion}
+                    clientId={cpClientId} setClientId={setCpClientId}
+                    accessKey={cpAccessKey} setAccessKey={setCpAccessKey}
+                  />
+                ) : provider.key === "check_point_cloudguard" ? (
+                  <CheckPointCloudguardWalkthrough
+                    token={token}
+                    dataCenter={cgDataCenter} setDataCenter={setCgDataCenter}
+                    keyId={cgKeyId} setKeyId={setCgKeyId}
+                    keySecret={cgKeySecret} setKeySecret={setCgKeySecret}
+                  />
+                ) : provider.key === "akamai" ? (
+                  <AkamaiWalkthrough
+                    token={token}
+                    host={akHost} setHost={setAkHost}
+                    clientToken={akClientToken} setClientToken={setAkClientToken}
+                    clientSecret={akClientSecret} setClientSecret={setAkClientSecret}
+                    accessToken={akAccessToken} setAccessToken={setAkAccessToken}
+                    accountSwitchKey={akAccountSwitchKey} setAccountSwitchKey={setAkAccountSwitchKey}
+                  />
+                ) : (
+                  <>
+                    <PrivyWalkthrough token={token} baseUrl={privyBaseUrl} setBaseUrl={setPrivyBaseUrl} />
+                    <div className="form-group">
+                      <label htmlFor="conn-api-key">API key</label>
+                      <input id="conn-api-key" type="password" required value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="pk_live_…" />
+                    </div>
+                  </>
+                )
               ) : authType === "oauth2" ? (
                 <>
                   {provider.key === "zoho" ? (
@@ -752,6 +1803,43 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                       token={token}
                       dataCenter={dataCenter} setDataCenter={setDataCenter}
                       orgId={orgId} setOrgId={setOrgId}
+                    />
+                  ) : provider.key === "onetrust" ? (
+                    <OneTrustWalkthrough
+                      token={token}
+                      hostname={hostname} setHostname={setHostname}
+                    />
+                  ) : provider.key === "servicenow" ? (
+                    <ServiceNowWalkthrough
+                      token={token}
+                      instanceUrl={instanceUrl} setInstanceUrl={setInstanceUrl}
+                    />
+                  ) : provider.key === "crowdstrike" ? (
+                    <CrowdStrikeWalkthrough
+                      token={token}
+                      cloudRegion={cloudRegion} setCloudRegion={setCloudRegion}
+                    />
+                  ) : provider.key === "sophos" ? (
+                    <SophosWalkthrough token={token} />
+                  ) : provider.key === "acronis" ? (
+                    <AcronisWalkthrough
+                      token={token}
+                      datacenterUrl={datacenterUrl} setDatacenterUrl={setDatacenterUrl}
+                    />
+                  ) : provider.key === "carbonite-server" ? (
+                    <CarboniteServerWalkthrough
+                      token={token}
+                      apiDomain={csApiDomain} setApiDomain={setCsApiDomain}
+                      keycloakRealm={csKeycloakRealm} setKeycloakRealm={setCsKeycloakRealm}
+                    />
+                  ) : provider.key === "salesforce" ? (
+                    <SalesforceWalkthrough
+                      token={token}
+                      loginUrl={sfLoginUrl} setLoginUrl={setSfLoginUrl}
+                      sfClientId={sfClientId} setSfClientId={setSfClientId}
+                      username={sfUsername} setUsername={setSfUsername}
+                      apiVersion={sfApiVersion} setApiVersion={setSfApiVersion}
+                      privateKey={privateKey} setPrivateKey={setPrivateKey}
                     />
                   ) : provider.key === "purview" ? (
                     <PurviewWalkthrough
@@ -787,7 +1875,7 @@ function AddIntegrationWizard({ provider, token, onClose, onCreated }) {
                       subscriptionId={subscriptionId} setSubscriptionId={setSubscriptionId}
                     />
                   )}
-                  {provider.key !== "google_workspace" && provider.key !== "gcp" && (
+                  {provider.key !== "google_workspace" && provider.key !== "gcp" && provider.key !== "salesforce" && (
                     <CredentialFields
                       authType="oauth2"
                       clientId={clientId} setClientId={setClientId}
@@ -1032,7 +2120,11 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
                 {providers.map(c => {
                   const iconEntry = PROVIDER_ICON[c.key];
-                  const clickable = isLeadOrAdmin && c.status === "active";
+                  // `beta` connectors are fully functional — they carry the badge
+                  // but are still connectable; only `coming_soon` (filtered out
+                  // server-side anyway) and non-admins are non-interactive.
+                  const usable = c.status === "active" || c.status === "beta";
+                  const clickable = isLeadOrAdmin && usable;
                   return (
                     <div
                       key={c.key}
@@ -1041,7 +2133,7 @@ export default function IntegrationsSettings({ token, user, company, onLogout, t
                       style={{
                         padding: 20, minWidth: 160, display: "flex", flexDirection: "column",
                         alignItems: "center", gap: 8, cursor: clickable ? "pointer" : "default",
-                        opacity: c.status === "active" ? 1 : 0.5,
+                        opacity: usable ? 1 : 0.5,
                       }}
                       onClick={() => clickable && setWizardProvider(c)}
                     >

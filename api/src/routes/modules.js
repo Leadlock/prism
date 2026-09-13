@@ -26,7 +26,7 @@ router.get("/", authenticate, asyncHandler(async (req, res) => {
               AND NOT EXISTS (
                 SELECT 1 FROM assessments a
                 WHERE a.quest_id = q.quest_id AND a.company_id = $1
-                  AND a.review_status = 'FINISHED'
+                  AND a.review_status IN ('FINISHED', 'AUDITED')
               )
           )
       ) AS blocked_by_deps

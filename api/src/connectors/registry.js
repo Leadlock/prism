@@ -12,6 +12,20 @@ import * as microsoftTeams from "./microsoft_teams/index.js";
 import * as microsoftDefender from "./microsoft_defender/index.js";
 import * as googleWorkspace from "./google_workspace/index.js";
 import * as gcp from "./gcp/index.js";
+import * as onetrust from "./onetrust/index.js";
+import * as servicenow from "./servicenow/index.js";
+import * as privy from "./privy/index.js";
+import * as crowdstrike from "./crowdstrike/index.js";
+import * as salesforce from "./salesforce/index.js";
+import * as acronis from "./acronis/index.js";
+import * as commvault from "./commvault/index.js";
+import * as carbonite from "./carbonite/index.js";
+import * as carboniteServer from "./carbonite-server/index.js";
+import * as sophos from "./sophos/index.js";
+import * as checkPointMgmt from "./check_point_mgmt/index.js";
+import * as checkPoint from "./check_point/index.js";
+import * as checkPointCloudguard from "./check_point_cloudguard/index.js";
+import * as akamai from "./akamai/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -27,6 +41,20 @@ const connectors = {
   [microsoftDefender.key]: microsoftDefender,
   [googleWorkspace.key]: googleWorkspace,
   [gcp.key]: gcp,
+  [onetrust.key]: onetrust,
+  [servicenow.key]: servicenow,
+  [privy.key]: privy,
+  [crowdstrike.key]: crowdstrike,
+  [salesforce.key]: salesforce,
+  [acronis.key]: acronis,
+  [commvault.key]: commvault,
+  [carbonite.key]: carbonite,
+  [carboniteServer.key]: carboniteServer,
+  [sophos.key]: sophos,
+  [checkPointMgmt.key]: checkPointMgmt,
+  [checkPoint.key]: checkPoint,
+  [checkPointCloudguard.key]: checkPointCloudguard,
+  [akamai.key]: akamai,
 };
 
 function readManifest(connectorKey) {

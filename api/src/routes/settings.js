@@ -298,13 +298,15 @@ router.put("/", authenticate, asyncHandler(async (req, res) => {
     return res.status(403).json({ error: "Admin only" });
   }
 
-  const { primaryColor, aiEnabled } = req.body;
+  // AI is opt-in and superadmin-controlled — ai_enabled is intentionally NOT
+  // writable here (see PATCH /api/superadmin/companies/:id/ai-toggle).
+  const { primaryColor } = req.body;
 
   await query(
-    `INSERT INTO company_settings (company_id, primary_color, ai_enabled) 
-     VALUES ($1, $2, $3) 
-     ON CONFLICT (company_id) DO UPDATE SET primary_color = $2, ai_enabled = $3, updated_at = NOW()`,
-    [companyId, primaryColor || null, aiEnabled || false]
+    `INSERT INTO company_settings (company_id, primary_color)
+     VALUES ($1, $2)
+     ON CONFLICT (company_id) DO UPDATE SET primary_color = $2, updated_at = NOW()`,
+    [companyId, primaryColor || null]
   );
 
   res.json({ success: true });

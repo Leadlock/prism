@@ -52,5 +52,5 @@ export async function checkDiagnosticSettingsCoverKeyResources({ monitor, sql, k
 }
 
 export const monitorTests = [
-  { key: "azure.monitor.diagnostic_settings_cover_key_resources", title: "Diagnostic settings are configured for key resource types", failTitle: "Key resource has no diagnostic settings configured", severityDefault: "medium", isoReferences: ["A.12.4.1"], run: (clients) => checkDiagnosticSettingsCoverKeyResources(clients) },
+  { key: "azure.monitor.diagnostic_settings_cover_key_resources", title: "Diagnostic settings are configured for key resource types", failTitle: "Key resource has no diagnostic settings configured", severityDefault: "medium", isoReferences: ["A.12.4.1"], dpdpaControlAreas: ["Logging & Monitoring"], run: (clients) => checkDiagnosticSettingsCoverKeyResources(clients) },
 ];

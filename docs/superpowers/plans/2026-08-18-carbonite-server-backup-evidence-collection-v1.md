@@ -67,27 +67,64 @@ Unlike Commvault (proxy docs via `cvpysdk`) or Carbonite Core Endpoint (detailed
 
 ---
 
-### Task 1: Schema seed
+### Task 1: Schema seed + multi-framework control mappings
 
-**Files:** Modify `init.sql`; Test: `api/src/__tests__/integration/schema.evidenceCollection.test.js`
+**Files:** Modify `init.sql`; Tests: `api/src/__tests__/integration/schema.evidenceCollection.test.js`, `api/src/__tests__/controlCrosswalk.test.js`
 
+> **Architecture note — this task changed since the plan was first written.** `test_control_mappings` is no longer hand-maintained per connector. At every API boot, `api/src/utils/testDefinitionSync.js` (`syncTestDefinitions()`, called from `api/src/index.js`) reads each connector check object's `isoReferences`, `dpdpaControlAreas`, and optional `frameworkRefs`, and upserts:
+> 1. one `framework = 'ISO27001'` row per `isoReferences` clause;
+> 2. one `framework = 'DPDPA'` row per `dpdpaControlAreas` string (DPDPA matches on `control_area`, not a section ref — see the `testDefinitionSync.js` header);
+> 3. one row per **every other framework Prism supports** — GDPR, SOC2, HIPAA, CIS, PCIDSS, CERTIN — derived generically from each ISO clause via `api/src/utils/controlCrosswalk.js` → `api/src/data/crosswalk/iso27001-annexa-crosswalk.json`, plus any explicit `frameworkRefs` override merged in.
+>
+> So the connector's **JS check objects (Task 5) and its `connector.json` manifest (Task 5) are the real source of truth** for framework coverage. The `init.sql` block below is still added — it keeps a freshly-initialised DB correct before the first sync runs and keeps `schema.evidenceCollection.test.js` green — but it must stay consistent with the JS objects. `registry.js` fails fast on JS-vs-manifest drift; `controlCrosswalk.test.js`'s "drift guard" fails if any check cites an ISO clause absent from the crosswalk JSON.
+
+**Per-check control mapping (use these exact values in Task 5's JS objects, the `connector.json` manifest, and the `init.sql` block):**
+
+| test_key | `isoReferences` | `dpdpaControlAreas` | Derived automatically from the ISO clause(s) |
+|---|---|---|---|
+| `carbonite-server.backup.recent_successful_safeset` | `["A.12.3.1"]` | `["Backup & Recovery"]` | GDPR Art. 32(1)(c) · SOC2 A1.2 · HIPAA §164.308(a)(7)(ii)(A) · CIS 11.2 |
+| `carbonite-server.monitoring.agent_online` | `["A.12.3.1", "A.12.4.1"]` | `["Backup & Recovery", "Logging & Monitoring"]` | GDPR Art. 32(1)(b)+(c) · SOC2 A1.2 + CC7.2 · HIPAA §164.308(a)(7)(ii)(A) + §164.312(b) · CIS 11.2 + 8.2 · PCIDSS 10.2.1 · CERTIN Direction 5 |
+
+Rationale for the second clause on `agent_online`: a silently-offline backup agent is both a monitoring failure (`A.12.4.1`) *and* a direct threat to backup coverage (`A.12.3.1`) — citing both is what pulls PCIDSS + CERTIN onto that check as well as the availability limb of GDPR Art. 32. This mirrors the established precedent: `aws.rds.automated_backups_enabled` uses `A.12.3.1`/`Backup & Recovery`, `aws.cloudtrail.data_events_logged` uses `A.12.4.1`/`Logging & Monitoring`. Both clauses are **already in the crosswalk JSON**, so no `iso27001-annexa-crosswalk.json` edit is required.
+
+> **Coverage note:** `A.12.3.1` (Information backup) currently has no PCIDSS or CERTIN entry in the crosswalk — the curators omit frameworks with "no defensible correspondence" for a clause, and neither PCI DSS nor the CERT-In Directions has a dedicated backup control. So `recent_successful_safeset` lands on ISO27001 + DPDPA + GDPR + SOC2 + HIPAA + CIS (6 of the 8 supported frameworks). Lighting up PCIDSS/CERTIN for pure backup recency would be a **separate, deliberate `iso27001-annexa-crosswalk.json` change** — raise it with the user, don't do it inline here.
+
+Add to `init.sql`, immediately after the existing Salesforce seed block — **match the Commvault/Salesforce block shape exactly**: the `test_control_mappings` seed carries only bare `(test_key, iso_reference)` ISO27001 rows; DPDPA and every other framework are added at boot by `syncTestDefinitions()` from the JS check objects' `dpdpaControlAreas` + `isoReferences`. Framework citations go in the `description` free text.
 ```sql
+-- ===== Carbonite Server Backup connector: catalog seed data =====
+-- OpenText Carbonite Server Backup is the self-hosted product line (distinct from
+-- Carbonite Core Endpoint Backup). This connector runs read-only posture checks
+-- against a customer's install via its OData "API - Monitoring" component
+-- (Keycloak OIDC auth) — recent successful safeset runs and backup-agent
+-- liveness — to evidence information backup (ISO 27001 A.12.3.1; GDPR Art.
+-- 32(1)(c); DPDPA s.8(5); SOC 2 A1.2; HIPAA 164.308(a)(7)(ii)(A); CIS 11.2) and
+-- monitoring (A.12.4.1; PCI DSS 10.2.1; CERT-In Direction 5). Auth is a Keycloak
+-- client (Reseller access level) minted per collection run. Every OData path,
+-- field name and Keycloak realm/endpoint in api/src/connectors/carbonite-server/
+-- is a guess pending live install verification (marked TODO CONFIRM; they
+-- degrade to a visible "error" result) — confirm before this connector leaves
+-- beta.
+
 INSERT INTO integrations (key, name, category, auth_type, status) VALUES
-  ('carbonite-server', 'Carbonite Server Backup', 'backup', 'oauth2', 'active')
+  ('carbonite-server', 'Carbonite Server Backup', 'backup', 'oauth2', 'beta')
 ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO automated_tests (integration_key, test_key, title, description, severity_default, remediation_guidance) VALUES
-  ('carbonite-server', 'carbonite-server.backup.recent_successful_safeset', 'Safesets have a recent successful backup run', 'Checks each monitored safeset''s most recent run completed successfully within the configured policy window.', 'critical', 'Investigate safesets with stale or failed runs in Carbonite Server Backup Director/Portal and remediate the underlying backup job.'),
-  ('carbonite-server', 'carbonite-server.monitoring.agent_online', 'Backup agents are online and checking in', 'Checks every monitored agent has reported in recently, so silent agent failures don''t go unnoticed.', 'high', 'Investigate any agent shown as offline/not-checking-in in Carbonite Server Backup Director/Portal.')
+  ('carbonite-server', 'carbonite-server.backup.recent_successful_safeset', 'Safesets have a recent successful backup run', 'Checks each monitored safeset''s most recent run completed successfully within the configured policy window. ISO 27001 A.12.3.1 (information backup); GDPR Art. 32(1)(c); DPDPA s.8(5) reasonable security safeguards; SOC 2 A1.2; HIPAA 164.308(a)(7)(ii)(A).', 'critical', 'Investigate safesets with stale or failed runs in Carbonite Server Backup Director/Portal and remediate the underlying backup job.'),
+  ('carbonite-server', 'carbonite-server.monitoring.agent_online', 'Backup agents are online and checking in', 'Checks every monitored agent has reported in recently, so silent agent failures don''t go unnoticed. ISO 27001 A.12.3.1 & A.12.4.1; GDPR Art. 32(1)(b)-(c); DPDPA s.8(5); SOC 2 A1.2 & CC7.2; PCI DSS 10.2.1; CERT-In Direction 5.', 'high', 'Investigate any agent shown as offline/not-checking-in in Carbonite Server Backup Director/Portal.')
 ON CONFLICT (test_key) DO NOTHING;
 
+-- Only bare ISO27001 rows here (framework defaults to 'ISO27001'). DPDPA +
+-- GDPR/SOC2/HIPAA/CIS/PCIDSS/CERTIN rows are derived at boot by
+-- syncTestDefinitions() from the JS check objects — see Task 5.
 INSERT INTO test_control_mappings (test_key, iso_reference) VALUES
   ('carbonite-server.backup.recent_successful_safeset', 'A.12.3.1'),
+  ('carbonite-server.monitoring.agent_online', 'A.12.3.1'),
   ('carbonite-server.monitoring.agent_online', 'A.12.4.1')
 ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
 ```
 
-Write the failing schema test first (mirror the existing aws/azure/commvault blocks), then the seed, then verify it passes; commit.
+Write the failing schema test first (mirror the existing aws/azure/commvault blocks), then the seed, then verify it passes. Then run `npx vitest run src/__tests__/controlCrosswalk.test.js` to confirm the drift guard still passes. Commit.
 
 ---
 
@@ -167,7 +204,7 @@ export async function checkRecentSuccessfulSafeset(carbonite) {
 }
 
 export const backupTests = [
-  { key: "carbonite-server.backup.recent_successful_safeset", title: "Safesets have a recent successful backup run", severityDefault: "critical", isoReferences: ["A.12.3.1"], run: (clients) => checkRecentSuccessfulSafeset(clients.carboniteServer) },
+  { key: "carbonite-server.backup.recent_successful_safeset", title: "Safesets have a recent successful backup run", severityDefault: "critical", isoReferences: ["A.12.3.1"], dpdpaControlAreas: ["Backup & Recovery"], run: (clients) => checkRecentSuccessfulSafeset(clients.carboniteServer) },
 ];
 ```
 
@@ -179,13 +216,28 @@ TDD as above: failing test with mocked `carbonite.request` fixtures (pass, fail,
 
 **Files:** Create `api/src/connectors/carbonite-server/tests/monitoring.js`; Test: `connectorsCarboniteServerMonitoring.test.js`
 
-Same structure as Task 3, against `/odata/Agents` (path unconfirmed), checking a placeholder `IsOnline`/`Status` field (unconfirmed — Task 0 item 4), same `not_applicable`/`error` defensive fallbacks. TDD as above.
+Same structure as Task 3, against `/odata/Agents` (path unconfirmed), checking a placeholder `IsOnline`/`Status` field (unconfirmed — Task 0 item 4), same `not_applicable`/`error` defensive fallbacks. TDD as above. The check object carries `isoReferences: ["A.12.3.1", "A.12.4.1"], dpdpaControlAreas: ["Backup & Recovery", "Logging & Monitoring"]` (see Task 1).
 
 ---
 
 ### Task 5: Connector assembly + registry wiring
 
-**Files:** Create `api/src/connectors/carbonite-server/index.js`; Modify `api/src/connectors/registry.js`; Test: `connectorsCarboniteServerIndex.test.js`
+**Files:** Create `api/src/connectors/carbonite-server/index.js`, `api/src/connectors/carbonite-server/connector.json`; Modify `api/src/connectors/registry.js`; Test: `connectorsCarboniteServerIndex.test.js`
+
+> **Manifest required (new since the plan was first written).** `registry.js`'s `validateManifests()` throws at module load if the JS `tests` array and `connector.json`'s `tests` array disagree on keys. Create `api/src/connectors/carbonite-server/connector.json` mirroring `api/src/connectors/crowdstrike/connector.json`:
+> ```json
+> {
+>   "key": "carbonite-server",
+>   "name": "Carbonite Server Backup",
+>   "category": "backup",
+>   "authType": "oauth2",
+>   "tests": [
+>     { "testKey": "carbonite-server.backup.recent_successful_safeset", "title": "Safesets have a recent successful backup run", "severityDefault": "critical", "isoReferences": ["A.12.3.1"] },
+>     { "testKey": "carbonite-server.monitoring.agent_online", "title": "Backup agents are online and checking in", "severityDefault": "high", "isoReferences": ["A.12.3.1", "A.12.4.1"] }
+>   ]
+> }
+> ```
+> Tasks 3–4's `tests` array entries **must carry `isoReferences` and `dpdpaControlAreas`** exactly as tabulated in Task 1 — `recent_successful_safeset` → `isoReferences: ["A.12.3.1"], dpdpaControlAreas: ["Backup & Recovery"]`; `agent_online` → `isoReferences: ["A.12.3.1", "A.12.4.1"], dpdpaControlAreas: ["Backup & Recovery", "Logging & Monitoring"]`. `syncTestDefinitions()` reads those two fields at boot to seed ISO27001 + DPDPA + all crosswalk frameworks. No `frameworkRefs` override needed.
 
 ```js
 export const key = "carbonite-server";

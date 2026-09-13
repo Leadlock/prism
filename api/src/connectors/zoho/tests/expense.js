@@ -84,6 +84,7 @@ export const expenseTests = [
     failTitle: "Expense approval policy may allow self-approval",
     severityDefault: "medium",
     isoReferences: ["A.6.1.2"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkApprovalPolicyEnforced(clients),
   },
   {
@@ -92,6 +93,7 @@ export const expenseTests = [
     failTitle: "Expense records or receipts may be auto-deleted before the required retention period",
     severityDefault: "medium",
     isoReferences: ["A.18.1.3"],
+    dpdpaControlAreas: ["Retention Schedule"],
     run: (clients) => checkReceiptDataRetention(clients),
   },
   {
@@ -100,6 +102,7 @@ export const expenseTests = [
     failTitle: "Corporate card numbers may not be fully masked",
     severityDefault: "high",
     isoReferences: ["A.8.2.3"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkCardDataMasking(clients),
   },
 ];

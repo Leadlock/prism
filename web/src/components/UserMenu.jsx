@@ -9,6 +9,7 @@ export default function UserMenu({
   onLogout,
   isVerified,
   onResetLayout,
+  onReviewLocked,
   align = "right",
 }) {
   const [open, setOpen] = useState(false);
@@ -110,7 +111,8 @@ export default function UserMenu({
                 className="dash-menu-item"
                 onClick={() => {
                   setOpen(false);
-                  navigate("/review");
+                  if (isVerified === false && onReviewLocked) onReviewLocked();
+                  else navigate("/review");
                 }}
               >
                 <span className="dash-menu-item-icon">

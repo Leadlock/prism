@@ -9,6 +9,42 @@ const VALID_PRIORITIES = ["Critical", "High", "Medium", "Low"];
 
 const router = Router();
 
+// Ensure a tenant-specific row exists for quest_id under companyId, creating one
+// from the global canonical row (company_id IS NULL) if the tenant has no copy
+// yet. ADMIN/LEAD writes must always land on a tenant-owned row, never on the
+// shared global row (F-06) — company_id here is always the caller's own,
+// never client-controlled. Returns false if quest_id doesn't exist at all.
+// ON CONFLICT DO NOTHING makes concurrent first-write races safe: whichever
+// request loses the insert still ends up with a tenant row in place, since the
+// (company_id, quest_id) unique index guarantees exactly one was created.
+async function ensureTenantQuestion(companyId, questId) {
+  const tenantResult = await query(
+    "SELECT id FROM questions WHERE quest_id = $1 AND company_id = $2",
+    [questId, companyId]
+  );
+  if (tenantResult.rows.length > 0) return true;
+
+  const globalResult = await query(
+    "SELECT * FROM questions WHERE quest_id = $1 AND company_id IS NULL",
+    [questId]
+  );
+  if (globalResult.rows.length === 0) return false;
+  const g = globalResult.rows[0];
+
+  await query(
+    `INSERT INTO questions
+       (quest_id, company_id, module_id, module_name, control_area, iso_reference,
+        baseline_question, level3_yes_criteria, required_evidence, default_owner,
+        frequency, priority, tags, due_date, recurrence_interval, next_due_date)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+     ON CONFLICT (company_id, quest_id) DO NOTHING`,
+    [questId, companyId, g.module_id, g.module_name, g.control_area, g.iso_reference,
+     g.baseline_question, g.level3_yes_criteria, g.required_evidence, g.default_owner,
+     g.frequency, g.priority, g.tags, g.due_date, g.recurrence_interval, g.next_due_date]
+  );
+  return true;
+}
+
 router.get("/", authenticate, asyncHandler(async (req, res) => {
   const { moduleId } = req.query;
   const values = [req.user.companyId];
@@ -25,7 +61,7 @@ router.get("/", authenticate, asyncHandler(async (req, res) => {
         AND NOT EXISTS (
           SELECT 1 FROM assessments a
           WHERE a.quest_id = qd.depends_on_quest_id AND a.company_id = $1
-            AND a.review_status = 'FINISHED'
+            AND a.review_status IN ('FINISHED', 'AUDITED')
         )
     ) THEN true ELSE false END AS blocked_by_deps,
     COALESCE((
@@ -34,13 +70,13 @@ router.get("/", authenticate, asyncHandler(async (req, res) => {
         AND NOT EXISTS (
           SELECT 1 FROM assessments a
           WHERE a.quest_id = qd.depends_on_quest_id AND a.company_id = $1
-            AND a.review_status = 'FINISHED'
+            AND a.review_status IN ('FINISHED', 'AUDITED')
         )
     ), 0) AS unmet_dep_count,
     (
       SELECT answer FROM assessments
       WHERE quest_id = questions.quest_id AND company_id = $1
-        AND review_status = 'FINISHED'
+        AND review_status IN ('FINISHED', 'AUDITED')
       ORDER BY created_at DESC LIMIT 1
     ) AS latest_answer,
     (
@@ -67,7 +103,8 @@ router.get("/", authenticate, asyncHandler(async (req, res) => {
 
 router.get("/:questId", authenticate, asyncHandler(async (req, res) => {
   const questionResult = await query(
-    "SELECT * FROM questions WHERE quest_id = $1 AND (company_id = $2 OR company_id IS NULL)",
+    `SELECT * FROM questions WHERE quest_id = $1 AND (company_id = $2 OR company_id IS NULL)
+     ORDER BY company_id ASC NULLS LAST LIMIT 1`,
     [req.params.questId, req.user.companyId]
   );
   const question = mapRow(questionResult);
@@ -85,7 +122,36 @@ router.get("/:questId", authenticate, asyncHandler(async (req, res) => {
       [req.params.questId, req.user.companyId]
     ),
     query(
-      "SELECT * FROM evidence WHERE quest_id = $1 AND company_id = $2 ORDER BY created_at DESC",
+      // AI analysis lives on the shared evidence_vault item (auto-run on upload);
+      // fall back to the legacy per-row columns for evidence analysed before the move.
+      `SELECT e.*,
+              COALESCE(ev.ai_contributor_comments, e.ai_contributor_comments) AS ai_contributor_comments,
+              COALESCE(ev.ai_reviewer_comments,    e.ai_reviewer_comments)    AS ai_reviewer_comments,
+              COALESCE(ev.ai_gaps,                 e.ai_gaps)                 AS ai_gaps,
+              COALESCE(ev.ai_suggestions,          e.ai_suggestions)          AS ai_suggestions,
+              COALESCE(ev.ai_analyzed_at,          e.ai_analyzed_at)          AS ai_analyzed_at,
+              COALESCE(ev.ai_date_warning,         e.ai_date_warning)         AS ai_date_warning,
+              ev.ai_analysis_status, ev.ai_analyzed_version, ev.current_version
+         FROM evidence e
+         LEFT JOIN LATERAL (
+           SELECT vv.ai_contributor_comments, vv.ai_reviewer_comments, vv.ai_gaps,
+                  vv.ai_suggestions, vv.ai_analyzed_at, vv.ai_date_warning,
+                  vv.ai_analysis_status, vv.ai_analyzed_version,
+                  (SELECT COALESCE(MAX(version_number), 1) FROM evidence_versions WHERE evidence_id = vv.id) AS current_version
+             FROM evidence_vault vv
+            WHERE vv.company_id = e.company_id
+              AND (
+                vv.legacy_evidence_id = e.id
+                OR vv.id IN (
+                     SELECT qe.vault_id FROM question_evidence qe
+                      WHERE qe.company_id = e.company_id AND qe.quest_id = e.quest_id
+                   )
+              )
+            ORDER BY (vv.legacy_evidence_id = e.id) DESC, vv.updated_at DESC
+            LIMIT 1
+         ) ev ON TRUE
+        WHERE e.quest_id = $1 AND e.company_id = $2
+        ORDER BY e.created_at DESC`,
       [req.params.questId, req.user.companyId]
     )
   ]);
@@ -112,7 +178,7 @@ router.get("/:questId", authenticate, asyncHandler(async (req, res) => {
      LEFT JOIN LATERAL (
        SELECT answer, review_status FROM assessments
        WHERE quest_id = qd.depends_on_quest_id AND company_id = $1
-         AND review_status = 'FINISHED'
+         AND review_status IN ('FINISHED', 'AUDITED')
        ORDER BY created_at DESC LIMIT 1
      ) a ON TRUE
      WHERE qd.company_id = $1 AND qd.quest_id = $2
@@ -141,22 +207,9 @@ router.put("/:questId", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandl
     return res.status(400).json({ error: `priority must be one of: ${VALID_PRIORITIES.join(", ")}` });
   }
 
-  let questionResult = await query(
-    "SELECT id FROM questions WHERE quest_id = $1 AND company_id = $2",
-    [req.params.questId, req.user.companyId]
-  );
-
-  let targetCompanyId = req.user.companyId;
-
-  if (questionResult.rows.length === 0) {
-    questionResult = await query(
-      "SELECT id FROM questions WHERE quest_id = $1 AND company_id IS NULL",
-      [req.params.questId]
-    );
-    if (questionResult.rows.length === 0) {
-      return res.status(404).json({ error: "Question not found" });
-    }
-    targetCompanyId = null;
+  const exists = await ensureTenantQuestion(req.user.companyId, req.params.questId);
+  if (!exists) {
+    return res.status(404).json({ error: "Question not found" });
   }
 
   const sets = [];
@@ -173,13 +226,8 @@ router.put("/:questId", authenticate, requireRole(["ADMIN", "LEAD"]), asyncHandl
   sets.push("updated_at = NOW()");
 
   values.push(req.params.questId);
-  let whereClause;
-  if (targetCompanyId === null) {
-    whereClause = `quest_id = $${idx++} AND company_id IS NULL`;
-  } else {
-    whereClause = `quest_id = $${idx++} AND company_id = $${idx}`;
-    values.push(targetCompanyId);
-  }
+  const whereClause = `quest_id = $${idx++} AND company_id = $${idx}`;
+  values.push(req.user.companyId);
 
   const result = await query(
     `UPDATE questions SET ${sets.join(", ")} WHERE ${whereClause} RETURNING *`,
@@ -196,24 +244,9 @@ router.put("/:questId/recurrence", authenticate, requireRole(["ADMIN", "LEAD"]),
     return res.status(400).json({ error: `recurrenceInterval must be one of: ${VALID_RECURRENCE.join(", ")}` });
   }
 
-  // Check if a company-specific copy exists; if not, check global
-  let questionResult = await query(
-    "SELECT id FROM questions WHERE quest_id = $1 AND company_id = $2",
-    [req.params.questId, req.user.companyId]
-  );
-
-  let targetCompanyId = req.user.companyId;
-
-  if (questionResult.rows.length === 0) {
-    // Fall back to the global question (company_id IS NULL)
-    questionResult = await query(
-      "SELECT id FROM questions WHERE quest_id = $1 AND company_id IS NULL",
-      [req.params.questId]
-    );
-    if (questionResult.rows.length === 0) {
-      return res.status(404).json({ error: "Question not found" });
-    }
-    targetCompanyId = null;
+  const exists = await ensureTenantQuestion(req.user.companyId, req.params.questId);
+  if (!exists) {
+    return res.status(404).json({ error: "Question not found" });
   }
 
   const sets = [];
@@ -231,13 +264,8 @@ router.put("/:questId/recurrence", authenticate, requireRole(["ADMIN", "LEAD"]),
   sets.push("updated_at = NOW()");
 
   values.push(req.params.questId);
-  let whereClause;
-  if (targetCompanyId === null) {
-    whereClause = `quest_id = $${idx++} AND company_id IS NULL`;
-  } else {
-    whereClause = `quest_id = $${idx++} AND company_id = $${idx}`;
-    values.push(targetCompanyId);
-  }
+  const whereClause = `quest_id = $${idx++} AND company_id = $${idx}`;
+  values.push(req.user.companyId);
 
   const result = await query(
     `UPDATE questions SET ${sets.join(", ")} WHERE ${whereClause} RETURNING *`,
@@ -289,7 +317,7 @@ router.get("/:questId/dependencies", authenticate, asyncHandler(async (req, res)
      LEFT JOIN LATERAL (
        SELECT answer, review_status FROM assessments
        WHERE quest_id = qd.depends_on_quest_id AND company_id = $1
-         AND review_status = 'FINISHED'
+         AND review_status IN ('FINISHED', 'AUDITED')
        ORDER BY created_at DESC LIMIT 1
      ) a ON TRUE
      WHERE qd.company_id = $1 AND qd.quest_id = $2

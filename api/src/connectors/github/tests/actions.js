@@ -45,6 +45,6 @@ export async function checkActionsThirdPartyRestricted(octokit, org) {
 }
 
 export const actionsTests = [
-  { key: "github.org.actions_default_workflow_permissions_readonly", title: "Actions default workflow token permissions are read-only", failTitle: "Actions default workflow token permissions are read-write", severityDefault: "high", isoReferences: ["A.9.4.1"], run: (clients) => checkActionsDefaultWorkflowPermissionsReadonly(clients.octokit, clients.org) },
-  { key: "github.org.actions_third_party_restricted", title: "Actions are restricted to verified or selected sources", failTitle: "Actions are not restricted to verified or selected sources", severityDefault: "medium", isoReferences: ["A.14.2.2"], run: (clients) => checkActionsThirdPartyRestricted(clients.octokit, clients.org) },
+  { key: "github.org.actions_default_workflow_permissions_readonly", title: "Actions default workflow token permissions are read-only", failTitle: "Actions default workflow token permissions are read-write", severityDefault: "high", isoReferences: ["A.9.4.1"], dpdpaControlAreas: ["Privileged Access Management"], run: (clients) => checkActionsDefaultWorkflowPermissionsReadonly(clients.octokit, clients.org) },
+  { key: "github.org.actions_third_party_restricted", title: "Actions are restricted to verified or selected sources", failTitle: "Actions are not restricted to verified or selected sources", severityDefault: "medium", isoReferences: ["A.14.2.2"], dpdpaControlAreas: ["Secure Development & API Security"], run: (clients) => checkActionsThirdPartyRestricted(clients.octokit, clients.org) },
 ];

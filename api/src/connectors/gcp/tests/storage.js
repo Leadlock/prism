@@ -29,6 +29,7 @@ export const storageTests = [
     failTitle: "Cloud Storage bucket does not enforce public access prevention",
     severityDefault: "critical",
     isoReferences: ["A.8.2.3"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkBucketsNotPubliclyAccessible(clients.storage, clients.projectId),
   },
 ];

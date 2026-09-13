@@ -257,11 +257,318 @@ describe("connector registry", () => {
     ]);
   });
 
+  test("resolves the onetrust connector", () => {
+    const connector = getConnector("onetrust");
+    expect(connector.key).toBe("onetrust");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("onetrust connector exposes exactly the 18 tests across 6 modules", () => {
+    const tests = listConnectorTests("onetrust");
+    expect(tests).toHaveLength(18);
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "onetrust.assessments.dpia_process_operating",
+      "onetrust.assessments.high_risks_mitigated",
+      "onetrust.assessments.no_stale_in_progress",
+      "onetrust.dsar.no_excessive_pause",
+      "onetrust.dsar.progressing",
+      "onetrust.dsar.within_statutory_deadline",
+      "onetrust.incidents.breach_decision_recorded",
+      "onetrust.incidents.no_stale_open",
+      "onetrust.incidents.register_operating",
+      "onetrust.inventory.records_have_owners",
+      "onetrust.inventory.records_reviewed_annually",
+      "onetrust.inventory.ropa_populated",
+      "onetrust.risk.high_risks_have_treatment",
+      "onetrust.risk.register_maintained",
+      "onetrust.risk.treatment_not_overdue",
+      "onetrust.vendors.high_risk_reviewed",
+      "onetrust.vendors.inventory_populated",
+      "onetrust.vendors.risk_assessed",
+    ]);
+  });
+
+  test("resolves the servicenow connector", () => {
+    const connector = getConnector("servicenow");
+    expect(connector.key).toBe("servicenow");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("servicenow connector exposes exactly the 10 tests across its areas", () => {
+    const tests = listConnectorTests("servicenow");
+    expect(tests).toHaveLength(10);
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "servicenow.acl.default_deny_sensitive_tables",
+      "servicenow.audit.field_audit_enabled",
+      "servicenow.audit.login_activity_logged",
+      "servicenow.group.privileged_groups_reviewed",
+      "servicenow.integrationuser.web_service_only",
+      "servicenow.oauth.basic_auth_restricted",
+      "servicenow.password_policy.strength_enforced",
+      "servicenow.role.admin_count_within_policy",
+      "servicenow.user.mfa_enforced",
+      "servicenow.user.no_inactive_privileged",
+    ]);
+  });
+
+  test("resolves the privy connector", () => {
+    const connector = getConnector("privy");
+    expect(connector.key).toBe("privy");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("privy connector exposes exactly the 17 tests across 6 modules", () => {
+    const tests = listConnectorTests("privy");
+    expect(tests).toHaveLength(17);
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "privy.assessments.dpia_process_operating",
+      "privy.assessments.high_risks_mitigated",
+      "privy.assessments.no_stale_in_progress",
+      "privy.consent.artifacts_being_captured",
+      "privy.consent.collection_points_registered",
+      "privy.consent.notice_versioned",
+      "privy.consent.withdrawal_supported",
+      "privy.incidents.breach_decision_recorded",
+      "privy.incidents.no_stale_open",
+      "privy.incidents.register_operating",
+      "privy.inventory.records_have_owners",
+      "privy.inventory.ropa_populated",
+      "privy.rights.progressing",
+      "privy.rights.register_operating",
+      "privy.rights.within_statutory_deadline",
+      "privy.tprm.high_risk_reviewed",
+      "privy.tprm.processors_risk_assessed",
+    ]);
+  });
+
+  test("resolves the crowdstrike connector", () => {
+    const connector = getConnector("crowdstrike");
+    expect(connector.key).toBe("crowdstrike");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("crowdstrike connector exposes exactly the 8 tests across its areas", () => {
+    const tests = listConnectorTests("crowdstrike");
+    expect(tests).toHaveLength(8);
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "crowdstrike.detection.high_severity_backlog",
+      "crowdstrike.detection.no_unresolved_incidents",
+      "crowdstrike.host.stale_endpoints_reviewed",
+      "crowdstrike.host.unmanaged_reduced_functionality",
+      "crowdstrike.sensor.build_currency",
+      "crowdstrike.sensor.policy_compliance",
+      "crowdstrike.user.admin_role_review",
+      "crowdstrike.vulnerability.critical_exposure_review",
+    ]);
+  });
+
+  test("resolves the salesforce connector", () => {
+    const connector = getConnector("salesforce");
+    expect(connector.key).toBe("salesforce");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("salesforce connector exposes exactly the 10 tests across its areas", () => {
+    const tests = listConnectorTests("salesforce");
+    expect(tests).toHaveLength(10);
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "salesforce.audit.login_history_available",
+      "salesforce.audit.setup_audit_trail_retention",
+      "salesforce.connected_app.admin_approval_required",
+      "salesforce.connected_app.oauth_scopes_minimal",
+      "salesforce.network.trusted_ip_ranges_configured",
+      "salesforce.permissionset.sensitive_permissions_reviewed",
+      "salesforce.profile.least_privilege_admin_count",
+      "salesforce.profile.password_policy_strength",
+      "salesforce.user.mfa_enforced",
+      "salesforce.user.no_inactive_high_privilege",
+    ]);
+  });
+
+  test("resolves the acronis connector", () => {
+    const connector = getConnector("acronis");
+    expect(connector.key).toBe("acronis");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("acronis connector exposes exactly the 7 tests across its areas", () => {
+    const tests = listConnectorTests("acronis");
+    expect(tests).toHaveLength(7);
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "acronis.backup.protection_enabled",
+      "acronis.backup.recent_successful_backup",
+      "acronis.malware.no_open_detections",
+      "acronis.malware.scan_up_to_date",
+      "acronis.monitoring.no_open_critical_alerts",
+      "acronis.vulnerability.no_open_findings",
+      "acronis.vulnerability.patches_applied",
+    ]);
+    const areas = [...new Set(tests.map((t) => t.key.split(".")[1]))].sort();
+    expect(areas).toEqual(["backup", "malware", "monitoring", "vulnerability"]);
+  });
+
+  test("resolves the commvault connector", () => {
+    const connector = getConnector("commvault");
+    expect(connector.key).toBe("commvault");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("commvault connector exposes exactly the 4 Tier-1 tests across its areas", () => {
+    const tests = listConnectorTests("commvault");
+    expect(tests).toHaveLength(4);
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "commvault.backup.sla_compliance",
+      "commvault.monitoring.alerts_configured",
+      "commvault.storage.encryption_enabled",
+      "commvault.storage.worm_lock_enabled",
+    ]);
+    const areas = [...new Set(tests.map((t) => t.key.split(".")[1]))].sort();
+    expect(areas).toEqual(["backup", "monitoring", "storage"]);
+  });
+
+  test("resolves the akamai connector", () => {
+    const connector = getConnector("akamai");
+    expect(connector.key).toBe("akamai");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("akamai connector is registered and its manifest matches its 18 JS tests", () => {
+    const keys = listConnectorKeys();
+    expect(keys).toContain("akamai");
+    const tests = listConnectorTests("akamai");
+    expect(tests).toHaveLength(18);
+    const jsKeys = new Set(tests.map((t) => t.key));
+    expect(jsKeys.size).toBe(18);
+    const areas = [...new Set(tests.map((t) => t.key.split(".")[1]))].sort();
+    expect(areas).toEqual(["api", "appsec", "cps", "property", "siem"]);
+  });
+
+  test("resolves the carbonite connector", () => {
+    const connector = getConnector("carbonite");
+    expect(connector.key).toBe("carbonite");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("carbonite connector exposes exactly its 2 beta backup checks", () => {
+    const tests = listConnectorTests("carbonite");
+    expect(tests).toHaveLength(2);
+    expect(tests.map((t) => t.key).sort()).toEqual([
+      "carbonite.backup.device_coverage",
+      "carbonite.backup.recent_successful_backup",
+    ]);
+  });
+
+  test("resolves the carbonite-server connector", () => {
+    const connector = getConnector("carbonite-server");
+    expect(connector.key).toBe("carbonite-server");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("carbonite-server connector exposes exactly its 2 beta tests across backup / monitoring", () => {
+    const tests = listConnectorTests("carbonite-server");
+    expect(tests).toHaveLength(2);
+    const keys = tests.map((t) => t.key).sort();
+    expect(keys).toEqual([
+      "carbonite-server.backup.recent_successful_safeset",
+      "carbonite-server.monitoring.agent_online",
+    ]);
+    const areas = [...new Set(tests.map((t) => t.key.split(".")[1]))].sort();
+    expect(areas).toEqual(["backup", "monitoring"]);
+  });
+
+  test("resolves the check_point_mgmt connector with its 11 policy / gateway / threat checks", () => {
+    const connector = getConnector("check_point_mgmt");
+    expect(connector.key).toBe("check_point_mgmt");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+    const tests = listConnectorTests("check_point_mgmt");
+    expect(tests.map((t) => t.key).sort()).toEqual([
+      "check_point_mgmt.gateway.policy_installed_current",
+      "check_point_mgmt.gateway.software_supported",
+      "check_point_mgmt.policy.cleanup_rule_present",
+      "check_point_mgmt.policy.disabled_rules_reviewed",
+      "check_point_mgmt.policy.no_permissive_any_rule",
+      "check_point_mgmt.policy.rule_logging_enabled",
+      "check_point_mgmt.policy.stealth_rule_present",
+      "check_point_mgmt.threat.ips_signatures_current",
+      "check_point_mgmt.threat.mode_is_prevent",
+      "check_point_mgmt.threat.no_blanket_exceptions",
+      "check_point_mgmt.threat.profile_assigned",
+    ]);
+    expect([...new Set(tests.map((t) => t.key.split(".")[1]))].sort()).toEqual(["gateway", "policy", "threat"]);
+  });
+
+  test("resolves the check_point connector with its 10 events / xdr / endpoint checks", () => {
+    const connector = getConnector("check_point");
+    expect(connector.key).toBe("check_point");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+    const tests = listConnectorTests("check_point");
+    expect(tests.map((t) => t.key).sort()).toEqual([
+      "check_point.endpoint.devices_checked_in",
+      "check_point.endpoint.high_incidents_resolved",
+      "check_point.endpoint.protection_blades_active",
+      "check_point.endpoint.signatures_current",
+      "check_point.events.critical_events_reviewed",
+      "check_point.events.feed_active",
+      "check_point.events.query_retrievable",
+      "check_point.xdr.feed_active",
+      "check_point.xdr.high_incidents_triaged",
+      "check_point.xdr.no_stale_investigations",
+    ]);
+    expect([...new Set(tests.map((t) => t.key.split(".")[1]))].sort()).toEqual(["endpoint", "events", "xdr"]);
+  });
+
+  test("resolves the check_point_cloudguard connector with its 6 posture checks", () => {
+    const connector = getConnector("check_point_cloudguard");
+    expect(connector.key).toBe("check_point_cloudguard");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+    const tests = listConnectorTests("check_point_cloudguard");
+    expect(tests.map((t) => t.key).sort()).toEqual([
+      "check_point_cloudguard.posture.accounts_fetching",
+      "check_point_cloudguard.posture.assessment_recent",
+      "check_point_cloudguard.posture.critical_findings_addressed",
+      "check_point_cloudguard.posture.exclusions_reviewed",
+      "check_point_cloudguard.posture.high_findings_within_policy",
+      "check_point_cloudguard.posture.ruleset_assigned",
+    ]);
+  });
+
   test("resolves the microsoft_defender connector", () => {
     const connector = getConnector("microsoft_defender");
     expect(connector.key).toBe("microsoft_defender");
     expect(typeof connector.testConnection).toBe("function");
     expect(typeof connector.runTests).toBe("function");
+  });
+
+  test("resolves the sophos connector with all 39 planned checks", () => {
+    const connector = getConnector("sophos");
+    expect(connector.key).toBe("sophos");
+    expect(typeof connector.testConnection).toBe("function");
+    expect(typeof connector.runTests).toBe("function");
+    const sophosTests = listConnectorTests("sophos");
+    expect(sophosTests).toHaveLength(39);
+    expect([...new Set(sophosTests.map((definition) => definition.key.split(".")[1]))].sort()).toEqual([
+      "audit", "common", "detections", "dns", "endpoint", "firewall", "siem", "web", "xdr",
+    ]);
   });
 
   test("microsoft_defender connector exposes exactly the 7 tests", () => {

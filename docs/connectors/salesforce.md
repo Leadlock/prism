@@ -2,9 +2,10 @@
 
 ## 1. Overview
 
-- **Proposed `integrations.category`**: `business_apps`
-- **Proposed `integrations.key`**: `salesforce`
-- **Proposed `integrations.auth_type`**: `oauth2`
+- **`integrations.category`**: `business_apps`
+- **`integrations.key`**: `salesforce`
+- **`integrations.auth_type`**: `oauth2` (OAuth 2.0 JWT Bearer flow)
+- **Status**: shipped `beta` — the SOQL / Tooling API queries in `api/src/connectors/salesforce/` follow the documented object model but have not been confirmed against a live production org; an unreadable Setup object degrades its checks to `not_applicable`. Confirm the queries and promote to `active` after a real-org run.
 
 Salesforce is a cloud SaaS CRM with a mature, well-documented REST API surface and a standard OAuth2 story for server-to-server integrations. This connector reads user/profile/permission/MFA/audit configuration from a customer's Salesforce org to evidence identity and access-management controls (ISO 27001 Annex A.9) plus logging/audit controls (A.12.4).
 
@@ -125,4 +126,6 @@ ON CONFLICT (test_key, framework, iso_reference) DO NOTHING;
   - `api/src/connectors/salesforce/tests/users.js`, `tests/profiles.js`, `tests/connectedApps.js`, `tests/audit.js` — grouped the same way `api/src/connectors/aws/tests/*.js` is split by resource area.
 - **Registry wiring**: add `import * as salesforce from "./salesforce/index.js";` and `[salesforce.key]: salesforce` to `api/src/connectors/registry.js`, matching the existing one-line-per-connector shape.
 - **`testConnection()`** should perform a cheap connectivity probe — e.g. `SELECT Id FROM Organization LIMIT 1` — analogous to AWS's `GetCallerIdentity` / Azure's `resourceGroups.list().next()` pattern, and return `{ ok: true, externalAccountId: <Organization Id> }`.
-- Ready to build now — no external dependency on customer network access; this is a standard OAuth2 SaaS integration.
+- **Built** (2026-09-09): `api/src/connectors/salesforce/{credentials,client,index}.js` + `tests/{users,profiles,connectedApps,audit,network,permissionSets}.js`, `connector.json`, registry wiring, `init.sql` seed, and the `GET /api/integrations/salesforce/setup-info` route + `SalesforceWalkthrough` wizard step. JWT signing uses `jsonwebtoken` (RS256) directly — no Salesforce SDK. Tests: `api/src/__tests__/connectorsSalesforce{Credentials,Index,Checks}.test.js`.
+- The JWT-issued access token has no `expires_in`; the connector re-mints every ~15 minutes within a run rather than assume it outlives the run.
+- `config.clientId` (the Connected App consumer key) and `config.username` (the integration user) are non-secret and live on `integration_connections.config`; only `secret.privateKey` is encrypted.

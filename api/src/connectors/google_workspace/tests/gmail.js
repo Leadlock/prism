@@ -23,6 +23,7 @@ export const gmailTests = [
     failTitle: "Automatic email forwarding to external addresses is allowed",
     severityDefault: "high",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkGmailAutoForwardingRestricted(clients.cloudidentity, clients.customerId),
   },
 ];

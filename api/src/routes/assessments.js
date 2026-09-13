@@ -35,8 +35,19 @@ router.get("/", authenticate, requireReadOnly(["ADMIN", "LEAD", "CONTRIBUTOR", "
   }
 
   if (reviewStatus) {
-    values.push(reviewStatus);
-    conditions.push(`review_status = $${values.length}`);
+    // Accepts a single status or a comma-separated list (e.g. "FINISHED,AUDITED"
+    // for the auditor queue).
+    const statuses = String(reviewStatus).split(",").map((s) => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      values.push(statuses[0]);
+      conditions.push(`review_status = $${values.length}`);
+    } else if (statuses.length > 1) {
+      const placeholders = statuses.map((s) => {
+        values.push(s);
+        return `$${values.length}`;
+      });
+      conditions.push(`review_status IN (${placeholders.join(", ")})`);
+    }
   }
 
   const result = await query(
@@ -71,7 +82,7 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), as
     evidenceLink = raw.evidenceLink,
     owner = raw.owner,
     reviewer = raw.reviewer,
-    reviewStatus, scoreEligible,
+    reviewStatus,
     comments = raw.comments,
     evidenceIds = [],
     actionOwner = raw.actionOwner,
@@ -84,10 +95,13 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), as
     ? evidenceIds.map((id) => parseInt(id, 10)).filter(Number.isInteger)
     : [];
   const hasEvidenceLink = typeof evidenceLink === "string" && evidenceLink.trim().length > 0;
+  const claimsCompliant = normalizedAnswer === "IMPLEMENTED" || normalizedAnswer === "YES";
+
+  let linkedEvidenceCount = 0;
+  let vaultLinkedCount = 0;
 
   if (reviewStatus !== "WIP") {
-    if (normalizedAnswer === "IMPLEMENTED" || normalizedAnswer === "YES") {
-      let linkedEvidenceCount = 0;
+    if (claimsCompliant) {
       if (normalizedEvidenceIds.length > 0) {
         const evidenceResult = await query(
           `SELECT COUNT(*) AS n
@@ -105,7 +119,7 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), as
         `SELECT COUNT(*) AS n FROM question_evidence WHERE company_id = $1 AND quest_id = $2`,
         [req.user.companyId, questId || null]
       );
-      const vaultLinkedCount = parseInt(vaultResult.rows[0].n, 10) || 0;
+      vaultLinkedCount = parseInt(vaultResult.rows[0].n, 10) || 0;
 
       if (!hasEvidenceLink && linkedEvidenceCount === 0 && vaultLinkedCount === 0) {
         return res.status(400).json({ error: "Implemented assessments require an evidence upload or evidence link before submission" });
@@ -118,6 +132,26 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), as
       }
     }
   }
+
+  // F-07: reviewStatus/scoreEligible/reviewedBy/auditedBy must never be trusted
+  // verbatim from the client on creation — Tracker.jsx's only two callers always send
+  // reviewStatus="WIP" (draft) or, on submit, "Submitted" for an IMPLEMENTED/YES answer
+  // (queued for reviewer approval) vs "FINISHED" for anything else (a self-reported gap
+  // with nothing for a reviewer to verify — matches the "auto-FINISHED, no review
+  // needed" comment on the notifyReviewers call below). A row can never have already
+  // been reviewed/audited the moment it's created, and scoreEligible must reflect the
+  // actual submitted content rather than an arbitrary client claim.
+  const finalReviewStatus = VALID_REVIEW_STATUSES.has(reviewStatus) ? reviewStatus : null;
+  if (finalReviewStatus === "AUDITED") {
+    return res.status(400).json({ error: "reviewStatus 'AUDITED' cannot be set when creating an assessment" });
+  }
+  if (finalReviewStatus === "FINISHED" && claimsCompliant) {
+    return res.status(400).json({ error: "An IMPLEMENTED/YES assessment cannot be created as FINISHED — submit it for review instead" });
+  }
+  const computedScoreEligible = finalReviewStatus !== "WIP"
+    && claimsCompliant
+    && Number(currentLevel) >= 3
+    && (hasEvidenceLink || linkedEvidenceCount > 0 || vaultLinkedCount > 0);
 
   const submittedBy = req.user.email || null;
   const client = await getClient();
@@ -141,11 +175,11 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), as
         owner || null,
         submittedBy,
         reviewer || null,
-        reviewStatus || null,
-        scoreEligible ?? null,
+        finalReviewStatus,
+        computedScoreEligible,
         comments || null,
-        req.body.reviewedBy || null,
-        req.body.auditedBy || null
+        null, // reviewed_by: never set at creation — nothing has been reviewed yet
+        null  // audited_by: never set at creation — nothing has been audited yet
       ]
     );
 
@@ -254,42 +288,78 @@ router.post("/", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR"]), as
   }
 }));
 
+// PUT /:id is a review/audit-workflow endpoint, not a general assessment editor — the
+// only three callers in the product (Review.jsx's approve/reject, Dashboard.jsx's
+// auditor approve/reject, and QuestionCard.jsx's "unlock for edit") ever send these
+// fields. Control content (answer, currentLevel, controlArea, owner, comments,
+// evidenceLink, scoreEligible, question/module/month identity) is only ever set via
+// POST, when a new monthly assessment row is created.
+const PUT_SUPPORTED_FIELDS = new Set(["reviewStatus", "reviewerNotes", "auditorNotes", "reviewedBy", "auditedBy"]);
+
+// Which reviewStatus values each role's real workflow is allowed to set (F-07):
+// CONTRIBUTOR may only unlock their own submission back to WIP for editing — never
+// self-approve. ADMIN/LEAD run the reviewer stage (Submitted -> FINISHED / WIP).
+// AUDITOR runs the audit stage on top of an already-FINISHED control
+// (FINISHED -> AUDITED / WIP) — auditors never set FINISHED, reviewers never set
+// AUDITED. The status lifecycle is:
+//   WIP -> Submitted -> FINISHED -> AUDITED   (reject at any stage -> WIP)
+const REVIEW_STATUS_BY_ROLE = {
+  ADMIN: new Set(["FINISHED", "WIP"]),
+  LEAD: new Set(["FINISHED", "WIP"]),
+  AUDITOR: new Set(["AUDITED", "WIP"]),
+  CONTRIBUTOR: new Set(["WIP"]),
+};
+
 router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR", "AUDITOR"]), asyncHandler(async (req, res) => {
   const assessmentId = parseInt(req.params.id);
-  const rawBody = sanitiseFields(req.body, {
-    controlArea: "text", answer: "text", owner: "text", reviewer: "text",
-    comments: "text", evidenceLink: "url", reviewedBy: "text", auditedBy: "text",
+  const role = req.user.role;
+  const body = req.body || {};
+
+  const unsupportedFields = Object.keys(body).filter((key) => !PUT_SUPPORTED_FIELDS.has(key));
+  if (unsupportedFields.length > 0) {
+    return res.status(400).json({ error: `This endpoint does not support updating: ${unsupportedFields.join(", ")}` });
+  }
+
+  const rawBody = sanitiseFields(body, {
     reviewerNotes: "text", auditorNotes: "text",
   });
   if (rawBody.reviewStatus !== undefined && !VALID_REVIEW_STATUSES.has(rawBody.reviewStatus)) {
     rawBody.reviewStatus = undefined;
   }
-  const isBeingReviewed = rawBody.reviewedBy && rawBody.reviewStatus !== undefined;
-  const isBeingAudited  = rawBody.auditedBy  && rawBody.reviewStatus !== undefined;
+
+  if (rawBody.reviewStatus !== undefined && !REVIEW_STATUS_BY_ROLE[role]?.has(rawBody.reviewStatus)) {
+    return res.status(403).json({ error: `Role ${role} may not set reviewStatus to ${rawBody.reviewStatus}` });
+  }
+  if (rawBody.reviewerNotes !== undefined && role !== "ADMIN" && role !== "LEAD") {
+    return res.status(403).json({ error: "Only a reviewer (ADMIN/LEAD) may set reviewerNotes" });
+  }
+  if (rawBody.auditorNotes !== undefined && role !== "AUDITOR") {
+    return res.status(403).json({ error: "Only an AUDITOR may set auditorNotes" });
+  }
+
+  // reviewedBy/auditedBy are never taken from the request body (F-07: previously a
+  // caller could impersonate an arbitrary reviewer/auditor) — they're derived from
+  // the authenticated session whenever that role actually performs the corresponding
+  // action, matching the existing approve/reject workflows above.
+  const isBeingReviewed = (role === "ADMIN" || role === "LEAD") && rawBody.reviewStatus !== undefined;
+  const isBeingAudited  = role === "AUDITOR" && rawBody.reviewStatus !== undefined;
+
+  // A reviewer re-opening a control (approve or reject) invalidates any prior
+  // auditor sign-off — the auditor must look at it again — so the audit stamps
+  // are cleared. Same when a contributor unlocks their submission for editing.
+  const clearsAudit = (isBeingReviewed || role === "CONTRIBUTOR") && rawBody.reviewStatus !== undefined;
 
   const data = {
-    assessment_id: rawBody.assessmentId,
-    month: rawBody.month,
-    module_id: rawBody.moduleId,
-    quest_id: rawBody.questId,
-    control_area: rawBody.controlArea,
-    answer: rawBody.answer,
-    current_level: rawBody.currentLevel,
-    level3_plus: rawBody.level3Plus,
-    evidence_link: rawBody.evidenceLink,
-    owner: rawBody.owner,
-    reviewer: rawBody.reviewer,
     review_status: rawBody.reviewStatus,
-    score_eligible: rawBody.scoreEligible,
-    comments: rawBody.comments,
-    reviewed_by: rawBody.reviewedBy,
-    audited_by: rawBody.auditedBy,
     reviewer_notes: rawBody.reviewerNotes,
     auditor_notes: rawBody.auditorNotes,
+    reviewed_by: isBeingReviewed ? req.user.email : undefined,
+    audited_by: isBeingAudited ? req.user.email : (clearsAudit ? null : undefined),
     reviewed_at: isBeingReviewed ? new Date() : undefined,
-    audited_at:  isBeingAudited  ? new Date() : undefined,
+    audited_at:  isBeingAudited  ? new Date() : (clearsAudit ? null : undefined),
     updated_at: new Date()
   };
+  if (clearsAudit) data.auditor_notes = null;
 
   const hasUpdates = Object.keys(data).some((key) => key !== "updated_at" && data[key] !== undefined);
   if (!hasUpdates) {
@@ -313,8 +383,9 @@ router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR", "A
 
     const assessment = mapRow(assessmentResult);
 
-    // Auto-close open actions for this quest when approved
-    if (req.body.reviewStatus === "FINISHED" && assessment.questId) {
+    // Auto-close open actions for this quest when approved (reviewer FINISHED, or
+    // auditor AUDITED — the latter is idempotent since it was already FINISHED)
+    if (["FINISHED", "AUDITED"].includes(req.body.reviewStatus) && assessment.questId) {
       await client.query(
         `UPDATE actions SET status = 'CLOSED', closure_date = NOW(), updated_at = NOW()
          WHERE quest_id = $1 AND company_id = $2
@@ -431,8 +502,10 @@ router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR", "A
 
     await client.query("COMMIT");
 
-    // Notify submitter when their assessment is approved
-    if (req.body.reviewStatus === "FINISHED" && assessment.submittedBy) {
+    // Notify submitter when their assessment is approved (reviewer) or passes
+    // audit (auditor).
+    if (["FINISHED", "AUDITED"].includes(req.body.reviewStatus) && assessment.submittedBy) {
+      const audited = req.body.reviewStatus === "AUDITED";
       query(
         "SELECT id FROM users WHERE email = $1 AND company_id = $2 LIMIT 1",
         [assessment.submittedBy, req.user.companyId]
@@ -442,12 +515,23 @@ router.put("/:id", authenticate, requireRole(["ADMIN", "LEAD", "CONTRIBUTOR", "A
           return query(
             `INSERT INTO notifications (user_id, company_id, title, body, entity_type, entity_id) VALUES ($1, $2, $3, $4, 'approval', $5)`,
             [submitterId, req.user.companyId,
-             `Assessment approved: ${assessment.questId || assessment.controlArea || "control"}`,
-             `Approved by ${req.user.email}`,
+             `${audited ? "Assessment passed audit" : "Assessment approved"}: ${assessment.questId || assessment.controlArea || "control"}`,
+             `${audited ? "Audited" : "Approved"} by ${req.user.email}`,
              assessment.id]
           );
         }
       }).catch(err => console.error("[notify] approval notification failed:", err.message));
+    }
+
+    // Notify auditors when a control clears review and is ready for audit sign-off.
+    if (req.body.reviewStatus === "FINISHED") {
+      notifyReviewers(req.user.companyId, {
+        title: `Ready for audit: ${assessment.questId || assessment.controlArea || "control"}`,
+        body: `Approved by ${req.user.email} — awaiting auditor sign-off`,
+        entityType: "audit",
+        entityId: assessment.id,
+        roles: ["AUDITOR"],
+      });
     }
 
     res.json(assessment);

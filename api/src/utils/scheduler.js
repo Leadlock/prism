@@ -3,6 +3,7 @@ import { sendEmail } from "./email.js";
 import { buildEmailHtml } from "./emailTemplate.js";
 import { writeAuditLog } from "./auditLog.js";
 import { runCollection } from "../utils/collectionRunner.js";
+import { resumeInterruptedAnalysis } from "./evidenceAnalysis.js";
 
 // ─── Recurrence helpers ───────────────────────────────────────────────────────
 
@@ -357,6 +358,9 @@ export function startScheduler() {
   processRecurrence();
   markOverdueActions();
   runScheduledCollections();
+  resumeInterruptedAnalysis()
+    .then((n) => { if (n) console.log(`[scheduler] re-queued ${n} interrupted evidence analysis run(s)`); })
+    .catch((e) => console.error("[scheduler] resumeInterruptedAnalysis failed:", e.message)); // nosemgrep
 
   // Daily tasks
   setInterval(deactivateExpiredAuditors, MS_PER_DAY);

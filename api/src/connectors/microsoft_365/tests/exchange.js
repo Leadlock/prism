@@ -70,6 +70,7 @@ export const exchangeTests = [
     failTitle: "Exchange Online mailbox audit logging is disabled for the tenant",
     severityDefault: "critical",
     isoReferences: ["A.12.4.1"],
+    dpdpaControlAreas: ["Logging & Monitoring"],
     run: (clients) => checkMailboxAuditLoggingEnabled(clients.getExchangeToken, clients.tenantId),
   },
   {
@@ -78,6 +79,7 @@ export const exchangeTests = [
     failTitle: "The default Exchange remote domain allows automatic email forwarding to external addresses",
     severityDefault: "high",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkNoExternalAutoForwarding(clients.getExchangeToken, clients.tenantId),
   },
 ];

@@ -84,6 +84,7 @@ export const vaultTests = [
     failTitle: "Vault allows direct secret sharing outside designated chambers",
     severityDefault: "high",
     isoReferences: ["A.9.4.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkSecretSharingPolicy(clients),
   },
   {
@@ -92,6 +93,7 @@ export const vaultTests = [
     failTitle: "Vault password policy does not meet minimum strength requirements",
     severityDefault: "high",
     isoReferences: ["A.9.4.3"],
+    dpdpaControlAreas: ["MFA for Sensitive Systems"],
     run: (clients) => checkPasswordPolicyStrength(clients),
   },
   {
@@ -100,6 +102,7 @@ export const vaultTests = [
     failTitle: "Vault audit/access logging is not enabled",
     severityDefault: "medium",
     isoReferences: ["A.12.4.1"],
+    dpdpaControlAreas: ["Logging & Monitoring"],
     run: (clients) => checkAccessLogReview(clients),
   },
 ];

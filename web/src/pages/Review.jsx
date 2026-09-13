@@ -2,9 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, apiDownload } from "../api/client.js";
 import RetryBanner from "../components/RetryBanner.jsx";
+import EvidenceAiPanel from "../components/EvidenceAiPanel.jsx";
 import UserMenu from "../components/UserMenu.jsx";
 
 export default function Review({ token, user, company, onLogout, theme, onThemeToggle, isVerified }) {
+  const isAuditor = user?.role === "AUDITOR";
+  // The auditor stage runs on controls a reviewer has already approved (FINISHED);
+  // the reviewer stage runs on freshly Submitted controls.
+  const queueStatus = isAuditor ? "FINISHED" : "Submitted";
+
   const [assessments, setAssessments] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [evidence, setEvidence] = useState([]);
@@ -19,12 +25,12 @@ export default function Review({ token, user, company, onLogout, theme, onThemeT
     try {
       const [qs, as, ev] = await Promise.all([
         apiFetch("/api/questions", { token }),
-        apiFetch("/api/assessments?reviewStatus=Submitted", { token }),
+        apiFetch(`/api/assessments?reviewStatus=${encodeURIComponent(queueStatus)}`, { token }),
         apiFetch("/api/evidence", { token })
       ]);
       setQuestions(qs || []);
       // Deduplicate: keep only the latest submission per (questId, month) pair
-      const submitted = (as || []).filter(a => (a.reviewStatus || a.review_status) === "Submitted");
+      const submitted = (as || []).filter(a => (a.reviewStatus || a.review_status) === queueStatus);
       const seen = new Map();
       for (const a of submitted) {
         const key = `${a.questId || a.quest_id}__${a.month || ""}`;
@@ -52,7 +58,7 @@ export default function Review({ token, user, company, onLogout, theme, onThemeT
         setError(e.message);
       }
     }
-  }, [token]);
+  }, [token, queueStatus]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -77,6 +83,9 @@ export default function Review({ token, user, company, onLogout, theme, onThemeT
   };
 
   const isReviewer = user?.role === "ADMIN" || user?.role === "LEAD";
+  // The status an "approve" click moves a row to: auditor signs off (AUDITED),
+  // reviewer approves (FINISHED).
+  const approveStatus = isAuditor ? "AUDITED" : "FINISHED";
 
   const promptUpdateAssessment = (id, status) => {
     notesRef.current = "";
@@ -88,16 +97,21 @@ export default function Review({ token, user, company, onLogout, theme, onThemeT
     const notes = notesRef.current;
     setNotesModal(null);
     try {
+      const body = isAuditor
+        ? { reviewStatus: status, auditedBy: user?.email, auditorNotes: notes || undefined }
+        : { reviewStatus: status, reviewedBy: user?.email, reviewerNotes: notes || undefined };
       await apiFetch(`/api/assessments/${id}`, {
         token,
         method: "PUT",
-        body: JSON.stringify({ reviewStatus: status, reviewedBy: user?.email, reviewerNotes: notes || undefined })
+        body: JSON.stringify(body)
       });
       await load();
     } catch (e) {
       setError(e.message || "Update failed");
     }
   };
+
+  const isApproveStatus = (s) => s === "FINISHED" || s === "AUDITED";
 
   const qid = a => a.questId || a.quest_id;
 
@@ -137,11 +151,13 @@ export default function Review({ token, user, company, onLogout, theme, onThemeT
 
         <section className="card" style={{ marginTop: 0 }}>
           <div className="section-title">
-            Submitted assessments ({assessments.length})
+            {isAuditor ? "Awaiting audit sign-off" : "Submitted assessments"} ({assessments.length})
           </div>
 
           {assessments.length === 0 ? (
-            <p className="muted">No assessments awaiting review.</p>
+            <p className="muted">
+              {isAuditor ? "No assessments awaiting audit." : "No assessments awaiting review."}
+            </p>
           ) : (
             <div className="list">
               {assessments.map(a => {
@@ -212,28 +228,31 @@ export default function Review({ token, user, company, onLogout, theme, onThemeT
                               {evItems.map(e => {
                                 const name = e.title || e.evidenceName || e.evidence_name;
                                 const link = e.evidenceLink || e.evidence_link;
-                                const hasFile = !e._fromVault && (e.filePath || e.file_path);
+                                const hasFile = !e._fromVault && e.hasFile;
                                 return (
-                                  <div key={`${e._fromVault ? "v" : "e"}-${e.id}`} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 12px", background: "var(--bg4)", borderRadius: 6 }}>
-                                    <div style={{ flex: 1 }}>
-                                      <div style={{ fontSize: 12, color: "var(--text)", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
-                                        {name}
-                                        {e._fromVault && <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "var(--accent)", border: "1px solid rgba(99,102,241,0.2)", fontWeight: 600 }}>Vault</span>}
+                                  <div key={`${e._fromVault ? "v" : "e"}-${e.id}`}>
+                                    <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 12px", background: "var(--bg4)", borderRadius: 6 }}>
+                                      <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: 12, color: "var(--text)", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                                          {name}
+                                          {e._fromVault && <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "var(--accent)", border: "1px solid rgba(99,102,241,0.2)", fontWeight: 600 }}>Vault</span>}
+                                        </div>
+                                        <div className="muted" style={{ marginTop: 2 }}>
+                                          {e.uploadedBy || e.uploaded_by}
+                                        </div>
                                       </div>
-                                      <div className="muted" style={{ marginTop: 2 }}>
-                                        {e.uploadedBy || e.uploaded_by}
-                                      </div>
+                                      {hasFile ? (
+                                        <button
+                                          className="btn-compact"
+                                          onClick={() => downloadEvidence(e.id, name)}
+                                        >
+                                          Download
+                                        </button>
+                                      ) : link ? (
+                                        <a href={link} target="_blank" rel="noopener noreferrer" className="link">View</a>
+                                      ) : null}
                                     </div>
-                                    {hasFile ? (
-                                      <button
-                                        className="btn-compact"
-                                        onClick={() => downloadEvidence(e.id, name)}
-                                      >
-                                        Download
-                                      </button>
-                                    ) : link ? (
-                                      <a href={link} target="_blank" rel="noopener noreferrer" className="link">View</a>
-                                    ) : null}
+                                    <EvidenceAiPanel evidence={e} compact />
                                   </div>
                                 );
                               })}
@@ -253,14 +272,14 @@ export default function Review({ token, user, company, onLogout, theme, onThemeT
                             {a.currentLevel || "—"}
                           </div>
                         </div>
-                        {isReviewer && (
+                        {(isReviewer || isAuditor) && (
                           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                             <button
                               className="btn btn-primary"
                               style={{ width: "100%" }}
-                              onClick={() => promptUpdateAssessment(a.id, "FINISHED")}
+                              onClick={() => promptUpdateAssessment(a.id, approveStatus)}
                             >
-                              ✓ Approve
+                              {isAuditor ? "✓ Sign off (audit)" : "✓ Approve"}
                             </button>
                             <button
                               className="btn btn-ghost"
@@ -286,13 +305,15 @@ export default function Review({ token, user, company, onLogout, theme, onThemeT
           <div className="module-modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
             <div className="module-modal-header">
               <div className="module-modal-title">
-                {notesModal.status === "FINISHED" ? "Approve assessment" : "Reject assessment"}
+                {!isApproveStatus(notesModal.status)
+                  ? "Reject assessment"
+                  : isAuditor ? "Confirm audit sign-off" : "Approve assessment"}
               </div>
               <button className="modal-close" onClick={() => setNotesModal(null)}>×</button>
             </div>
             <div className="module-modal-content" style={{ padding: 20 }}>
               <label style={{ display: "block", marginBottom: 8, fontSize: 13, color: "var(--text2)" }}>
-                Reviewer Notes (optional)
+                {isAuditor ? "Auditor notes (optional)" : "Reviewer Notes (optional)"}
               </label>
               <textarea
                 className="comments-textarea"
@@ -303,11 +324,13 @@ export default function Review({ token, user, company, onLogout, theme, onThemeT
               />
               <div style={{ display: "flex", gap: 8 }}>
                 <button
-                  className={`btn ${notesModal.status === "FINISHED" ? "btn-primary" : "btn-ghost"}`}
+                  className={`btn ${isApproveStatus(notesModal.status) ? "btn-primary" : "btn-ghost"}`}
                   style={{ flex: 1 }}
                   onClick={confirmUpdateAssessment}
                 >
-                  {notesModal.status === "FINISHED" ? "✓ Confirm Approval" : "✗ Confirm Rejection"}
+                  {!isApproveStatus(notesModal.status)
+                    ? "✗ Confirm Rejection"
+                    : isAuditor ? "✓ Confirm Audit" : "✓ Confirm Approval"}
                 </button>
                 <button className="btn btn-ghost" onClick={() => setNotesModal(null)}>Cancel</button>
               </div>

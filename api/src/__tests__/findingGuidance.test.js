@@ -40,6 +40,26 @@ describe("buildControlMappings", () => {
     expect(rows).toEqual([{ framework: "ISO/IEC 27001:2013", controls: ["A.99.9.9"] }]);
   });
 
+  test("surfaces non-ISO framework rows (SOC 2, HIPAA, CIS, PCI DSS, CERT-In) from test_control_mappings", () => {
+    const rows = buildControlMappings([
+      { framework: "ISO27001", isoReference: "A.9.4.2" },
+      { framework: "GDPR", isoReference: "Art. 32(1)(b)" },
+      { framework: "SOC2", isoReference: "CC6.1" },
+      { framework: "HIPAA", isoReference: "§164.312(d)" },
+      { framework: "CIS", isoReference: "6.3" },
+      { framework: "PCIDSS", isoReference: "8.4.2" },
+      { framework: "CERTIN", isoReference: "Direction 4" },
+    ]);
+    const byFramework = Object.fromEntries(rows.map((r) => [r.framework, r.controls]));
+    expect(byFramework["SOC 2"]).toEqual(["CC6.1"]);
+    expect(byFramework["HIPAA"]).toEqual(["§164.312(d)"]);
+    expect(byFramework["CIS Controls v8.1"]).toEqual(["6.3"]);
+    expect(byFramework["PCI DSS v4.0.1"]).toEqual(["8.4.2"]);
+    expect(byFramework["CERT-In Directions 2022"]).toEqual(["Direction 4"]);
+    // the curated ISO 2013 row is still first
+    expect(rows[0].framework).toBe("ISO/IEC 27001:2013");
+  });
+
   test("every crosswalk entry covers ISO 2022, GDPR and DPDPA", () => {
     for (const [iso, xw] of Object.entries(CONTROL_CROSSWALK)) {
       for (const key of ["ISO2022", "GDPR", "DPDPA"]) {

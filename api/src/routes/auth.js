@@ -11,8 +11,26 @@ import { sendEmail } from "../utils/email.js";
 import { buildEmailHtml } from "../utils/emailTemplate.js";
 import { authenticate } from "../middleware/auth.js";
 import { DEPT_QUESTIONS, DEPT_MODULE_META, getGenericDeptQuestions } from "../utils/departmentQuestions.js";
+import { seedAssessmentsFromSelfAssessment } from "../utils/seedAssessmentsFromSelfAssessment.js";
 
 const router = Router();
+
+// Generic / personal email providers are not accepted for workspace sign-up —
+// shared by the sign-up start step and the final register step.
+const BLOCKED_EMAIL_DOMAINS = [
+  "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "yahoo.co.in",
+  "hotmail.com", "outlook.com", "live.com", "msn.com",
+  "icloud.com", "me.com", "mac.com",
+  "aol.com", "protonmail.com", "proton.me",
+  "mail.com", "zoho.com", "yandex.com",
+  "gmx.com", "gmx.net", "tutanota.com",
+  "fastmail.com", "hushmail.com"
+];
+
+function isBlockedEmailDomain(email) {
+  const domain = String(email || "").split("@")[1];
+  return !domain || BLOCKED_EMAIL_DOMAINS.includes(domain);
+}
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -22,15 +40,109 @@ const loginLimiter = rateLimit({
   message: { error: "Too many login attempts. Please try again in 15 minutes." },
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// SIGN-UP — magic-link email verification (step 1 of workspace creation)
+// ═══════════════════════════════════════════════════════════════════
+
+// Step 1: capture name + email, email a one-time link to the workspace form.
+router.post("/signup/start", asyncHandler(async (req, res) => {
+  const { fullName, email } = req.body;
+  const trimmedName = typeof fullName === "string" ? fullName.trim() : "";
+  const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+
+  if (!trimmedName || !normalizedEmail) {
+    return res.status(400).json({ error: "Full name and work email are required" });
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
+    return res.status(400).json({ error: "Enter a valid email address" });
+  }
+  if (isBlockedEmailDomain(normalizedEmail)) {
+    return res.status(400).json({ error: "Please use a corporate email address. Generic email providers (Gmail, Yahoo, iCloud, etc.) are not accepted." });
+  }
+
+  // Never reveal whether an account already exists — respond the same either way.
+  const existingUser = await query("SELECT id FROM users WHERE email = $1", [normalizedEmail]);
+  if (existingUser.rows.length === 0) {
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // Supersede any earlier unconsumed link for this email.
+    await query("DELETE FROM signup_verifications WHERE email = $1 AND consumed_at IS NULL", [normalizedEmail]);
+    await query(
+      "INSERT INTO signup_verifications (email, full_name, token, expires_at) VALUES ($1, $2, $3, $4)",
+      [normalizedEmail, trimmedName, token, expiresAt]
+    );
+
+    const webUrl = (process.env.WEB_URL || "http://localhost:5173").replace(/\/$/, "");
+    const link = `${webUrl}/register?token=${token}`;
+
+    sendEmail({
+      to: normalizedEmail,
+      subject: "PRISM — Confirm your email to create your workspace",
+      text: `Hi ${trimmedName},\n\nConfirm your email to finish creating your PRISM workspace:\n${link}\n\nThis link expires in 1 hour. If you did not request this, you can ignore this email.\n\n— PRISM`,
+      html: buildEmailHtml({
+        heading: "Confirm your email",
+        preheader: "One click to finish creating your PRISM workspace",
+        body: [
+          `Hi ${trimmedName},`,
+          "Confirm your email address to continue setting up your PRISM workspace. You'll pick your company details and a password on the next screen.",
+        ],
+        cta: { text: "Create your workspace", url: link },
+        note: "This link expires in 1 hour and can only be used once. If you didn't request this, you can safely ignore this email.",
+      }),
+    }).catch(err => console.error("Failed to send signup verification email:", err.message));
+  }
+
+  res.json({ ok: true });
+}));
+
+// Step 2: the link target verifies the token and pre-fills the workspace form.
+// Does NOT consume the token — that happens at /register, so a refresh or a
+// double render doesn't burn the link.
+router.get("/signup/verify", asyncHandler(async (req, res) => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!token) return res.status(400).json({ error: "Missing verification token" });
+
+  const result = await query(
+    "SELECT email, full_name, expires_at, consumed_at FROM signup_verifications WHERE token = $1",
+    [token]
+  );
+  const row = mapRow(result);
+
+  if (!row || row.consumedAt) {
+    return res.status(400).json({ error: "This link is invalid or has already been used. Please start over." });
+  }
+  if (new Date() > new Date(row.expiresAt)) {
+    return res.status(400).json({ error: "This link has expired. Please start over." });
+  }
+
+  res.json({ email: row.email, fullName: row.fullName });
+}));
+
 router.post("/register", asyncHandler(async (req, res) => {
-  const { companyName, domain, industry, companySize, fullName, adminEmail, department, jobTitle, password } = req.body;
+  const { companyName, domain, industry, companySize, department, jobTitle, password, signupToken } = req.body;
   const trimmedName = typeof companyName === "string" ? companyName.trim() : "";
   const normalizedDomain = typeof domain === "string" ? domain.trim().toLowerCase().replace(/\s+/g, "-") : "";
-  const normalizedEmail = typeof adminEmail === "string" ? adminEmail.trim().toLowerCase() : "";
   const domainPattern = /^[a-z0-9-]+$/;
-  
-  if (!trimmedName || !normalizedDomain || !normalizedEmail || !password || !fullName) {
-    return res.status(400).json({ error: "Company name, domain, full name, email, and password are required" });
+
+  // Sign-up now goes through the magic-link flow: email + name come from the
+  // verified signup_verifications row, not the request body.
+  if (!signupToken || typeof signupToken !== "string") {
+    return res.status(400).json({ error: "Missing sign-up verification. Please start over from the sign-up page." });
+  }
+  const verifyResult = await query(
+    "SELECT id, email, full_name, expires_at, consumed_at FROM signup_verifications WHERE token = $1",
+    [signupToken]
+  );
+  const verification = mapRow(verifyResult);
+  if (!verification || verification.consumedAt || new Date() > new Date(verification.expiresAt)) {
+    return res.status(400).json({ error: "Your sign-up link is invalid or has expired. Please start over from the sign-up page." });
+  }
+  const normalizedEmail = verification.email;
+  const fullName = verification.fullName;
+
+  if (!trimmedName || !normalizedDomain || !password) {
+    return res.status(400).json({ error: "Company name, domain, and password are required" });
   }
 
   if (!domainPattern.test(normalizedDomain)) {
@@ -38,17 +150,7 @@ router.post("/register", asyncHandler(async (req, res) => {
   }
 
   // Corporate email validation — block generic providers
-  const blockedDomains = [
-    "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "yahoo.co.in",
-    "hotmail.com", "outlook.com", "live.com", "msn.com",
-    "icloud.com", "me.com", "mac.com",
-    "aol.com", "protonmail.com", "proton.me",
-    "mail.com", "zoho.com", "yandex.com",
-    "gmx.com", "gmx.net", "tutanota.com",
-    "fastmail.com", "hushmail.com"
-  ];
-  const emailDomain = normalizedEmail.split("@")[1];
-  if (!emailDomain || blockedDomains.includes(emailDomain)) {
+  if (isBlockedEmailDomain(normalizedEmail)) {
     return res.status(400).json({ error: "Please use a corporate email address. Generic email providers (Gmail, Yahoo, iCloud, etc.) are not accepted." });
   }
 
@@ -104,6 +206,15 @@ router.post("/register", asyncHandler(async (req, res) => {
         "INSERT INTO list_items (company_id, list_name, value, color) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
         [company.id, item.listName, item.value, item.color || null]
       );
+    }
+
+    // Burn the magic link — guard against a concurrent double-submit.
+    const consumed = await client.query(
+      "UPDATE signup_verifications SET consumed_at = NOW() WHERE id = $1 AND consumed_at IS NULL RETURNING id",
+      [verification.id]
+    );
+    if (consumed.rows.length === 0) {
+      throw Object.assign(new Error("Your sign-up link has already been used. Please start over from the sign-up page."), { status: 400 });
     }
 
     await client.query("COMMIT");
@@ -535,6 +646,22 @@ router.post("/complete-onboarding", authenticate, asyncHandler(async (req, res) 
       throw error;
     } finally {
       client.release();
+    }
+
+    // Pre-fill the newly-created department questions from the company's
+    // self-assessment answers (draft/WIP rows — does not move the score). Runs
+    // in its own transaction after onboarding commits; best-effort so a failure
+    // never blocks onboarding completion.
+    const seedClient = await getClient();
+    try {
+      await seedClient.query("BEGIN");
+      await seedAssessmentsFromSelfAssessment(seedClient, companyId, { scope: "dept" });
+      await seedClient.query("COMMIT");
+    } catch (seedErr) {
+      await seedClient.query("ROLLBACK");
+      console.error("[auth] complete-onboarding self-assessment seeding failed:", seedErr.message); // nosemgrep
+    } finally {
+      seedClient.release();
     }
   }
 

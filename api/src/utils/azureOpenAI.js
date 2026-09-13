@@ -4,6 +4,8 @@ import path from "path";
 import { extractFileContent } from "./fileExtract.js";
 import { extractFirstJson } from "./jsonExtract.js";
 import { buildExposurePrompt, normaliseMappings } from "./regulatoryExposurePrompt.js";
+import { buildNarrativePrompt, normaliseNarrative } from "./readinessNarrativePrompt.js";
+import { buildGapContextPrompt, normaliseGapContext } from "./readinessGapContextPrompt.js";
 
 // ─── OAuth2 Token Cache ───────────────────────────────────────────────────────
 
@@ -398,6 +400,72 @@ export async function mapRegulatoryExposure({ departments = [], provisionIndex =
   const mappings = normaliseMappings(extractFirstJson(raw));
   if (!mappings) throw new Error("mapRegulatoryExposure: no valid JSON object in model response");
   return { mappings };
+}
+
+export async function mapSelfAssessmentToQuestions({ questions = [], catalog = [] }) {
+  if (!questions.length || !catalog.length) return { map: {} };
+
+  const qList = questions.map(q => `- ${q.id}: ${String(q.text || "").slice(0, 200)}`).join("\n");
+  const catList = catalog.map(c =>
+    `- ${c.questId}: [${c.controlArea || ""}] ${String(c.baselineQuestion || "").slice(0, 160)}`
+  ).join("\n");
+
+  const prompt = `You map a company's plain-language self-assessment questions to the formal compliance questions in their audit tracker.
+
+SELF-ASSESSMENT QUESTIONS (plain language, asked of a department):
+${qList}
+
+TRACKER QUESTIONS (formal catalog — use the exact questId):
+${catList}
+
+For each self-assessment question, list the tracker questId(s) covering the SAME control or obligation.
+Rules:
+- Only use questId values that appear verbatim in the list above.
+- 0 to 3 matches per self-assessment question; omit a question entirely if nothing genuinely matches.
+- Match on the underlying requirement, not just shared words.
+
+Respond with ONLY valid JSON, no markdown:
+{"map":{"<selfAssessId>":["<questId>", ...]}}`;
+
+  let raw;
+  try {
+    raw = await runAgentPrompt(prompt);
+  } catch (error) {
+    console.error(`[AI] Azure mapSelfAssessmentToQuestions error:`, error.message);
+    throw new Error(`AI mapping failed: ${error.message}`);
+  }
+  const parsed = extractFirstJson(raw);
+  if (!parsed || typeof parsed.map !== "object" || parsed.map === null) {
+    throw new Error("mapSelfAssessmentToQuestions: no valid JSON object in model response");
+  }
+  return { map: parsed.map };
+}
+
+export async function generateReadinessNarrative(args) {
+  let raw;
+  try {
+    raw = await runAgentPrompt(buildNarrativePrompt(args));
+  } catch (error) {
+    console.error(`[AI] Azure generateReadinessNarrative error:`, error.message);
+    throw new Error(`AI narrative failed: ${error.message}`);
+  }
+  const narrative = normaliseNarrative(extractFirstJson(raw));
+  if (!narrative) throw new Error("generateReadinessNarrative: no valid JSON object in model response");
+  return narrative;
+}
+
+export async function analyzeGapContext(args) {
+  const { ctx, ...promptArgs } = args;
+  let raw;
+  try {
+    raw = await runAgentPrompt(buildGapContextPrompt(promptArgs));
+  } catch (error) {
+    console.error(`[AI] Azure analyzeGapContext error:`, error.message);
+    throw new Error(`AI gap-context failed: ${error.message}`);
+  }
+  const out = normaliseGapContext(extractFirstJson(raw), ctx);
+  if (!out) throw new Error("analyzeGapContext: no valid JSON object in model response");
+  return out;
 }
 
 export async function chatWithDocuments({ systemPrompt, history, message }) {

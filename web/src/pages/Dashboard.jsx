@@ -10,8 +10,10 @@ import {
 import ExportMenu from "../components/ExportMenu.jsx";
 import Logo from "../components/Logo";
 import NotificationBell from "../components/NotificationBell.jsx";
+import EvidenceAiPanel from "../components/EvidenceAiPanel.jsx";
 import GlassSelect from "../components/GlassSelect.jsx";
 import UserMenu from "../components/UserMenu.jsx";
+import { isApprovedStatus } from "../utils/reviewStatus.js";
 
 const WIDGET_DEFS = [
   { id: "maturity-dist",      cls: "dash-card dash-card-wide" },
@@ -107,6 +109,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
   const [auditorNotesModal, setAuditorNotesModal] = useState(null);
   const auditorNotesRef = useRef("");
   const [reviewLockedOpen, setReviewLockedOpen] = useState(false);
+  const [automatedCoverageModalOpen, setAutomatedCoverageModalOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -358,6 +361,34 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
   const isLeadOrAdmin = user?.role === "ADMIN" || user?.role === "LEAD";
   const isAuditor     = user?.role === "AUDITOR";
 
+  // The module drill-down is month-scoped for everyone except the auditor: an
+  // auditor signs off on whichever assessment is current for a control, whatever
+  // month it was logged under, so their view drops the month filter and keeps
+  // the most recent (approved-if-present) row per question.
+  const assessmentsUrl = (moduleId) =>
+    isAuditor
+      ? `/api/assessments?moduleId=${encodeURIComponent(moduleId)}`
+      : `/api/assessments?moduleId=${encodeURIComponent(moduleId)}&month=${selectedMonth}`;
+  const evidenceUrl = (moduleId) =>
+    isAuditor
+      ? `/api/evidence?moduleId=${encodeURIComponent(moduleId)}`
+      : `/api/evidence?moduleId=${encodeURIComponent(moduleId)}&month=${selectedMonth}`;
+
+  const dedupeAssessments = (rows) => {
+    if (!isAuditor) return rows;
+    const rank = (s) => (s === "AUDITED" ? 3 : s === "FINISHED" ? 2 : s === "Submitted" ? 1 : 0);
+    const best = new Map();
+    for (const a of rows) {
+      const key = a.questId || a.quest_id;
+      const cur = best.get(key);
+      if (!cur) { best.set(key, a); continue; }
+      const aS = rank(a.reviewStatus || a.review_status);
+      const cS = rank(cur.reviewStatus || cur.review_status);
+      if (aS > cS || (aS === cS && (a.month || "") > (cur.month || ""))) best.set(key, a);
+    }
+    return [...best.values()];
+  };
+
   const openModule = async (module) => {
     setSelectedModule(module);
     setModuleData(null);
@@ -366,12 +397,12 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
     try {
       const [questions, assessments, evidence] = await Promise.all([
         apiFetch(`/api/questions?moduleId=${encodeURIComponent(module.moduleId)}`, { token }),
-        apiFetch(`/api/assessments?moduleId=${encodeURIComponent(module.moduleId)}&month=${selectedMonth}`, { token }),
-        apiFetch(`/api/evidence?moduleId=${encodeURIComponent(module.moduleId)}&month=${selectedMonth}`, { token })
+        apiFetch(assessmentsUrl(module.moduleId), { token }),
+        apiFetch(evidenceUrl(module.moduleId), { token })
       ]);
       setModuleData({
         questions:   questions   || [],
-        assessments: assessments || [],
+        assessments: dedupeAssessments(assessments || []),
         evidence:    evidence    || [],
       });
     } catch (err) {
@@ -416,12 +447,12 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
 
       const [questions, assessments, evidence] = await Promise.all([
         apiFetch(`/api/questions?moduleId=${encodeURIComponent(moduleId)}`, { token }),
-        apiFetch(`/api/assessments?moduleId=${encodeURIComponent(moduleId)}&month=${selectedMonth}`, { token }),
-        apiFetch(`/api/evidence?moduleId=${encodeURIComponent(moduleId)}&month=${selectedMonth}`, { token })
+        apiFetch(assessmentsUrl(moduleId), { token }),
+        apiFetch(evidenceUrl(moduleId), { token })
       ]);
       setModuleData({
         questions:   questions   || [],
-        assessments: assessments || [],
+        assessments: dedupeAssessments(assessments || []),
         evidence:    evidence    || []
       });
 
@@ -780,11 +811,16 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
         if (stats.automatedCoverage === undefined) return null;
         const pct = stats.automatedCoverage.total > 0
           ? Math.round((stats.automatedCoverage.count / stats.automatedCoverage.total) * 100) : 0;
+        const hasCoveredQuestions = stats.automatedCoverage.count > 0;
         return (
-          <div className="dash-widget-inner-flex">
+          <div
+            className="dash-widget-inner-flex"
+            onClick={hasCoveredQuestions ? () => setAutomatedCoverageModalOpen(true) : undefined}
+            style={hasCoveredQuestions ? { cursor: "pointer" } : undefined}
+          >
             <div className="dash-card-title">
               Automated coverage
-              <span className="dash-card-tag">{pct}%</span>
+              <span className="dash-card-tag">{hasCoveredQuestions ? "tap to view" : `${pct}%`}</span>
             </div>
             <div className="dash-figure">
               <DonutChart
@@ -847,7 +883,9 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
             </div>
             <div className="dash-list">
               {items.map(item => {
-                const approved = item.reviewStatus === "FINISHED";
+                const approved = isApprovedStatus(item.reviewStatus);
+                const audited = item.reviewStatus === "AUDITED";
+                const who = (item.activityBy || item.reviewedBy || "")?.split("@")[0];
                 return (
                   <div
                     key={item.id}
@@ -859,8 +897,8 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                     </span>
                     <span className="dash-list-code">{item.questId}</span>
                     <span className="dash-list-main">{item.controlArea || item.moduleId}</span>
-                    <span className="dash-list-meta">{item.reviewedBy?.split("@")[0]}</span>
-                    <span className="dash-list-meta">{fmtTime(item.reviewedAt)}</span>
+                    <span className="dash-list-meta">{audited ? `audit · ${who}` : who}</span>
+                    <span className="dash-list-meta">{fmtTime(item.activityAt || item.reviewedAt)}</span>
                   </div>
                 );
               })}
@@ -1165,6 +1203,19 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
               <span>Tracker</span>
             </button>
           )}
+          {isAuditor && (
+            <button
+              className="btn btn-ghost"
+              onClick={() => navigate("/review")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--dp-accent, #4F46E5)" }}>
+                <path d="M9 11l3 3L22 4" />
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+              </svg>
+              <span>Audit queue</span>
+            </button>
+          )}
           {stats && <ExportMenu stats={stats} company={company} />}
           <UserMenu
             user={user}
@@ -1258,7 +1309,11 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                 <span className="dash-readout-val">{stats.scoreEligible?.count ?? 0}</span>
                 <span className="dash-readout-label">Score-eligible controls</span>
               </div>
-              <div className="dash-readout">
+              <div
+                className="dash-readout"
+                onClick={stats.automatedCoverage?.count > 0 ? () => setAutomatedCoverageModalOpen(true) : undefined}
+                style={stats.automatedCoverage?.count > 0 ? { cursor: "pointer" } : undefined}
+              >
                 <span className="dash-readout-val">{stats.automatedCoverage?.count ?? 0}</span>
                 <span className="dash-readout-label">Automated checks</span>
               </div>
@@ -1448,7 +1503,7 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                         (a.questId || a.quest_id) === qId
                       );
                       const ev = (moduleData.evidence || []).filter(e => e.questId === q.questId);
-                      const statusColor = assessment?.review_status === "FINISHED" || assessment?.reviewStatus === "FINISHED"
+                      const statusColor = isApprovedStatus(assessment?.reviewStatus || assessment?.review_status)
                         ? "var(--green)"
                         : assessment ? "var(--amber)" : "var(--text3)";
 
@@ -1538,46 +1593,49 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                                 Evidence ({ev.length})
                               </div>
                               {ev.map(e => (
-                                <div key={e.id} className="evidence-item-modal">
-                                  <span style={{ flex: 1, fontSize: 12 }}>
-                                    {e.evidenceName || e.evidence_name}
-                                  </span>
-                                  <div style={{ display: "flex", gap: 6 }}>
-                                    {(e.filePath || e.file_path) && (
-                                      <button
-                                        className="btn-compact"
-                                        onClick={() => viewEvidence(e.id, e.evidenceName || e.evidence_name)}
-                                      >
-                                        View File
-                                      </button>
-                                    )}
-                                    {(e.evidenceLink || e.evidence_link) && (
-                                      <a
-                                        href={e.evidenceLink || e.evidence_link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="btn-compact"
-                                      >
-                                        View Link
-                                      </a>
-                                    )}
+                                <div key={e.id}>
+                                  <div className="evidence-item-modal">
+                                    <span style={{ flex: 1, fontSize: 12 }}>
+                                      {e.evidenceName || e.evidence_name}
+                                    </span>
+                                    <div style={{ display: "flex", gap: 6 }}>
+                                      {e.hasFile && (
+                                        <button
+                                          className="btn-compact"
+                                          onClick={() => viewEvidence(e.id, e.evidenceName || e.evidence_name)}
+                                        >
+                                          View File
+                                        </button>
+                                      )}
+                                      {(e.evidenceLink || e.evidence_link) && (
+                                        <a
+                                          href={e.evidenceLink || e.evidence_link}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="btn-compact"
+                                        >
+                                          View Link
+                                        </a>
+                                      )}
+                                    </div>
                                   </div>
+                                  <EvidenceAiPanel evidence={e} compact />
                                 </div>
                               ))}
                             </div>
                           )}
 
-                          {isAuditor && assessment && ["Submitted", "FINISHED"].includes(assessment.reviewStatus || assessment.review_status) && (
+                          {isAuditor && assessment && ["FINISHED", "AUDITED"].includes(assessment.reviewStatus || assessment.review_status) && (
                             <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
                               <button
                                 className="btn btn-primary"
                                 style={{ flex: 1, fontSize: 11, padding: "6px 12px" }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  promptAuditorApproval(assessment.id, "FINISHED");
+                                  promptAuditorApproval(assessment.id, "AUDITED");
                                 }}
                               >
-                                ✓ {(assessment.reviewStatus || assessment.review_status) === "FINISHED" ? "Re-approve" : "Approve"}
+                                ✓ {(assessment.reviewStatus || assessment.review_status) === "AUDITED" ? "Re-confirm audit" : "Approve (audit)"}
                               </button>
                               <button
                                 className="btn btn-ghost"
@@ -1596,6 +1654,63 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
                     })}
                 </div>
               ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Automated Coverage Modal */}
+      {automatedCoverageModalOpen && stats?.automatedCoverage && (
+        <div className="modal-overlay" onClick={() => setAutomatedCoverageModalOpen(false)}>
+          <div className="module-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="module-modal-header">
+              <div>
+                <div className="module-modal-title">Automated coverage</div>
+                <div className="module-modal-subtitle">
+                  {stats.automatedCoverage.count} of {stats.automatedCoverage.total} controls have fresh automated evidence
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setAutomatedCoverageModalOpen(false)}>×</button>
+            </div>
+            <div className="module-modal-content">
+              {(stats.automatedCoverage.questions || []).length === 0 ? (
+                <div style={{ padding: 40, textAlign: "center", color: "var(--text3)", fontSize: 14 }}>
+                  No questions have automated evidence yet.
+                </div>
+              ) : (
+                <div className="quest-details-list">
+                  {stats.automatedCoverage.questions.map(q => (
+                    <div
+                      key={q.questId}
+                      className="quest-detail-item"
+                      style={{ cursor: "pointer" }}
+                      onClick={() => {
+                        setAutomatedCoverageModalOpen(false);
+                        navigate(`/tracker?quest=${encodeURIComponent(q.questId)}`);
+                      }}
+                    >
+                      <div className="quest-detail-header">
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>
+                            {q.questId}: {q.controlArea}
+                          </div>
+                          <div style={{ fontSize: 12, color: "var(--text2)", marginTop: 4 }}>
+                            {q.baselineQuestion}
+                          </div>
+                          <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                            {(q.integrationKeys || []).map(key => (
+                              <span key={key} className="tag-badge">{key}</span>
+                            ))}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--dp-quiet)", marginTop: 6, fontFamily: "var(--mono)" }}>
+                            {(q.testKeys || []).join(", ")}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1621,13 +1736,15 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
           <div className="module-modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
             <div className="module-modal-header">
               <div className="module-modal-title">
-                {auditorNotesModal.status === "FINISHED" ? "Approve assessment" : "Reject assessment"}
+                {auditorNotesModal.status === "AUDITED" ? "Confirm audit sign-off" : "Reject assessment"}
               </div>
               <button className="modal-close" onClick={() => setAuditorNotesModal(null)}>×</button>
             </div>
             <div className="module-modal-content" style={{ padding: 20 }}>
               <label style={{ display: "block", marginBottom: 8, fontSize: 13, color: "var(--text2)" }}>
-                Notes for contributor (optional)
+                {auditorNotesModal.status === "AUDITED"
+                  ? "Audit note (optional)"
+                  : "Reason for rejection (optional)"}
               </label>
               <textarea
                 className="comments-textarea"
@@ -1638,11 +1755,11 @@ export default function Dashboard({ token, user, company, onLogout, theme, onThe
               />
               <div style={{ display: "flex", gap: 8 }}>
                 <button
-                  className={`btn ${auditorNotesModal.status === "FINISHED" ? "btn-primary" : "btn-ghost"}`}
+                  className={`btn ${auditorNotesModal.status === "AUDITED" ? "btn-primary" : "btn-ghost"}`}
                   style={{ flex: 1 }}
                   onClick={confirmAuditorApproval}
                 >
-                  {auditorNotesModal.status === "FINISHED" ? "✓ Confirm Approval" : "✗ Confirm Rejection"}
+                  {auditorNotesModal.status === "AUDITED" ? "✓ Confirm Audit" : "✗ Confirm Rejection"}
                 </button>
                 <button className="btn btn-ghost" onClick={() => setAuditorNotesModal(null)}>Cancel</button>
               </div>

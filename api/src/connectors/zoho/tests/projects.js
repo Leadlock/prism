@@ -126,6 +126,7 @@ export const projectsTests = [
     failTitle: "External/client user has portal-wide project access rather than scoped project access",
     severityDefault: "medium",
     isoReferences: ["A.9.1.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkExternalUserReview(clients),
   },
   {
@@ -134,6 +135,7 @@ export const projectsTests = [
     failTitle: "Project client portal visibility is not restricted to intended clients",
     severityDefault: "medium",
     isoReferences: ["A.9.4.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkClientPortalAccessRestricted(clients),
   },
   {
@@ -142,6 +144,7 @@ export const projectsTests = [
     failTitle: "Project has all users assigned the Manager role — role-based permission differentiation is missing",
     severityDefault: "medium",
     isoReferences: ["A.9.2.3"],
+    dpdpaControlAreas: ["Privileged Access Management"],
     run: (clients) => checkRoleBasedPermissionsEnforced(clients),
   },
 ];

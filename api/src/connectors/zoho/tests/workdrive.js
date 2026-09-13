@@ -83,6 +83,7 @@ export const workdriveTests = [
     failTitle: "WorkDrive external sharing is unrestricted at the team level",
     severityDefault: "critical",
     isoReferences: ["A.13.2.1"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkExternalSharingRestricted(clients),
   },
   {
@@ -91,6 +92,7 @@ export const workdriveTests = [
     failTitle: "WorkDrive public share links do not require a password and/or expiry date",
     severityDefault: "high",
     isoReferences: ["A.9.4.1"],
+    dpdpaControlAreas: ["DLP / Data Leakage Prevention"],
     run: (clients) => checkLinkSharingPasswordProtected(clients),
   },
   {
@@ -99,6 +101,7 @@ export const workdriveTests = [
     failTitle: "WorkDrive admin activity logging is not enabled",
     severityDefault: "medium",
     isoReferences: ["A.12.4.1"],
+    dpdpaControlAreas: ["Logging & Monitoring"],
     run: (clients) => checkAdminActivityLogEnabled(clients),
   },
 ];

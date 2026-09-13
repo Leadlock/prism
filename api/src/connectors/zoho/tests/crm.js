@@ -97,6 +97,7 @@ export const crmTests = [
     failTitle: "CRM user does not have MFA enabled",
     severityDefault: "critical",
     isoReferences: ["A.9.4.2"],
+    dpdpaControlAreas: ["MFA for Sensitive Systems"],
     run: (clients) => checkCrmMfaEnforced(clients),
   },
   {
@@ -105,6 +106,7 @@ export const crmTests = [
     failTitle: "CRM data sharing rule is set to Public Read/Write",
     severityDefault: "high",
     isoReferences: ["A.13.1.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkDataSharingRulesRestricted(clients),
   },
   {
@@ -113,6 +115,7 @@ export const crmTests = [
     failTitle: "CRM audit log tracking is not enabled",
     severityDefault: "medium",
     isoReferences: ["A.12.4.1"],
+    dpdpaControlAreas: ["Logging & Monitoring"],
     run: (clients) => checkAuditLogEnabled(clients),
   },
 ];

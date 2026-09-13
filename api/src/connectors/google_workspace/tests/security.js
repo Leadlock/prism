@@ -31,6 +31,7 @@ export const securityTests = [
     failTitle: "User does not have 2-Step Verification enforced",
     severityDefault: "critical",
     isoReferences: ["A.9.4.2"],
+    dpdpaControlAreas: ["MFA for Sensitive Systems"],
     run: (clients) => checkTwoStepVerificationEnforced(clients.directory, clients.customerId),
   },
 ];

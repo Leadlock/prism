@@ -27,38 +27,95 @@ function hashPayload(payload) {
   return crypto.createHash("sha256").update(stableStringify(payload || {})).digest("hex");
 }
 
-// Shared helper: links a vault item to every question mapped to the given testKey via ISO reference.
+// Shared helper: links a vault item to every question the given testKey maps to. A
+// test_control_mappings row is (test_key, framework, iso_reference) where iso_reference
+// holds whatever reference that framework uses — an ISO Annex A clause, a DPDPA
+// control_area, a GDPR article, a SOC 2 criterion, etc. (testDefinitionSync.js derives
+// the non-ISO/DPDPA rows from data/crosswalk/iso27001-annexa-crosswalk.json). A question
+// is matched two ways, unioned:
+//   1. legacy columns — questions.iso_reference / questions.control_area equal the ref
+//      (covers ISO27001 clause rows and DPDPA control_area rows).
+//   2. canonical crosswalk — question_framework_controls(framework_key, control_reference)
+//      equals the mapping's (framework, iso_reference), so evidence reaches a canonical
+//      question that carries a GDPR/SOC 2/… ref from a company's framework import even
+//      when its own legacy columns don't match the connector's ISO clause.
 async function linkVaultToQuestions({ companyId, testKey, vaultId }) {
-  const mappings = await query(`SELECT iso_reference FROM test_control_mappings WHERE test_key = $1`, [testKey]);
-  for (const mapping of mappings.rows) {
-    const questions = await query(
-      `SELECT quest_id FROM questions WHERE company_id = $1 AND iso_reference = $2`,
-      [companyId, mapping.iso_reference]
+  const questIds = await query(
+    `SELECT DISTINCT q.quest_id
+       FROM test_control_mappings tcm
+       JOIN questions q
+         ON q.company_id = $1
+        AND (q.iso_reference = tcm.iso_reference OR q.control_area = tcm.iso_reference)
+      WHERE tcm.test_key = $2
+     UNION
+     SELECT DISTINCT qfc.quest_id
+       FROM test_control_mappings tcm
+       JOIN question_framework_controls qfc
+         ON qfc.company_id = $1
+        AND qfc.framework_key = tcm.framework
+        AND qfc.control_reference = tcm.iso_reference
+      WHERE tcm.test_key = $2`,
+    [companyId, testKey]
+  );
+  for (const row of questIds.rows) {
+    await query(
+      `INSERT INTO question_evidence (company_id, quest_id, vault_id, linked_by)
+       VALUES ($1, $2, $3, 'automated')
+       ON CONFLICT (company_id, quest_id, vault_id) DO NOTHING`,
+      [companyId, row.quest_id, vaultId]
     );
-    for (const q of questions.rows) {
-      await query(
-        `INSERT INTO question_evidence (company_id, quest_id, vault_id, linked_by)
-         VALUES ($1, $2, $3, 'automated')
-         ON CONFLICT (company_id, quest_id, vault_id) DO NOTHING`,
-        [companyId, q.quest_id, vaultId]
-      );
-    }
   }
 }
 
-async function upsertEvidenceForPass({ companyId, result }) {
+// Appends an evidence_versions row (auto-incrementing version_number) recording this
+// collection's snapshot. Every re-collection that changed the payload becomes a version
+// of the SAME vault item rather than a brand-new evidence document.
+async function appendEvidenceVersion({ vaultId, result, file = null }) {
+  const maxResult = await query(
+    `SELECT COALESCE(MAX(version_number), 0) AS max_ver FROM evidence_versions WHERE evidence_id = $1`,
+    [vaultId]
+  );
+  const nextVer = parseInt(maxResult.rows[0].max_ver, 10) + 1;
+  await query(
+    `INSERT INTO evidence_versions (evidence_id, version_number, file_name, file_type, file_size, storage_path, uploaded_by, version_notes)
+     VALUES ($1, $2, $3, $4, $5, $6, 'automated', $7)
+     ON CONFLICT (evidence_id, version_number) DO NOTHING`,
+    [vaultId, nextVer, file?.fileName ?? null, file?.fileType ?? null, file?.fileSize ?? null, file?.storageRef ?? null, result.message]
+  );
+  return nextVer;
+}
+
+async function upsertEvidenceForPass({ companyId, result, existingVaultId = null }) {
+  // Re-collection of a resource we already have evidence for: keep the one vault item
+  // and record the new snapshot in its version history.
+  if (existingVaultId) {
+    const updated = await query(
+      `UPDATE evidence_vault SET description = $1, updated_at = NOW()
+       WHERE id = $2 AND company_id = $3 RETURNING id`,
+      [result.message, existingVaultId, companyId]
+    );
+    if (updated.rows.length > 0) {
+      await appendEvidenceVersion({ vaultId: existingVaultId, result });
+      await linkVaultToQuestions({ companyId, testKey: result.testKey, vaultId: existingVaultId });
+      return existingVaultId;
+    }
+    // Pointer was dangling (vault row deleted) — fall through and create a fresh item.
+  }
+
   const vaultResult = await query(
     `INSERT INTO evidence_vault (company_id, title, description, uploaded_by)
      VALUES ($1, $2, $3, 'automated') RETURNING *`,
     [companyId, `${result.testKey} — ${result.resourceId}`, result.message]
   );
   const vault = mapRow(vaultResult);
+  await appendEvidenceVersion({ vaultId: vault.id, result });
   await linkVaultToQuestions({ companyId, testKey: result.testKey, vaultId: vault.id });
   return vault.id;
 }
 
-// Generates a real pdfkit PDF, writes it to disk, inserts an evidence_vault row with full file metadata,
-// and auto-links it to all matching questions — used only on the fail path.
+// Generates a real pdfkit PDF, writes it to storage, and either appends it as a new
+// version of the finding's existing evidence item or (first time) creates the vault row.
+// Auto-links it to all matching questions.
 async function generateFindingEvidenceVaultItem({ companyId, connectionId, result, existingFinding }) {
   const [mappingRows, connRow, testRow] = await Promise.all([
     query(`SELECT framework, iso_reference FROM test_control_mappings WHERE test_key = $1`, [result.testKey]),
@@ -97,6 +154,23 @@ async function generateFindingEvidenceVaultItem({ companyId, connectionId, resul
     scope: "vault",
     contentType: "application/pdf",
   });
+  const file = { fileName, fileType: "application/pdf", fileSize: pdfBuffer.length, storageRef };
+
+  const existingVaultId = existingFinding?.evidenceVaultId || null;
+  if (existingVaultId) {
+    const updated = await query(
+      `UPDATE evidence_vault
+         SET description = $1, file_name = $2, file_type = 'application/pdf', file_size = $3, storage_path = $4, updated_at = NOW()
+       WHERE id = $5 AND company_id = $6 RETURNING id`,
+      [result.message, fileName, pdfBuffer.length, storageRef, existingVaultId, companyId]
+    );
+    if (updated.rows.length > 0) {
+      await appendEvidenceVersion({ vaultId: existingVaultId, result, file });
+      await linkVaultToQuestions({ companyId, testKey: result.testKey, vaultId: existingVaultId });
+      return existingVaultId;
+    }
+    // Pointer was dangling — fall through and create a fresh item.
+  }
 
   const vaultResult = await query(
     `INSERT INTO evidence_vault (company_id, title, description, file_name, file_type, file_size, storage_path, uploaded_by)
@@ -104,6 +178,7 @@ async function generateFindingEvidenceVaultItem({ companyId, connectionId, resul
     [companyId, `${result.testKey} — ${result.resourceId}`, result.message, fileName, pdfBuffer.length, storageRef]
   );
   const vault = mapRow(vaultResult);
+  await appendEvidenceVersion({ vaultId: vault.id, result, file });
   await linkVaultToQuestions({ companyId, testKey: result.testKey, vaultId: vault.id });
   return vault.id;
 }
@@ -199,7 +274,7 @@ export async function runCollection({ connectionId, companyId, triggeredBy, trig
         const existingItem = mapRow(existing);
         let vaultId = existingItem?.evidenceVaultId;
         if (!existingItem || existingItem.payloadHash !== payloadHash) {
-          vaultId = await upsertEvidenceForPass({ companyId, result });
+          vaultId = await upsertEvidenceForPass({ companyId, result, existingVaultId: existingItem?.evidenceVaultId });
         }
         await query(
           `INSERT INTO automated_evidence_items (company_id, connection_id, evidence_vault_id, test_key, resource_id, latest_result_id, payload_hash, status, last_collected_at)

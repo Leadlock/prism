@@ -83,6 +83,7 @@ export const directoryTests = [
     failTitle: "Org-wide MFA is not enforced in Zoho Directory",
     severityDefault: "critical",
     isoReferences: ["A.9.4.2"],
+    dpdpaControlAreas: ["MFA for Sensitive Systems"],
     run: (clients) => checkMfaEnforced(clients),
   },
   {
@@ -91,6 +92,7 @@ export const directoryTests = [
     failTitle: "SSO is not enforced as the required sign-in method",
     severityDefault: "high",
     isoReferences: ["A.9.2.1"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkSsoEnforced(clients),
   },
   {
@@ -99,6 +101,7 @@ export const directoryTests = [
     failTitle: "User has not signed in for 90+ days but is still active",
     severityDefault: "medium",
     isoReferences: ["A.9.2.6"],
+    dpdpaControlAreas: ["Access Control & Least Privilege"],
     run: (clients) => checkInactiveUserReview(clients),
   },
 ];

@@ -78,6 +78,7 @@ export const alertsTests = [
     failTitle: "High or critical severity alert has been in 'New' status for more than 24 hours",
     severityDefault: "critical",
     isoReferences: ["A.16.1.5"],
+    dpdpaControlAreas: ["Breach Identification & Classification"],
     run: (clients) => checkHighSeverityTriagedPromptly(clients.getToken, clients.baseUrl),
   },
   {
@@ -86,6 +87,7 @@ export const alertsTests = [
     failTitle: "Critical alert has no assigned owner",
     severityDefault: "medium",
     isoReferences: ["A.16.1.2"],
+    dpdpaControlAreas: ["Breach Identification & Classification"],
     run: (clients) => checkNoUnassignedCriticalAlerts(clients.getToken, clients.baseUrl),
   },
 ];

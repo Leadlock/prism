@@ -56,6 +56,6 @@ export async function checkNoPublicIpAssociation(compute, network) {
 }
 
 export const computeTests = [
-  { key: "azure.compute.disk_encryption_enabled", title: "Virtual machines have encryption at host enabled", failTitle: "Virtual machine does not have encryption at host enabled", severityDefault: "high", isoReferences: ["A.8.2.3"], run: (clients) => checkDiskEncryptionEnabled(clients.compute) },
-  { key: "azure.compute.no_public_ip_association", title: "Virtual machines are not directly exposed via a public IP address", failTitle: "Virtual machine network interface has a public IP address attached", severityDefault: "critical", isoReferences: ["A.13.1.1"], run: (clients) => checkNoPublicIpAssociation(clients.compute, clients.network) },
+  { key: "azure.compute.disk_encryption_enabled", title: "Virtual machines have encryption at host enabled", failTitle: "Virtual machine does not have encryption at host enabled", severityDefault: "high", isoReferences: ["A.8.2.3"], dpdpaControlAreas: ["Encryption"], run: (clients) => checkDiskEncryptionEnabled(clients.compute) },
+  { key: "azure.compute.no_public_ip_association", title: "Virtual machines are not directly exposed via a public IP address", failTitle: "Virtual machine network interface has a public IP address attached", severityDefault: "critical", isoReferences: ["A.13.1.1"], dpdpaControlAreas: ["Access Control & Least Privilege"], run: (clients) => checkNoPublicIpAssociation(clients.compute, clients.network) },
 ];
