@@ -211,17 +211,17 @@
   left: 0;
   right: 0;
   z-index: 100;
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   background: color-mix(in srgb, var(--hp-bg) 88%, transparent);
   border-bottom: 1px solid var(--hp-line);
-  box-shadow: 0 4px 24px rgba(163, 178, 204, 0.2);
+  box-shadow: 0 2px 16px rgba(163, 178, 204, 0.16);
 }
 
 .hp-header-inner {
-  max-width: 1560px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 20px 48px;
+  padding: 13px 32px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -230,52 +230,51 @@
 .hp-brand {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   text-decoration: none;
 }
 .hp-brand img {
-  height: 48px;
+  height: 33px;
   width: auto;
   object-fit: contain;
 }
 .hp-brand-name {
-  font-size: 26px;
-  font-weight: 750;
-  letter-spacing: -0.03em;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   color: var(--hp-ink);
 }
 
 .hp-nav {
   display: flex;
   align-items: center;
-  gap: 36px;
+  gap: 28px;
 }
 
 .hp-nav-menu {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 24px;
 }
 
 .hp-nav-link {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 16.5px;
-  font-weight: 600;
+  gap: 5px;
+  font-size: 14.5px;
+  font-weight: 550;
   color: var(--hp-ink-2);
   text-decoration: none;
-  transition: all 0.18s ease;
-  padding: 6px 4px;
+  transition: all 0.16s ease;
+  padding: 4px 2px;
 }
 .hp-nav-link:hover {
   color: var(--hp-accent);
-  transform: translateY(-1px);
 }
 .hp-nav-chevron {
-  font-size: 15px;
-  opacity: 0.75;
-  transition: transform 0.18s ease;
+  font-size: 13px;
+  opacity: 0.7;
+  transition: transform 0.16s ease;
 }
 .hp-nav-link:hover .hp-nav-chevron {
   transform: translateY(1px);
@@ -285,23 +284,23 @@
 .hp-nav-actions {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .hp-icon-btn {
   background: var(--hp-surface);
   border: 1px solid var(--hp-line-strong);
   color: var(--hp-ink-2);
-  font-size: 20px;
+  font-size: 16px;
   cursor: pointer;
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: var(--hp-shadow-sm);
-  transition: all 0.18s ease;
+  transition: all 0.16s ease;
 }
 .hp-icon-btn:hover {
   color: var(--hp-accent);
@@ -312,41 +311,41 @@
 }
 
 .hp-toggle {
-  width: 52px;
-  height: 28px;
+  width: 42px;
+  height: 22px;
   border-radius: 999px;
   background: var(--hp-line-strong);
   border: none;
   position: relative;
   cursor: pointer;
-  padding: 3px;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
+  padding: 2px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15);
   transition: background 0.2s ease;
 }
 .hp-toggle-knob {
   display: block;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: #ffffff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease;
 }
 .hp-toggle-knob.active {
-  transform: translateX(24px);
+  transform: translateX(20px);
   background: var(--hp-accent);
 }
 
 .hp-btn-nav-outline {
-  padding: 12px 24px;
-  font-size: 15.5px;
-  font-weight: 650;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--hp-ink);
   background: var(--hp-surface);
-  border: 1.5px solid var(--hp-line-strong);
-  border-radius: 12px;
+  border: 1.25px solid var(--hp-line-strong);
+  border-radius: 9px;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: all 0.16s ease;
   box-shadow: var(--hp-shadow-sm);
   white-space: nowrap;
 }
@@ -358,27 +357,27 @@
 }
 
 .hp-btn-nav-primary {
-  padding: 12px 26px;
-  font-size: 15.5px;
-  font-weight: 650;
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 600;
   color: #ffffff;
   background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
-  border-radius: 12px;
+  border-radius: 9px;
   text-decoration: none;
-  transition: all 0.18s ease;
-  box-shadow: 0 4px 16px rgba(79, 70, 229, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: all 0.16s ease;
+  box-shadow: 0 3px 12px rgba(79, 70, 229, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   white-space: nowrap;
 }
 .hp-btn-nav-primary:hover {
   background: linear-gradient(135deg, #4338CA 0%, #4F46E5 100%);
   transform: translateY(-1px);
-  box-shadow: 0 8px 22px rgba(79, 70, 229, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 /* ---------- 1. HERO SECTION ---------- */
 .hp-hero {
   position: relative;
-  padding: 180px 48px 95px;
+  padding: 145px 32px 80px;
   background:
     radial-gradient(1100px 520px at 78% -8%, var(--hp-glow), transparent 70%),
     var(--hp-bg);
@@ -388,7 +387,7 @@
 .hp-hero-inner {
   position: relative;
   z-index: 1;
-  max-width: 1560px;
+  max-width: 1400px;
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr);
