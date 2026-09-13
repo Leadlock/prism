@@ -211,16 +211,17 @@
   left: 0;
   right: 0;
   z-index: 100;
-  backdrop-filter: blur(16px);
-  background: color-mix(in srgb, var(--hp-bg) 86%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  background: color-mix(in srgb, var(--hp-bg) 88%, transparent);
   border-bottom: 1px solid var(--hp-line);
-  box-shadow: 0 2px 14px rgba(163, 178, 204, 0.15);
+  box-shadow: 0 4px 24px rgba(163, 178, 204, 0.2);
 }
 
 .hp-header-inner {
-  max-width: 1360px;
+  max-width: 1560px;
   margin: 0 auto;
-  padding: 14px 28px;
+  padding: 20px 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -229,17 +230,17 @@
 .hp-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   text-decoration: none;
 }
 .hp-brand img {
-  height: 28px;
+  height: 48px;
   width: auto;
   object-fit: contain;
 }
 .hp-brand-name {
-  font-size: 19px;
-  font-weight: 700;
+  font-size: 26px;
+  font-weight: 750;
   letter-spacing: -0.03em;
   color: var(--hp-ink);
 }
@@ -247,107 +248,137 @@
 .hp-nav {
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 36px;
 }
 
 .hp-nav-menu {
   display: flex;
   align-items: center;
-  gap: 22px;
+  gap: 32px;
 }
 
 .hp-nav-link {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 14px;
-  font-weight: 500;
+  gap: 6px;
+  font-size: 16.5px;
+  font-weight: 600;
   color: var(--hp-ink-2);
   text-decoration: none;
-  transition: color 0.15s ease;
+  transition: all 0.18s ease;
+  padding: 6px 4px;
 }
-.hp-nav-link:hover { color: var(--hp-accent); }
-.hp-nav-chevron { font-size: 12px; opacity: 0.6; }
+.hp-nav-link:hover {
+  color: var(--hp-accent);
+  transform: translateY(-1px);
+}
+.hp-nav-chevron {
+  font-size: 15px;
+  opacity: 0.75;
+  transition: transform 0.18s ease;
+}
+.hp-nav-link:hover .hp-nav-chevron {
+  transform: translateY(1px);
+  opacity: 1;
+}
 
 .hp-nav-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .hp-icon-btn {
-  background: transparent;
-  border: none;
+  background: var(--hp-surface);
+  border: 1px solid var(--hp-line-strong);
   color: var(--hp-ink-2);
-  font-size: 16px;
+  font-size: 20px;
   cursor: pointer;
-  padding: 6px;
-  border-radius: 6px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
-  transition: color 0.15s ease;
+  justify-content: center;
+  box-shadow: var(--hp-shadow-sm);
+  transition: all 0.18s ease;
 }
-.hp-icon-btn:hover { color: var(--hp-accent); }
+.hp-icon-btn:hover {
+  color: var(--hp-accent);
+  border-color: var(--hp-accent);
+  background: var(--hp-accent-bg);
+  transform: translateY(-1px);
+  box-shadow: var(--hp-shadow-hover);
+}
 
 .hp-toggle {
-  width: 38px;
-  height: 20px;
+  width: 52px;
+  height: 28px;
   border-radius: 999px;
   background: var(--hp-line-strong);
   border: none;
   position: relative;
   cursor: pointer;
-  padding: 2px;
+  padding: 3px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
+  transition: background 0.2s ease;
 }
 .hp-toggle-knob {
   display: block;
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: #ffffff;
-  transition: transform 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease;
 }
-.hp-toggle-knob.active { transform: translateX(18px); background: var(--hp-accent); }
+.hp-toggle-knob.active {
+  transform: translateX(24px);
+  background: var(--hp-accent);
+}
 
 .hp-btn-nav-outline {
-  padding: 7px 15px;
-  font-size: 13.5px;
-  font-weight: 600;
+  padding: 12px 24px;
+  font-size: 15.5px;
+  font-weight: 650;
   color: var(--hp-ink);
   background: var(--hp-surface);
-  border: 1px solid var(--hp-line-strong);
-  border-radius: 8px;
+  border: 1.5px solid var(--hp-line-strong);
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.18s ease;
   box-shadow: var(--hp-shadow-sm);
+  white-space: nowrap;
 }
 .hp-btn-nav-outline:hover {
   border-color: var(--hp-accent);
   color: var(--hp-accent);
   transform: translateY(-1px);
+  box-shadow: var(--hp-shadow-hover);
 }
 
 .hp-btn-nav-primary {
-  padding: 7px 16px;
-  font-size: 13.5px;
-  font-weight: 600;
+  padding: 12px 26px;
+  font-size: 15.5px;
+  font-weight: 650;
   color: #ffffff;
   background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
-  border-radius: 8px;
+  border-radius: 12px;
   text-decoration: none;
   transition: all 0.18s ease;
-  box-shadow: 0 3px 10px rgba(79, 70, 229, 0.35);
+  box-shadow: 0 4px 16px rgba(79, 70, 229, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  white-space: nowrap;
 }
 .hp-btn-nav-primary:hover {
   background: linear-gradient(135deg, #4338CA 0%, #4F46E5 100%);
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.45);
+  box-shadow: 0 8px 22px rgba(79, 70, 229, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 /* ---------- 1. HERO SECTION ---------- */
 .hp-hero {
   position: relative;
-  padding: 140px 28px 75px;
+  padding: 180px 48px 95px;
   background:
     radial-gradient(1100px 520px at 78% -8%, var(--hp-glow), transparent 70%),
     var(--hp-bg);
@@ -357,7 +388,7 @@
 .hp-hero-inner {
   position: relative;
   z-index: 1;
-  max-width: 1360px;
+  max-width: 1560px;
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr);
@@ -365,15 +396,15 @@
   align-items: center;
 }
 
-.hp-hero-copy { max-width: 660px; }
+.hp-hero-copy { max-width: 680px; }
 
 .hp-hero-title {
-  font-size: clamp(2.3rem, 3.8vw, 3.5rem);
-  font-weight: 700;
-  line-height: 1.12;
+  font-size: clamp(2.5rem, 4.2vw, 3.85rem);
+  font-weight: 800;
+  line-height: 1.14;
   letter-spacing: -0.035em;
   color: var(--hp-ink);
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 .hp-hero-accent {
   background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
@@ -382,21 +413,21 @@
 }
 
 .hp-hero-subhead {
-  font-size: clamp(1.08rem, 1.6vw, 1.28rem);
+  font-size: clamp(1.15rem, 1.7vw, 1.35rem);
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.45;
   letter-spacing: -0.015em;
   color: var(--hp-ink);
-  margin-bottom: 16px;
-  max-width: 620px;
+  margin-bottom: 18px;
+  max-width: 640px;
 }
 
 .hp-hero-sub {
-  font-size: clamp(0.98rem, 1.35vw, 1.08rem);
-  line-height: 1.65;
+  font-size: clamp(1.02rem, 1.4vw, 1.15rem);
+  line-height: 1.7;
   color: var(--hp-ink-2);
-  max-width: 600px;
-  margin-bottom: 32px;
+  max-width: 620px;
+  margin-bottom: 36px;
 }
 
 .hp-hero-ctas {
