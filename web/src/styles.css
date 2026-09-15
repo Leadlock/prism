@@ -2619,13 +2619,13 @@ body {
 }
 
 /* Form Inputs with Sunken Neumorphic Channels */
-input[type="text"]:not(.integrations-page *),
-input[type="email"]:not(.integrations-page *),
-input[type="password"]:not(.integrations-page *),
-input[type="search"]:not(.integrations-page *),
-input[type="number"]:not(.integrations-page *),
-input[type="date"]:not(.integrations-page *),
-textarea:not(.integrations-page *) {
+input[type="text"]:not(.integrations-page *):not(.hp-root *),
+input[type="email"]:not(.integrations-page *):not(.hp-root *),
+input[type="password"]:not(.integrations-page *):not(.hp-root *),
+input[type="search"]:not(.integrations-page *):not(.hp-root *),
+input[type="number"]:not(.integrations-page *):not(.hp-root *),
+input[type="date"]:not(.integrations-page *):not(.hp-root *),
+textarea:not(.integrations-page *):not(.hp-root *) {
   background: var(--bg3);
   color: var(--text);
   border: 1px solid rgba(163, 178, 204, 0.4);
@@ -2635,13 +2635,13 @@ textarea:not(.integrations-page *) {
   font-family: inherit;
 }
 
-input[type="text"]:focus:not(.integrations-page *),
-input[type="email"]:focus:not(.integrations-page *),
-input[type="password"]:focus:not(.integrations-page *),
-input[type="search"]:focus:not(.integrations-page *),
-input[type="number"]:focus:not(.integrations-page *),
-input[type="date"]:focus:not(.integrations-page *),
-textarea:focus:not(.integrations-page *) {
+input[type="text"]:focus:not(.integrations-page *):not(.hp-root *),
+input[type="email"]:focus:not(.integrations-page *):not(.hp-root *),
+input[type="password"]:focus:not(.integrations-page *):not(.hp-root *),
+input[type="search"]:focus:not(.integrations-page *):not(.hp-root *),
+input[type="number"]:focus:not(.integrations-page *):not(.hp-root *),
+input[type="date"]:focus:not(.integrations-page *):not(.hp-root *),
+textarea:focus:not(.integrations-page *):not(.hp-root *) {
   outline: none;
   border-color: var(--accent);
   box-shadow: var(--neu-inset-sm), 0 0 0 3px rgba(79, 70, 229, 0.16);
@@ -7496,31 +7496,6 @@ textarea:focus:not(.integrations-page *) {
   }
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .hp-header-inner {
-    flex-wrap: wrap;
-  }
-
-  .hp-nav {
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .hp-nav-link {
-    display: none;
-  }
-
-  .hp-section {
-    min-height: auto;
-    padding: 80px 16px 60px;
-  }
-
-  .hp-section::before,
-  .hp-section::after {
-    display: none;
-  }
-}
 
 /* ── Contact Modal ────────────────────────────────────────────── */
 .contact-modal-overlay {

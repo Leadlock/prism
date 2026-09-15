@@ -84,26 +84,28 @@ export default function ComplianceCommandCenter() {
 
         <section className="hp-ccc-panel hp-ccc-dept">
           <h4>Department ownership</h4>
-          <table className="hp-ccc-table">
-            <thead>
-              <tr><th>Department</th><th>Owner</th><th>Controls</th><th>Readiness</th></tr>
-            </thead>
-            <tbody>
-              {DEPARTMENTS.map((d) => (
-                <tr key={d.name}>
-                  <td>{d.name}</td>
-                  <td className="hp-ccc-muted">{d.owner}</td>
-                  <td>{d.controls}</td>
-                  <td>
-                    <span className="hp-ccc-meter-cell">
-                      <BarMeter value={d.readiness} color="var(--teal)" />
-                      <i>{d.readiness}%</i>
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="hp-ccc-table-wrap">
+            <table className="hp-ccc-table">
+              <thead>
+                <tr><th>Department</th><th>Owner</th><th>Controls</th><th>Readiness</th></tr>
+              </thead>
+              <tbody>
+                {DEPARTMENTS.map((d) => (
+                  <tr key={d.name}>
+                    <td>{d.name}</td>
+                    <td className="hp-ccc-muted">{d.owner}</td>
+                    <td>{d.controls}</td>
+                    <td>
+                      <span className="hp-ccc-meter-cell">
+                        <BarMeter value={d.readiness} color="var(--teal)" />
+                        <i>{d.readiness}%</i>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section className="hp-ccc-panel hp-ccc-risks">

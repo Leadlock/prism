@@ -21,21 +21,23 @@ import {
   FiCloud,
   FiBarChart2,
   FiLayers,
+  FiMenu,
+  FiX,
 } from "react-icons/fi";
 import { FaLinkedin } from "react-icons/fa";
 import PrismBg from "../components/PrismBg";
 import Logo from "../components/Logo";
 import HomeMark from "../components/homepage/HomeIcons";
 import ComplianceCommandCenter from "../components/homepage/ComplianceCommandCenter";
+import SiteScannerSection from "../components/homepage/SiteScannerSection";
 import "./Homepage.css";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
 const NAV_LINKS = [
-  { label: "Product", href: "#approach", hasDropdown: true },
-  { label: "Frameworks", href: "#frameworks", hasDropdown: true },
+  { label: "Frameworks", href: "#frameworks", hasDropdown: false },
   { label: "Integrations", href: "#integrations", hasDropdown: false },
-  { label: "Resources", href: "#workflow", hasDropdown: true },
+  { label: "Site Scanner", href: "#site-scanner", hasDropdown: false },
   { label: "About", href: "#india-first", hasDropdown: false },
 ];
 
@@ -391,11 +393,29 @@ export default function Homepage() {
   });
   const [contactOpen, setContactOpen] = useState(false);
   const [contactSubject, setContactSubject] = useState("Request a demo");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     localStorage.setItem("prism_theme", dark ? "dark" : "light");
   }, [dark]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 860) {
+        setMobileMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") setMobileMenuOpen(false);
+    };
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   const openContact = (subject = "Request a demo") => {
     setContactSubject(subject);
@@ -407,12 +427,13 @@ export default function Homepage() {
       {/* HEADER / NAVBAR */}
       <header className="hp-header">
         <div className="hp-header-inner">
-          <div className="hp-brand">
+          <a href="#" className="hp-brand">
             <Logo alt="PrismGRC" />
             <span className="hp-brand-name">PrismGRC</span>
-          </div>
+          </a>
 
-          <nav className="hp-nav">
+          {/* Desktop Navigation */}
+          <nav className="hp-nav hp-desktop-nav">
             <div className="hp-nav-menu">
               {NAV_LINKS.map((l) => (
                 <a key={l.label} href={l.href} className="hp-nav-link">
@@ -437,12 +458,79 @@ export default function Homepage() {
               <button className="hp-btn-nav-outline" onClick={() => openContact("Request a demo")}>
                 Request a Demo
               </button>
+              <Link to="/login" className="hp-nav-login-link">
+                Sign In
+              </Link>
               <Link to="/register" className="hp-btn-nav-primary">
-                Assess Readiness
+                Sign Up
               </Link>
             </div>
           </nav>
+
+          {/* Mobile Header Controls */}
+          <div className="hp-mobile-nav-controls">
+            <button
+              className="hp-toggle"
+              onClick={() => setDark(!dark)}
+              aria-label="Toggle theme"
+              title={`Switch to ${dark ? "light" : "dark"} mode`}
+            >
+              <span className={`hp-toggle-knob ${dark ? "active" : ""}`} />
+            </button>
+            <button
+              className="hp-mobile-menu-btn"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? <FiX /> : <FiMenu />}
+            </button>
+          </div>
         </div>
+
+        {/* Mobile Navigation Drawer */}
+        {mobileMenuOpen && (
+          <div className="hp-mobile-drawer">
+            <div className="hp-mobile-drawer-links">
+              {NAV_LINKS.map((l) => (
+                <a
+                  key={l.label}
+                  href={l.href}
+                  className="hp-mobile-nav-link"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <span>{l.label}</span>
+                  <FiArrowRight className="hp-mobile-link-arrow" />
+                </a>
+              ))}
+            </div>
+            <div className="hp-mobile-drawer-actions">
+              <button
+                className="hp-btn hp-btn-secondary hp-btn-block"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  openContact("Request a demo");
+                }}
+              >
+                Request a Demo
+              </button>
+              <Link
+                to="/register"
+                className="hp-btn hp-btn-primary hp-btn-block"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Sign Up Free →
+              </Link>
+              <Link
+                to="/login"
+                className="hp-mobile-login-link"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Already have an account? <b>Sign In</b>
+              </Link>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* 1. HERO SECTION */}
@@ -510,6 +598,9 @@ export default function Homepage() {
           </div>
         </div>
       </section>
+
+      {/* 2.5 LIVE WEBSITE COMPLIANCE SCANNER */}
+      <SiteScannerSection />
 
       {/* 3. COMPLIANCE CHANGES EVERY DAY */}
       <section className="hp-section hp-resilience-section">
@@ -755,10 +846,9 @@ export default function Homepage() {
             </div>
 
             <div className="hp-footer-nav-col">
-              <a href="#approach">Product</a>
               <a href="#frameworks">Frameworks</a>
               <a href="#integrations">Integrations</a>
-              <a href="#workflow">Resources</a>
+              <a href="#site-scanner">Site Scanner</a>
               <a href="#india-first">About</a>
             </div>
 
